@@ -37,14 +37,31 @@ export function codeArtifactSetup(language?: string): CodeArtifactSetup {
   }
 }
 
+const IMPORTED = /\bimport\s+(?:[^'";]*?\s+from\s+)?["']([^"']+)["']|\brequire\(\s*["']([^"']+)["']\s*\)/g;
+
+/** The npm packages one file imports; React itself comes with the template. */
+export function npmPackages(source: string): Record<string, string> {
+  const packages: Record<string, string> = {};
+  for (const match of source.matchAll(IMPORTED)) {
+    const specifier = match[1] ?? match[2] ?? "";
+    if (!specifier || /^[./]/.test(specifier) || specifier.includes(":")) continue;
+    const parts = specifier.split("/");
+    const name = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+    if (name !== "react" && name !== "react-dom") packages[name] = "latest";
+  }
+  return packages;
+}
+
 export function codeArtifactConfig(
   language: string | undefined,
   content: string,
   view: "preview" | "code",
 ) {
   const setup = codeArtifactSetup(language);
+  const dependencies = setup.runnable && setup.template !== "static" ? npmPackages(content) : {};
   return {
     ...setup,
+    customSetup: Object.keys(dependencies).length ? { dependencies } : undefined,
     files: { [setup.file]: content },
     options: {
       autorun: setup.runnable && view === "preview",

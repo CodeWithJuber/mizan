@@ -39,6 +39,20 @@ test("a signed-out visit goes to sign in, and a wrong password says so", async (
   await expect(page.getByRole("alert")).toHaveText("Wrong username or password.");
 });
 
+test("a web page in an answer opens in a sandboxed preview and saves to the chat", async ({ page }) => {
+  await signIn(page);
+  await send(page, "Make me a web page");
+  await page.getByRole("button", { name: "Preview" }).click();
+  const dialog = page.getByRole("dialog", { name: "Hello page" });
+  await expect(dialog).toBeVisible();
+  const frame = dialog.locator("iframe");
+  // Opaque origin: the page can never reach the MIZAN session.
+  await expect(frame).not.toHaveAttribute("sandbox", /allow-same-origin/);
+  await expect(dialog.frameLocator("iframe").getByRole("heading", { name: "Hello from the sandbox" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Save to chat" }).click();
+  await expect(page.getByText("Saved to this chat")).toBeVisible();
+});
+
 test("a message streams into a formatted answer with its sources", async ({ page }) => {
   await signIn(page);
   await send(page, "Compare sabr and shukr");

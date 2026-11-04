@@ -3,7 +3,7 @@
  * project's chat (?chat=<id>, else its newest, else a new one bound to it); the right
  * shows Preview, Code, Changes and Terminal. On a phone a switch shows one at a time.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useBlocker, useSearchParams } from "react-router-dom";
 import { ArrowLeft, FolderCode, MessageSquare } from "lucide-react";
 import { Group, Panel, Separator, useDefaultLayout } from "react-resizable-panels";
@@ -16,6 +16,10 @@ import { Composer } from "../../features/chat/Composer";
 import { projectChats, useProjects } from "../../features/code/projects";
 import { type FixRequest, ProjectWorkspace } from "../../features/code/ProjectWorkspace";
 import type { Artifact } from "../../types";
+
+const ArtifactsPanel = lazy(() =>
+  import("../../components/ArtifactsPanel").then((module) => ({ default: module.ArtifactsPanel })),
+);
 
 /** Layout sizes are a convenience: a browser that refuses storage still works. */
 const layoutStorage = {
@@ -209,6 +213,16 @@ export default function ProjectView({ projectId }: { projectId: string }) {
             {workspace}
           </Panel>
         </Group>
+      )}
+      {/* "To chat" from the project opens its artifacts here, not on the next /chat visit. */}
+      {state.showArtifacts && (
+        <Suspense fallback={null}>
+          <ArtifactsPanel
+            artifacts={state.artifacts}
+            sessionId={state.sessionId}
+            onClose={() => actions.setShowArtifacts(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -199,7 +199,10 @@ const MSGS: ExportableMessage[] = [
     "doc has CSP meta",
     doc.includes('http-equiv="Content-Security-Policy"'),
   );
-  check("doc CSP connect-src none", doc.includes("connect-src 'none'"));
+  // Owner's decision (5 Nov 2026): pages may load and fetch any https resource;
+  // the opaque-origin sandbox, not the CSP, keeps them away from MIZAN.
+  check("doc CSP connect-src https", doc.includes("connect-src https:"));
+  check("doc CSP script-src https", /script-src[^;]*https:/.test(doc));
   check("doc CSP default-src none", doc.includes("default-src 'none'"));
   check("doc renders markdown", doc.includes("<h1>Hi</h1>"));
   const raw = buildSandboxDoc(
@@ -207,6 +210,22 @@ const MSGS: ExportableMessage[] = [
     "<h1>raw</h1><script>window.x=1</script>",
   );
   check("html kind passes through", raw.includes("<h1>raw</h1>"));
+  check("fragment is not squeezed to a reading column", !raw.includes("max-width: 72ch"));
+  const page = buildSandboxDoc(
+    "html",
+    '<!DOCTYPE html><html lang="ar"><head><title>T</title></head><body><header>H</header></body></html>',
+  );
+  check("full document keeps its own doctype", page.startsWith("<!DOCTYPE html><html"));
+  check("full document is not nested in a wrapper", page.split("<body").length === 2);
+  check(
+    "policy is the first thing in the page's head",
+    page.includes('<head><meta http-equiv="Content-Security-Policy"'),
+  );
+  check("<header> is not mistaken for <head>", page.includes("<header>H</header>"));
+  const bare = buildSandboxDoc("html", "<!doctype html><body><p>x</p></body>");
+  check("doctype-only page still gets the policy", bare.includes('http-equiv="Content-Security-Policy"'));
+  const svg = buildSandboxDoc("svg", '<svg viewBox="0 0 1 1"></svg>');
+  check("svg is shown in the sandbox", svg.includes("<svg") && svg.includes("Content-Security-Policy"));
 }
 
 console.log(

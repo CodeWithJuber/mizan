@@ -29,6 +29,16 @@ const ANSWER = [
   "```\n",
 ];
 
+// "Make me a web page": an answer whose html block the chat can preview.
+const PAGE_ANSWER = [
+  "Here is a small page:\n\n```html\n",
+  '<!DOCTYPE html><html><head><title>Hello page</title></head><body><h1>Hello from the sandbox</h1></body></html>\n',
+  "```\n",
+];
+
+/** Artifacts saved in the browser tests: id -> artifact with its content. */
+const artifacts = new Map();
+
 const ISNAD = {
   counts: { sahih: 2, hasan: 1, daif: 1, mawdu: 0 },
   claims: 4,
@@ -290,7 +300,7 @@ async function stream(req, res) {
     send("approval_resolved", { approval_id: approvalId, decision: approvals.get(approvalId) ?? "expired" });
   }
   let text = "";
-  for (const chunk of ANSWER) {
+  for (const chunk of /web page/i.test(content) ? PAGE_ANSWER : ANSWER) {
     if (run.stopped) break;
     text += chunk;
     send("stream", { chunk, message_id: "m-" + rid });
@@ -432,6 +442,26 @@ const server = http.createServer(async (req, res) => {
     if (!sessions.has(sid)) return json(res, 404, { detail: "Session not found" });
     const chat = sessions.get(sid);
     return json(res, 200, { session_id: sid, messages: chat.messages, has_more: false, workspace_id: chat.workspace_id ?? null });
+  }
+  if (path === "/api/artifacts/" && method === "POST") {
+    const body = await readBody(req);
+    const artifact = {
+      id: randomUUID().replaceAll("-", ""), session_id: body.session_id, title: body.title,
+      kind: body.kind, language: body.language ?? null, current_version: 1, created_at: new Date().toISOString(),
+    };
+    artifacts.set(artifact.id, { ...artifact, content: body.content });
+    return json(res, 201, artifact);
+  }
+  if (path === "/api/artifacts/" && method === "GET") {
+    const sid = url.searchParams.get("session_id");
+    return json(res, 200, [...artifacts.values()].filter((a) => a.session_id === sid).map(({ content: _, ...a }) => a));
+  }
+  const versionsOf = /^\/api\/artifacts\/([\w-]+)\/versions$/.exec(path);
+  if (versionsOf && method === "GET") {
+    const saved = artifacts.get(versionsOf[1]);
+    return saved
+      ? json(res, 200, [{ version: 1, content: saved.content, created_at: saved.created_at }])
+      : json(res, 404, { detail: "Artifact not found" });
   }
   if (path.startsWith("/api/")) return json(res, 200, {});
   res.writeHead(404);

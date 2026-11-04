@@ -2298,7 +2298,7 @@ async def stream_chat(
         lease.update(phase=execution_stage)
         terminal_status = "error"
         trace = thinking_stream.create_trace(message_id)
-        artifact_ids: set[str] = set()
+        artifact_ids: list[str] = []  # delivered, in order; kept on the message
 
         async def deliver(kind: str, **data):
             nonlocal cancellation_reason, execution_stage
@@ -2325,11 +2325,21 @@ async def stream_chat(
             artifact = get_artifact(user_id=user.user_id, artifact_id=artifact_id)
             if not artifact or artifact["session_id"] != req.session_id:
                 return
-            artifact_ids.add(artifact_id)
+            artifact_ids.append(artifact_id)
             # Large content is read from the owner-protected artifact endpoint.
             await deliver(
                 "artifact", artifact={k: v for k, v in artifact.items() if k != "content"}
             )
+
+        def published_artifacts():
+            # This request's own run of the agent: the base agent may still hold
+            # another run's tool results.
+            from agents.base import run_of
+
+            for receipt in getattr(run_of(agent), "_last_tool_results", []) or []:
+                tool_result = receipt.get("result")
+                if receipt.get("name") == "workspace_artifact" and isinstance(tool_result, dict):
+                    yield tool_result.get("artifact", tool_result)
 
         async def stream_cb(chunk: str, **kwargs):
             nonlocal response_characters, execution_started, cancellation_reason, execution_stage
@@ -2341,11 +2351,8 @@ async def stream_chat(
             if kind == "tool_use":
                 await deliver("tool_use", tool_name=kwargs.get("tool_name", "unknown"))
                 # A successfully saved artifact survives a later model failure.
-                for receipt in getattr(agent, "_last_tool_results", []) or []:
-                    if receipt.get("name") == "workspace_artifact":
-                        tool_result = receipt.get("result")
-                        if isinstance(tool_result, dict):
-                            await saved_artifact(tool_result.get("artifact", tool_result))
+                for reference in published_artifacts():
+                    await saved_artifact(reference)
                 return
             if kind == "artifact":
                 await saved_artifact(kwargs.get("artifact"))
@@ -2616,6 +2623,12 @@ async def stream_chat(
                 await persist_partial("error", result)
                 await channel.emit("error", **chat_failure_payload(result))
                 return
+            # Artifacts first, so the saved message keeps their ids for a reload.
+            for reference in result.get("artifacts", []) or []:
+                await saved_artifact(reference)
+            if execution_started:
+                for reference in published_artifacts():
+                    await saved_artifact(reference)
             # Save before the terminal event: a disconnected browser can read
             # the final response and exact observed usage without resubmitting.
             # Pictures MIZAN made for the answer (a browser screenshot), by kept id.
@@ -2633,6 +2646,7 @@ async def stream_chat(
                     "usage": result.get("usage", {}),
                     **chat_completion_receipt(result),
                     **({"images": made} if made else {}),
+                    **({"artifacts": artifact_ids} if artifact_ids else {}),
                 },
             )
             session["history"].append({"role": "assistant", "content": final})
@@ -2644,15 +2658,6 @@ async def stream_chat(
             if not workspace_id and isinstance(made_workspace, str) and made_workspace:
                 await memory.bind_session_workspace(user.user_id, req.session_id, made_workspace)
                 chat_workspace = made_workspace
-            for reference in result.get("artifacts", []) or []:
-                await saved_artifact(reference)
-            tool_results = getattr(agent, "_last_tool_results", []) if execution_started else []
-            for tool in tool_results or []:
-                if tool.get("name") == "workspace_artifact" and isinstance(
-                    tool.get("result"), dict
-                ):
-                    tool_result = tool["result"]
-                    await saved_artifact(tool_result.get("artifact", tool_result))
             thinking_stream.complete(message_id)
             completed_trace = thinking_stream.get_trace(message_id)
             # Qwen3 = generation → attach the QG understanding layer
@@ -2671,6 +2676,7 @@ async def stream_chat(
                 **understanding_kw,
                 response=final,
                 images=made,
+                artifacts=artifact_ids,
                 usage=result.get("usage", {}),
                 **chat_completion_receipt(result),
                 agent=agent.name if agent else None,
@@ -7292,6 +7298,7 @@ async def tasrif_demo(req: TasrifDemoRequest):
     """Apply tasrif morphophonemic operators to articulatory feature vectors."""
     try:
         import numpy as np
+
         from ruh_model.tokenizer.tasrif_ops import TasrifEngine
 
         engine = TasrifEngine()

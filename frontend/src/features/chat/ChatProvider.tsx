@@ -24,7 +24,7 @@ import { authFetch } from "../../utils/authFetch";
 import { runChatRequest } from "../../utils/chatRequest.ts";
 import { CHAT_INPUT_LIMIT, chatFailureNeedsRecovery, parseChatRun } from "../../utils/chatRecovery.ts";
 import { useChatRecovery } from "../../hooks/useChatRecovery.ts";
-import { keptImages, chatFailureFields, messageUsage, restoredMessageFields } from "../../utils/chatFailure.ts";
+import { keptArtifacts, keptImages, chatFailureFields, messageUsage, restoredMessageFields } from "../../utils/chatFailure.ts";
 import { checkLine, isReceipt, removedLine } from "../../utils/mahw.ts";
 import type { AgentMode } from "../../components/ModeSwitcher";
 import type { ApprovalDecision } from "../../components/AgentActivity";
@@ -656,6 +656,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             requestId: typeof data.request_id === "string" ? data.request_id : undefined,
             messageId: typeof data.message_id === "string" ? data.message_id : undefined,
             images: keptImages(data.images),
+            artifacts: keptArtifacts(data.artifacts),
             meta: usageMeta,
           };
           if (appendToLastRef.current) {

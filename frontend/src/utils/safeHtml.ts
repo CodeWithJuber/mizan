@@ -190,31 +190,24 @@ export function markdownToSafeHtml(md: string): string {
 }
 
 /**
- * Build the full HTML document for the locked-down artifact iframe.
- *
- * SECURITY (anti-exfiltration, two independent layers):
- *  - The iframe is rendered with `sandbox="allow-scripts"` and WITHOUT
- *    `allow-same-origin`: the document gets an opaque origin, so artifact
- *    scripts cannot touch the parent DOM, cookies, localStorage, or the
- *    Mizan session — even same-tab navigation is contained.
- *  - The injected CSP below sets `connect-src 'none'`: fetch/XHR/WebSocket/
- *    EventSource/sendBeacon are all blocked, so even a malicious script that
- *    runs inside the sandbox cannot phone data home. `default-src 'none'`
- *    blocks external subresources; only inline styles/scripts and data:/blob:
- *    media are permitted so legitimate artifact interactivity still works.
+ * SECURITY: artifact iframes are rendered with `sandbox` WITHOUT
+ * `allow-same-origin`, so a document gets an opaque origin: its scripts cannot
+ * touch the parent DOM, cookies, localStorage or the MIZAN session. That
+ * sandbox is the boundary. The policy below lets a page load any https script,
+ * style, font or image and fetch from https (the owner's decision, 5 Nov 2026:
+ * model-written pages use CDNs and public APIs), so a page can send its own
+ * content elsewhere, never MIZAN's.
  */
-export function buildSandboxDoc(
-  kind: "html" | "markdown",
-  content: string,
-): string {
-  const body = kind === "markdown" ? markdownToSafeHtml(content) : content;
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none';">
-<style>
+const SANDBOX_POLICY =
+  `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; ` +
+  `script-src 'unsafe-inline' 'unsafe-eval' https: blob:; style-src 'unsafe-inline' https:; ` +
+  `img-src data: blob: https:; media-src data: blob: https:; font-src data: https:; ` +
+  `connect-src https:; base-uri 'none'; form-action 'none';">`;
+
+const DOC_HEAD = `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${SANDBOX_POLICY}`;
+
+// Markdown keeps a reading layout; a page or picture brings its own.
+const PROSE_STYLE = `<style>
   :root { color-scheme: light dark; }
   body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.6; margin: 0 auto; max-width: 72ch; padding: 1.25rem; color: #1f2937; background: #ffffff; }
   @media (prefers-color-scheme: dark) { body { color: #e5e7eb; background: #18181b; } }
@@ -223,8 +216,31 @@ export function buildSandboxDoc(
   blockquote { border-left: 3px solid #d4a017; margin: 0; padding-left: 1rem; opacity: .85; }
   a { color: #b45309; }
   img { max-width: 100%; }
-</style>
-</head>
-<body>${body}</body>
-</html>`;
+</style>`;
+const FRAGMENT_STYLE = `<style>body { margin: 0; padding: 1rem; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }</style>`;
+const SVG_STYLE = `<style>body { margin: 0; min-height: 100vh; display: grid; place-items: center; } svg { max-width: 100%; height: auto; }</style>`;
+
+const FULL_DOCUMENT = /^\s*(<!doctype html|<html[\s>])/i;
+const HEAD_TAG = /<head(\s[^>]*)?>/i; // not <header>
+const HTML_TAG = /<html(\s[^>]*)?>/i;
+const DOCTYPE = /^\s*<!doctype html[^>]*>/i;
+
+/** A whole page as written, with the policy first in its head. */
+function withPolicy(page: string): string {
+  if (HEAD_TAG.test(page)) return page.replace(HEAD_TAG, (tag) => tag + SANDBOX_POLICY);
+  if (HTML_TAG.test(page)) return page.replace(HTML_TAG, (tag) => `${tag}<head>${SANDBOX_POLICY}</head>`);
+  return page.replace(DOCTYPE, (tag) => `${tag}<head>${SANDBOX_POLICY}</head>`);
+}
+
+/** The document an artifact iframe shows (see SECURITY above). */
+export function buildSandboxDoc(
+  kind: "html" | "markdown" | "svg",
+  content: string,
+): string {
+  if (kind === "html" && FULL_DOCUMENT.test(content)) return withPolicy(content);
+  const [style, body] =
+    kind === "markdown"
+      ? [PROSE_STYLE, markdownToSafeHtml(content)]
+      : [kind === "svg" ? SVG_STYLE : FRAGMENT_STYLE, content];
+  return `<!DOCTYPE html><html lang="en"><head>${DOC_HEAD}${style}</head><body>${body}</body></html>`;
 }
