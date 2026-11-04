@@ -10,7 +10,7 @@ import { BookOpen, ChevronRight, History, Scale, ShieldAlert } from "lucide-reac
 import { cn } from "@/lib/utils";
 import type { CognitiveMetadata, MessageUsageMeta } from "../../types";
 import { amanahHeadline, isAmanah, kindLabels } from "../../utils/amanah.ts";
-import { GRADES, headline as isnadHeadline, isIsnad, segments } from "../../utils/isnad.ts";
+import { GRADES, gradeTerms, isIsnad, plainHeadline, segments } from "../../utils/isnad.ts";
 import { isSidq, sidqHeadline, sidqLines } from "../../utils/sidq.ts";
 import { ahlHeadline, ahlLines, isAhl } from "../../utils/ahl.ts";
 import { recalledHeadline, recalledLines } from "../../utils/recalled.ts";
@@ -37,10 +37,10 @@ function Chip({ children, tone }: { children: React.ReactNode; tone?: "warning" 
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, tooltip, children }: { title: string; tooltip?: string; children: React.ReactNode }) {
   return (
     <section className="space-y-1">
-      <h4 className="text-xs font-medium text-foreground">{title}</h4>
+      <h4 className="text-xs font-medium text-foreground" title={tooltip}>{title}</h4>
       {children}
     </section>
   );
@@ -83,7 +83,7 @@ export function SourcesAndChecks({ meta, cognitive, debug = false }: Props) {
                 />
               ))}
             </span>
-            <span>{isnadHeadline(isnad)}</span>
+            <span title={`Isnad grades: ${gradeTerms(isnad)}`}>{plainHeadline(isnad)}</span>
           </Chip>
         )}
         {sidq && (
@@ -124,7 +124,7 @@ export function SourcesAndChecks({ meta, cognitive, debug = false }: Props) {
       {open && (
         <div className="mt-2 space-y-3 rounded-lg border bg-card p-3 leading-relaxed text-muted-foreground">
           {isnad && (
-            <Section title="Isnad — what supports each claim">
+            <Section title="Sources — what supports each claim" tooltip="Isnad: each claim graded sahih, hasan, da'if or mawdu'">
               <IsnadView isnad={isnad} compact />
             </Section>
           )}
@@ -159,8 +159,8 @@ export function SourcesAndChecks({ meta, cognitive, debug = false }: Props) {
           {recalled.length > 0 && (
             <Section title={recalledHeadline(recalled)}>
               <p>
-                The model was shown these words you wrote in other chats, as your statements, not as facts. Turn this
-                off with the chat preference cross_chat_recall: off, or delete a chat to forget it.
+                The model was shown these words you wrote in other chats, as your statements, not as facts. Delete
+                a chat to forget it.
               </p>
               <ul className="space-y-0.5 text-[11px]">
                 {recalled.map((line) => (

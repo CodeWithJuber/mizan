@@ -84,8 +84,8 @@ test("a message streams into a formatted answer with its sources", async ({ page
   await expect(answer.locator("pre").getByText("console.log(i)")).toBeVisible();
   // The run folded into one line, and the sources row is there.
   await expect(page.getByText(/Worked · 2 steps/)).toBeVisible();
-  await page.getByText("2 sahih · 1 hasan · 1 da'if").click();
-  await expect(page.getByText("Isnad — what supports each claim")).toBeVisible();
+  await page.getByText("2 verified · 1 supported · 1 model's words only").click();
+  await expect(page.getByText("Sources — what supports each claim")).toBeVisible();
 });
 
 test("Stop keeps what arrived and says it stopped", async ({ page }) => {
@@ -100,7 +100,7 @@ test("Stop keeps what arrived and says it stopped", async ({ page }) => {
 test("an approval prompt waits for Allow, then the run goes on", async ({ page }) => {
   await signIn(page);
   await send(page, "approve a file write");
-  await expect(page.getByText("Allow workspace_write?")).toBeVisible();
+  await expect(page.getByText("Allow Write files?")).toBeVisible();
   await page.getByRole("button", { name: "Allow", exact: true }).click();
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".prose").last().getByRole("table")).toBeVisible();

@@ -4,6 +4,7 @@ import { Plus, Settings2, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AgentCard } from "../components/AgentCard";
 import { AgentModal } from "../components/AgentModal";
+import { SkeletonCard } from "../components/Skeleton";
 import { addToast } from "../components/Toast";
 import { confirmDialog } from "../components/ui/confirm";
 import { useApi } from "../hooks/useApi";
@@ -94,6 +95,7 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {agents.length === 0 && isLoading && <SkeletonCard count={3} />}
             {agents.map((agent) => (
               <div key={agent.id} className="group relative">
                 <AgentCard agent={agent} selected={selected?.id === agent.id} onClick={() => select(agent.id)} />

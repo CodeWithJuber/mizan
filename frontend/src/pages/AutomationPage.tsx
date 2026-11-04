@@ -353,8 +353,8 @@ export default function AutomationPage({ api, addTerminalLine }: PageProps) {
                       <div className="text-sm font-semibold text-foreground truncate">
                         {job.name}
                       </div>
-                      <div className="text-2xs font-mono text-mizan-gold truncate">
-                        {job.cron}
+                      <div className="text-2xs text-mizan-gold truncate" title={job.cron}>
+                        {describeCron(job.cron)}
                       </div>
                     </div>
                   </div>

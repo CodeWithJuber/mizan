@@ -196,6 +196,12 @@ export default function ProjectView({ projectId }: { projectId: string }) {
               >
                 {item === "chat" ? <MessageSquare className="size-3.5" /> : <FolderCode className="size-3.5" />}
                 {item === "chat" ? "Chat" : "Project"}
+                {item === "chat" && view === "project" && state.activity.approvals.some((entry) => !entry.decision) && (
+                  <>
+                    <span className="size-2 rounded-full bg-primary" aria-hidden />
+                    <span className="sr-only">approval needed</span>
+                  </>
+                )}
               </button>
             ))}
           </fieldset>
