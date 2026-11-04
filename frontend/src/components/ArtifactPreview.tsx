@@ -91,11 +91,11 @@ export function ArtifactPreview({
   return (
     // SECURITY: no allow-same-origin, so the document has an opaque origin and
     // its scripts cannot reach the parent DOM, cookies, localStorage or the
-    // MIZAN session. Popups, dialogs and forms are allowed so ordinary pages
+    // MIZAN session. Links (popups, which stay sandboxed), dialogs and forms
     // work; buildSandboxDoc's policy decides what the page may load.
     <iframe
       title={title}
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-modals allow-forms"
+      sandbox="allow-scripts allow-popups allow-modals allow-forms"
       srcDoc={doc}
       className="w-full min-h-[380px] rounded-b-xl border-t border-border bg-white"
     />

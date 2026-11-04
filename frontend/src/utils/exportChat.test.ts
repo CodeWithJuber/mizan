@@ -218,10 +218,16 @@ const MSGS: ExportableMessage[] = [
   check("full document keeps its own doctype", page.startsWith("<!DOCTYPE html><html"));
   check("full document is not nested in a wrapper", page.split("<body").length === 2);
   check(
-    "policy is the first thing in the page's head",
-    page.includes('<head><meta http-equiv="Content-Security-Policy"'),
+    "policy is in the first head, before the page's own markup",
+    page.indexOf('http-equiv="Content-Security-Policy"') < page.indexOf("<title>"),
   );
   check("<header> is not mistaken for <head>", page.includes("<header>H</header>"));
+  // No string surgery on untrusted HTML: a "<head>" in a comment cannot take the policy.
+  const decoy = buildSandboxDoc("html", "<!DOCTYPE html><html><!-- <head> --><head></head><body></body></html>");
+  check(
+    "policy comes before anything the page wrote",
+    decoy.indexOf("Content-Security-Policy") < decoy.indexOf("<!--"),
+  );
   const bare = buildSandboxDoc("html", "<!doctype html><body><p>x</p></body>");
   check("doctype-only page still gets the policy", bare.includes('http-equiv="Content-Security-Policy"'));
   const svg = buildSandboxDoc("svg", '<svg viewBox="0 0 1 1"></svg>');

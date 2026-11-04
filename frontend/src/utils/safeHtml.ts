@@ -221,23 +221,20 @@ const FRAGMENT_STYLE = `<style>body { margin: 0; padding: 1rem; font-family: sys
 const SVG_STYLE = `<style>body { margin: 0; min-height: 100vh; display: grid; place-items: center; } svg { max-width: 100%; height: auto; }</style>`;
 
 const FULL_DOCUMENT = /^\s*(<!doctype html|<html[\s>])/i;
-const HEAD_TAG = /<head(\s[^>]*)?>/i; // not <header>
-const HTML_TAG = /<html(\s[^>]*)?>/i;
-const DOCTYPE = /^\s*<!doctype html[^>]*>/i;
-
-/** A whole page as written, with the policy first in its head. */
-function withPolicy(page: string): string {
-  if (HEAD_TAG.test(page)) return page.replace(HEAD_TAG, (tag) => tag + SANDBOX_POLICY);
-  if (HTML_TAG.test(page)) return page.replace(HTML_TAG, (tag) => `${tag}<head>${SANDBOX_POLICY}</head>`);
-  return page.replace(DOCTYPE, (tag) => `${tag}<head>${SANDBOX_POLICY}</head>`);
-}
 
 /** The document an artifact iframe shows (see SECURITY above). */
 export function buildSandboxDoc(
   kind: "html" | "markdown" | "svg",
   content: string,
 ): string {
-  if (kind === "html" && FULL_DOCUMENT.test(content)) return withPolicy(content);
+  // A whole page follows a head that starts with the policy. The HTML parser
+  // ignores the page's second doctype/<html>/<head> and moves its own <title>,
+  // <style> and <script> into this head, after the policy: no string surgery on
+  // untrusted HTML, so nothing the page writes (a "<head>" in a comment) can
+  // come before the policy.
+  if (kind === "html" && FULL_DOCUMENT.test(content)) {
+    return `<!DOCTYPE html><html><head>${DOC_HEAD}</head>${content}`;
+  }
   const [style, body] =
     kind === "markdown"
       ? [PROSE_STYLE, markdownToSafeHtml(content)]
