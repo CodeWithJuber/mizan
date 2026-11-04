@@ -27,12 +27,14 @@ def repo_root() -> Path:
     Container:     ``/app/api/_ruh_loader.py``            -> parents[1] is /app
                    (Dockerfile: ``COPY backend/ ./`` with ``WORKDIR /app``,
                    plus ``COPY ruh_model/ ./ruh_model/``).
-    The ancestor that actually contains ``ruh_model/`` wins; the historical
-    repo-root assumption is the fallback.
+    The ancestor that actually contains the ``ruh_model`` package wins; the
+    historical repo-root assumption is the fallback. A bare directory is not
+    enough: docker-compose's ``./ruh_model:/app/ruh_model`` mount inside
+    ``./backend:/app`` leaves an empty ``backend/ruh_model/`` on the host.
     """
     api_dir = Path(__file__).resolve().parent
     for base in (api_dir.parent, api_dir.parents[1]):
-        if (base / "ruh_model").is_dir():
+        if (base / "ruh_model" / "__init__.py").is_file():
             return base
     return api_dir.parents[1]
 
