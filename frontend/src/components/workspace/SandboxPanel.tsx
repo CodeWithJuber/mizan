@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Play, RefreshCw, Square, TerminalSquare } from "lucide-react";
 import { config } from "../../config";
 import { authFetch } from "../../utils/authFetch";
+import { confirmDialog } from "../ui/confirm";
 import { suggestServers, type ServerSuggestion } from "../../utils/sandboxCommands";
 
 const SandboxTerminal = lazy(() => import("./SandboxTerminal"));
@@ -131,13 +132,22 @@ export default function SandboxPanel({ workspaceId, packageJson, disabled, onSta
             <button
               className={button}
               disabled={Boolean(busy)}
-              onClick={() => run("Stopping", async () => {
-                setTerminal(false);
-                await call(base, { method: "DELETE" });
-                await load();
-                onFilesChanged();
-                setNotice("Sandbox stopped. Project files are saved; installed packages were removed.");
-              })}
+              onClick={async () => {
+                const ok = await confirmDialog({
+                  title: "Stop the sandbox?",
+                  description: "Installed packages will be removed. Project files are saved.",
+                  confirmLabel: "Stop sandbox",
+                  destructive: true,
+                });
+                if (!ok) return;
+                await run("Stopping", async () => {
+                  setTerminal(false);
+                  await call(base, { method: "DELETE" });
+                  await load();
+                  onFilesChanged();
+                  setNotice("Sandbox stopped. Project files are saved; installed packages were removed.");
+                });
+              }}
             >
               <Square className="w-3.5 h-3.5" /> Stop
             </button>
@@ -203,7 +213,15 @@ export default function SandboxPanel({ workspaceId, packageJson, disabled, onSta
               <span className="font-mono text-gray-500 truncate max-w-[40ch]" title={service.command}>{service.command}</span>
               <button className="underline" onClick={() => onOpenPreview(service.preview_url)}>Preview</button>
               <button className="underline" onClick={() => void run("Loading log", async () => setLogs(await call(`${base}/services/${service.port}/logs`)))}>Log</button>
-              <button className="underline text-rose-600" onClick={() => void run("Stopping server", async () => { await call(`${base}/services/${service.port}`, { method: "DELETE" }); await load(); })}>Stop</button>
+              <button className="underline text-rose-600" onClick={async () => {
+                const ok = await confirmDialog({
+                  title: `Stop the server on port ${service.port}?`,
+                  description: "The dev server shuts down and its preview stops working until you start it again.",
+                  confirmLabel: "Stop server",
+                  destructive: true,
+                });
+                if (ok) await run("Stopping server", async () => { await call(`${base}/services/${service.port}`, { method: "DELETE" }); await load(); });
+              }}>Stop</button>
             </div>
           ))}
           {logs && (

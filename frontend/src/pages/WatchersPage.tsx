@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ApiClient } from "../types";
 import { useToast } from "../components/Toast";
+import { confirmDialog } from "../components/ui/confirm";
 import {
   PRAYERS,
   STATUS_LABELS,
@@ -279,7 +280,15 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
                 <button className="btn-ghost btn-sm" disabled={busy} onClick={() => act(() => api.patch(`/muraqabah/watchers/${watcher.id}`, { enabled: !watcher.enabled }), "")}>
                   {watcher.enabled ? "Pause" : "Resume"}
                 </button>
-                <button className="btn-danger btn-sm" disabled={busy} onClick={() => act(() => api.del(`/muraqabah/watchers/${watcher.id}`), "Removed")}>
+                <button className="btn-danger btn-sm" disabled={busy} onClick={async () => {
+                    const ok = await confirmDialog({
+                      title: "Remove this watcher?",
+                      description: "It stops running and its schedule is deleted. This cannot be undone.",
+                      confirmLabel: "Remove",
+                      destructive: true,
+                    });
+                    if (ok) act(() => api.del(`/muraqabah/watchers/${watcher.id}`), "Removed");
+                  }}>
                   Remove
                 </button>
               </div>

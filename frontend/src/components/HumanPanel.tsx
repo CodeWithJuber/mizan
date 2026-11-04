@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApiClient } from "../types";
 import { pct } from "../utils/imtihan.ts";
+import { confirmDialog } from "./ui/confirm";
 
 interface PanelTask {
   id: string;
@@ -71,6 +72,13 @@ function PanelInvites({ api, total }: { api: ApiClient; total: number }) {
   };
 
   const revoke = async (id: string) => {
+    const ok = await confirmDialog({
+      title: "Revoke this invite?",
+      description: "The link stops working at once. Answers already given are kept.",
+      confirmLabel: "Revoke",
+      destructive: true,
+    });
+    if (!ok) return;
     await api.del(`/imtihan/panel/invites/${encodeURIComponent(id)}`);
     await load();
   };
@@ -190,6 +198,13 @@ export default function HumanPanel({ api, onChange }: { api: ApiClient; onChange
   };
 
   const erase = async (who: string) => {
+    const ok = await confirmDialog({
+      title: `Erase ${who}'s answers?`,
+      description: "All of this person's answers are deleted from the panel. This cannot be undone.",
+      confirmLabel: "Erase",
+      destructive: true,
+    });
+    if (!ok) return;
     await api.del(`/imtihan/panel/${encodeURIComponent(who)}`);
     await load();
     onChange?.();
