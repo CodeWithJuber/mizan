@@ -1,0 +1,361 @@
+{
+  "target": "deen (lemma)",
+  "n_occurrences": 92,
+  "usable_context": 92,
+  "k": 4,
+  "clusters": {
+    "0": {
+      "size": 56,
+      "top_neighbour_glosses": [
+        "in",
+        "Allah",
+        "of",
+        "over",
+        "those who",
+        "from"
+      ],
+      "examples": [
+        "2:132  [لَكُمُ __ فَلَا]  (for you | so not)",
+        "2:193  [وَيَكُونَ __ لِلَّهِ]  (and becomes | for Allah)",
+        "2:217  [عَن __ إِنِ]  (from | if)",
+        "2:217  [عَن __ فَيَمُتْ]  (from | then dies)",
+        "2:256  [فِى __ قَد]  (in | Surely)"
+      ]
+    },
+    "1": {
+      "size": 16,
+      "top_neighbour_glosses": [
+        "(the) Day",
+        "(is the) Day",
+        "(on the) Day",
+        "(of the) Day",
+        "This",
+        "deny"
+      ],
+      "examples": [
+        "1:4  [يَوْمِ __ إِيَّاكَ]  ((of the) Day | You Alone)",
+        "5:3  [لَكُمْ __ وَأَتْمَمْتُ]  (for you | and I have completed)",
+        "8:72  [فِى __ فَعَلَيْكُمُ]  (in | then upon you)",
+        "15:35  [يَوْمِ __ قَالَ]  ((the) Day | He said)",
+        "26:82  [يَوْمَ __ رَبِّ]  ((on the) Day | My Lord)"
+      ]
+    },
+    "2": {
+      "size": 14,
+      "top_neighbour_glosses": [
+        "to Him",
+        "(being) sincere",
+        "Allah",
+        "to Allah",
+        "for Allah",
+        "But when"
+      ],
+      "examples": [
+        "4:146  [وَأَخْلَصُوا۟ __ لِلَّهِ]  (and are sincere | for Allah)",
+        "7:29  [لَهُ __ كَمَا]  (to Him | As)",
+        "10:22  [لَهُ __ لَئِنْ]  (to Him | (saying), \"If)",
+        "29:65  [لَهُ __ فَلَمَّا]  (to Him | But when)",
+        "31:32  [لَهُ __ فَلَمَّا]  (to Him | But when)"
+      ]
+    },
+    "3": {
+      "size": 6,
+      "top_neighbour_glosses": [
+        "take",
+        "in",
+        "those who",
+        "and deluded them",
+        "numbered",
+        "And deceived them"
+      ],
+      "examples": [
+        "3:24  [فِى __ مَّا]  (in | what)",
+        "5:57  [ٱتَّخَذُوا۟ __ هُزُوًا]  (take | (in) ridicule)",
+        "6:70  [ٱتَّخَذُوا۟ __ لَعِبًا]  (take | (as) a play)",
+        "7:51  [ٱتَّخَذُوا۟ __ لَهْوًا]  (took | (as) an amusement)",
+        "8:49  [هَٰٓؤُلَآءِ __ وَمَن]  (these (people) | But whoever)"
+      ]
+    }
+  },
+  "famous_verses": [
+    {
+      "verse": "1:4",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمِ",
+      "prev_en": "(of the) Day",
+      "nxt": "إِيَّاكَ",
+      "nxt_en": "You Alone",
+      "cluster": 1
+    },
+    {
+      "verse": "2:193",
+      "classical": "RELIGION",
+      "prev": "وَيَكُونَ",
+      "prev_en": "and becomes",
+      "nxt": "لِلَّهِ",
+      "nxt_en": "for Allah",
+      "cluster": 0
+    },
+    {
+      "verse": "2:256",
+      "classical": "RELIGION",
+      "prev": "فِى",
+      "prev_en": "in",
+      "nxt": "قَد",
+      "nxt_en": "Surely",
+      "cluster": 0
+    },
+    {
+      "verse": "3:19",
+      "classical": "RELIGION",
+      "prev": "إِنَّ",
+      "prev_en": "Indeed",
+      "nxt": "عِندَ",
+      "nxt_en": "near",
+      "cluster": 0
+    },
+    {
+      "verse": "3:85",
+      "classical": "RELIGION",
+      "prev": "ٱلْإِسْلَٰمِ",
+      "prev_en": "[the] Islam",
+      "nxt": "فَلَن",
+      "nxt_en": "then never",
+      "cluster": 0
+    },
+    {
+      "verse": "8:39",
+      "classical": "RELIGION",
+      "prev": "وَيَكُونَ",
+      "prev_en": "and is",
+      "nxt": "كُلُّهُۥ",
+      "nxt_en": "all of it",
+      "cluster": 0
+    },
+    {
+      "verse": "12:76",
+      "classical": "KING'S-LAW",
+      "prev": "فِى",
+      "prev_en": "by",
+      "nxt": "ٱلْمَلِكِ",
+      "nxt_en": "(of) the king",
+      "cluster": 0
+    },
+    {
+      "verse": "15:35",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمِ",
+      "prev_en": "(the) Day",
+      "nxt": "قَالَ",
+      "nxt_en": "He said",
+      "cluster": 1
+    },
+    {
+      "verse": "16:52",
+      "classical": "OBEDIENCE",
+      "prev": "وَلَهُ",
+      "prev_en": "and to Him",
+      "nxt": "وَاصِبًا",
+      "nxt_en": "constantly",
+      "cluster": 0
+    },
+    {
+      "verse": "26:82",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمَ",
+      "prev_en": "(on the) Day",
+      "nxt": "رَبِّ",
+      "nxt_en": "My Lord",
+      "cluster": 1
+    },
+    {
+      "verse": "37:20",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمُ",
+      "prev_en": "(is the) Day",
+      "nxt": "هَٰذَا",
+      "nxt_en": "This",
+      "cluster": 1
+    },
+    {
+      "verse": "39:2",
+      "classical": "OBEDIENCE",
+      "prev": "لَّهُ",
+      "prev_en": "to Him",
+      "nxt": "أَلَا",
+      "nxt_en": "Unquestionably",
+      "cluster": 2
+    },
+    {
+      "verse": "39:3",
+      "classical": "OBEDIENCE",
+      "prev": "لِلَّهِ",
+      "prev_en": "for Allah",
+      "nxt": "ٱلْخَالِصُ",
+      "nxt_en": "the pure",
+      "cluster": 2
+    },
+    {
+      "verse": "39:11",
+      "classical": "OBEDIENCE",
+      "prev": "لَّهُ",
+      "prev_en": "to Him",
+      "nxt": "وَأُمِرْتُ",
+      "nxt_en": "And I am commanded",
+      "cluster": 2
+    },
+    {
+      "verse": "39:14",
+      "classical": "OBEDIENCE",
+      "prev": "لَّهُۥ",
+      "prev_en": "to Him",
+      "nxt": "فَٱعْبُدُوا۟",
+      "nxt_en": "So worship",
+      "cluster": 2
+    },
+    {
+      "verse": "40:14",
+      "classical": "OBEDIENCE",
+      "prev": "لَهُ",
+      "prev_en": "to Him",
+      "nxt": "وَلَوْ",
+      "nxt_en": "even though",
+      "cluster": 2
+    },
+    {
+      "verse": "42:13",
+      "classical": "RELIGION",
+      "prev": "مِّنَ",
+      "prev_en": "of",
+      "nxt": "مَا",
+      "nxt_en": "what",
+      "cluster": 0
+    },
+    {
+      "verse": "42:13",
+      "classical": "RELIGION",
+      "prev": "أَقِيمُوا۟",
+      "prev_en": "establish",
+      "nxt": "وَلَا",
+      "nxt_en": "and not",
+      "cluster": 0
+    },
+    {
+      "verse": "51:6",
+      "classical": "RECOMPENSE",
+      "prev": "وَإِنَّ",
+      "prev_en": "And indeed",
+      "nxt": "لَوَٰقِعٌ",
+      "nxt_en": "(is) surely to occur",
+      "cluster": 3
+    },
+    {
+      "verse": "56:56",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمَ",
+      "prev_en": "(on the) Day",
+      "nxt": "نَحْنُ",
+      "nxt_en": "We",
+      "cluster": 1
+    },
+    {
+      "verse": "70:26",
+      "classical": "RECOMPENSE",
+      "prev": "بِيَوْمِ",
+      "prev_en": "(of the) Day",
+      "nxt": "وَٱلَّذِينَ",
+      "nxt_en": "And those who",
+      "cluster": 1
+    },
+    {
+      "verse": "82:15",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمَ",
+      "prev_en": "(on the) Day",
+      "nxt": "وَمَا",
+      "nxt_en": "And not",
+      "cluster": 1
+    },
+    {
+      "verse": "82:17",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمُ",
+      "prev_en": "(is the) Day",
+      "nxt": "ثُمَّ",
+      "nxt_en": "Then",
+      "cluster": 1
+    },
+    {
+      "verse": "82:18",
+      "classical": "RECOMPENSE",
+      "prev": "يَوْمُ",
+      "prev_en": "(is the) Day",
+      "nxt": "يَوْمَ",
+      "nxt_en": "(The) Day",
+      "cluster": 1
+    },
+    {
+      "verse": "95:7",
+      "classical": "RECOMPENSE",
+      "prev": "بَعْدُ",
+      "prev_en": "after (this)",
+      "nxt": "أَلَيْسَ",
+      "nxt_en": "Is not",
+      "cluster": 0
+    },
+    {
+      "verse": "98:5",
+      "classical": "RELIGION",
+      "prev": "لَهُ",
+      "prev_en": "to Him",
+      "nxt": "حُنَفَآءَ",
+      "nxt_en": "upright",
+      "cluster": 2
+    },
+    {
+      "verse": "98:5",
+      "classical": "RELIGION",
+      "prev": "وَذَٰلِكَ",
+      "prev_en": "And that",
+      "nxt": "ٱلْقَيِّمَةِ",
+      "nxt_en": "the correct",
+      "cluster": 0
+    },
+    {
+      "verse": "107:1",
+      "classical": "RECOMPENSE",
+      "prev": "يُكَذِّبُ",
+      "prev_en": "denies",
+      "nxt": "فَذَٰلِكَ",
+      "nxt_en": "Then that",
+      "cluster": 0
+    },
+    {
+      "verse": "109:6",
+      "classical": "RELIGION",
+      "prev": "لَكُمْ",
+      "prev_en": "For you",
+      "nxt": "وَلِىَ",
+      "nxt_en": "and for me",
+      "cluster": 2
+    },
+    {
+      "verse": "109:6",
+      "classical": "RELIGION",
+      "prev": "وَلِىَ",
+      "prev_en": "and for me",
+      "nxt": "إِذَا",
+      "nxt_en": "When",
+      "cluster": 2
+    },
+    {
+      "verse": "110:2",
+      "classical": "RELIGION",
+      "prev": "فِى",
+      "prev_en": "into",
+      "nxt": "ٱللَّهِ",
+      "nxt_en": "(of) Allah",
+      "cluster": 1
+    }
+  ]
+}

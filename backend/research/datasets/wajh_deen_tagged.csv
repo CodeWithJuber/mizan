@@ -1,0 +1,93 @@
+verse,sura,aya,word,prev,nxt,face,confidence,basis
+1:4,1,4,ٱلدِّينِ,يَوْمِ,إِيَّاكَ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+2:132,2,132,ٱلدِّينَ,لَكُمُ,فَلَا,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+2:193,2,193,ٱلدِّينُ,وَيَكُونَ,لِلَّهِ,OBEDIENCE/RELIGION,medium,'yakuna al-din lillah' (8:39/2:193) [ikhtilaf]
+2:217,2,217,دِينِكُمْ,عَن,إِنِ,RELIGION,high,possessive '...din-' (your/my/their religion)
+2:217,2,217,دِينِهِۦ,عَن,فَيَمُتْ,RELIGION,high,possessive '...din-' (your/my/their religion)
+2:256,2,256,ٱلدِّينِ,فِى,قَد,RELIGION,medium,'fi/min al-din' (the religion/way)
+3:19,3,19,ٱلدِّينَ,إِنَّ,عِندَ,RELIGION,high,near 'islam' (3:19/3:85)
+3:24,3,24,دِينِهِم,فِى,مَّا,RELIGION,high,possessive '...din-' (your/my/their religion)
+3:73,3,73,دِينَكُمْ,تَبِعَ,قُلْ,RELIGION,high,possessive '...din-' (your/my/their religion)
+3:83,3,83,دِينِ,أَفَغَيْرَ,ٱللَّهِ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+3:85,3,85,دِينًا,ٱلْإِسْلَٰمِ,فَلَن,RELIGION,high,possessive '...din-' (your/my/their religion)
+4:46,4,46,ٱلدِّينِ,فِى,وَلَوْ,RELIGION,medium,'fi/min al-din' (the religion/way)
+4:125,4,125,دِينًا,أَحْسَنُ,مِّمَّنْ,RELIGION,high,possessive '...din-' (your/my/their religion)
+4:146,4,146,دِينَهُمْ,وَأَخْلَصُوا۟,لِلَّهِ,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+4:171,4,171,دِينِكُمْ,فِى,وَلَا,RELIGION,high,possessive '...din-' (your/my/their religion)
+5:3,5,3,دِينِكُمْ,مِن,فَلَا,RELIGION,high,possessive '...din-' (your/my/their religion)
+5:3,5,3,دِينَكُمْ,لَكُمْ,وَأَتْمَمْتُ,RELIGION,high,possessive '...din-' (your/my/their religion)
+5:3,5,3,دِينًا,ٱلْإِسْلَٰمَ,فَمَنِ,RELIGION,high,possessive '...din-' (your/my/their religion)
+5:54,5,54,دِينِهِۦ,عَن,فَسَوْفَ,RELIGION,high,possessive '...din-' (your/my/their religion)
+5:57,5,57,دِينَكُمْ,ٱتَّخَذُوا۟,هُزُوًا,RELIGION,high,possessive '...din-' (your/my/their religion)
+5:77,5,77,دِينِكُمْ,فِى,غَيْرَ,RELIGION,high,possessive '...din-' (your/my/their religion)
+6:70,6,70,دِينَهُمْ,ٱتَّخَذُوا۟,لَعِبًا,RELIGION,high,possessive '...din-' (your/my/their religion)
+6:137,6,137,دِينَهُمْ,عَلَيْهِمْ,وَلَوْ,RELIGION,high,possessive '...din-' (your/my/their religion)
+6:159,6,159,دِينَهُمْ,فَرَّقُوا۟,وَكَانُوا۟,RELIGION,high,possessive '...din-' (your/my/their religion)
+6:161,6,161,دِينًا,مُّسْتَقِيمٍ,قِيَمًا,RELIGION,high,possessive '...din-' (your/my/their religion)
+7:29,7,29,ٱلدِّينَ,لَهُ,كَمَا,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+7:51,7,51,دِينَهُمْ,ٱتَّخَذُوا۟,لَهْوًا,RELIGION,high,possessive '...din-' (your/my/their religion)
+8:39,8,39,ٱلدِّينُ,وَيَكُونَ,كُلُّهُۥ,OBEDIENCE/RELIGION,medium,'yakuna al-din lillah' (8:39/2:193) [ikhtilaf]
+8:49,8,49,دِينُهُمْ,هَٰٓؤُلَآءِ,وَمَن,RELIGION,high,possessive '...din-' (your/my/their religion)
+8:72,8,72,ٱلدِّينِ,فِى,فَعَلَيْكُمُ,RELIGION,medium,'fi/min al-din' (the religion/way)
+9:11,9,11,ٱلدِّينِ,فِى,وَنُفَصِّلُ,RELIGION,medium,'fi/min al-din' (the religion/way)
+9:12,9,12,دِينِكُمْ,فِى,فَقَٰتِلُوٓا۟,RELIGION,high,possessive '...din-' (your/my/their religion)
+9:29,9,29,دِينَ,يَدِينُونَ,ٱلْحَقِّ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+9:33,9,33,وَدِينِ,بِٱلْهُدَىٰ,ٱلْحَقِّ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+9:33,9,33,ٱلدِّينِ,عَلَى,كُلِّهِۦ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+9:36,9,36,ٱلدِّينُ,ذَٰلِكَ,ٱلْقَيِّمُ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+9:122,9,122,ٱلدِّينِ,فِى,وَلِيُنذِرُوا۟,RELIGION,medium,'fi/min al-din' (the religion/way)
+10:22,10,22,ٱلدِّينَ,لَهُ,لَئِنْ,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+10:104,10,104,دِينِى,مِّن,فَلَآ,RELIGION,high,possessive '...din-' (your/my/their religion)
+10:105,10,105,لِلدِّينِ,وَجْهَكَ,حَنِيفًا,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+12:40,12,40,ٱلدِّينُ,ذَٰلِكَ,ٱلْقَيِّمُ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+12:76,12,76,دِينِ,فِى,ٱلْمَلِكِ,KING'S-LAW,high,next='al-malik' (12:76 din al-malik)
+15:35,15,35,ٱلدِّينِ,يَوْمِ,قَالَ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+16:52,16,52,ٱلدِّينُ,وَلَهُ,وَاصِبًا,OBEDIENCE,high,"'al-din wasiban' (16:52, constant obedience)"
+22:78,22,78,ٱلدِّينِ,فِى,مِنْ,RELIGION,medium,'fi/min al-din' (the religion/way)
+24:2,24,2,دِينِ,فِى,ٱللَّهِ,RELIGION,medium,'fi/min al-din' (the religion/way)
+24:25,24,25,دِينَهُمُ,ٱللَّهُ,ٱلْحَقَّ,RELIGION,high,possessive '...din-' (your/my/their religion)
+24:55,24,55,دِينَهُمُ,لَهُمْ,ٱلَّذِى,RELIGION,high,possessive '...din-' (your/my/their religion)
+26:82,26,82,ٱلدِّينِ,يَوْمَ,رَبِّ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+29:65,29,65,ٱلدِّينَ,لَهُ,فَلَمَّا,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+30:30,30,30,لِلدِّينِ,وَجْهَكَ,حَنِيفًا,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+30:30,30,30,ٱلدِّينُ,ذَٰلِكَ,ٱلْقَيِّمُ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+30:32,30,32,دِينَهُمْ,فَرَّقُوا۟,وَكَانُوا۟,RELIGION,high,possessive '...din-' (your/my/their religion)
+30:43,30,43,لِلدِّينِ,وَجْهَكَ,ٱلْقَيِّمِ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+31:32,31,32,ٱلدِّينَ,لَهُ,فَلَمَّا,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+33:5,33,5,ٱلدِّينِ,فِى,وَمَوَٰلِيكُمْ,RELIGION,medium,'fi/min al-din' (the religion/way)
+37:20,37,20,ٱلدِّينِ,يَوْمُ,هَٰذَا,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+38:78,38,78,ٱلدِّينِ,يَوْمِ,قَالَ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+39:2,39,2,ٱلدِّينَ,لَّهُ,أَلَا,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+39:3,39,3,ٱلدِّينُ,لِلَّهِ,ٱلْخَالِصُ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+39:11,39,11,ٱلدِّينَ,لَّهُ,وَأُمِرْتُ,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+39:14,39,14,دِينِى,لَّهُۥ,فَٱعْبُدُوا۟,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+40:14,40,14,ٱلدِّينَ,لَهُ,وَلَوْ,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+40:26,40,26,دِينَكُمْ,يُبَدِّلَ,أَوْ,RELIGION,high,possessive '...din-' (your/my/their religion)
+40:65,40,65,ٱلدِّينَ,لَهُ,ٱلْحَمْدُ,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+42:13,42,13,ٱلدِّينِ,مِّنَ,مَا,RELIGION,medium,'fi/min al-din' (the religion/way)
+42:13,42,13,ٱلدِّينَ,أَقِيمُوا۟,وَلَا,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+42:21,42,21,ٱلدِّينِ,مِّنَ,مَا,RELIGION,medium,'fi/min al-din' (the religion/way)
+48:28,48,28,وَدِينِ,بِٱلْهُدَىٰ,ٱلْحَقِّ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+48:28,48,28,ٱلدِّينِ,عَلَى,كُلِّهِۦ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+49:16,49,16,بِدِينِكُمْ,ٱللَّهَ,وَٱللَّهُ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+51:6,51,6,ٱلدِّينَ,وَإِنَّ,لَوَٰقِعٌ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+51:12,51,12,ٱلدِّينِ,يَوْمُ,يَوْمَ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+56:56,56,56,ٱلدِّينِ,يَوْمَ,نَحْنُ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+60:8,60,8,ٱلدِّينِ,فِى,وَلَمْ,RELIGION,medium,'fi/min al-din' (the religion/way)
+60:9,60,9,ٱلدِّينِ,فِى,وَأَخْرَجُوكُم,RELIGION,medium,'fi/min al-din' (the religion/way)
+61:9,61,9,وَدِينِ,بِٱلْهُدَىٰ,ٱلْحَقِّ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+61:9,61,9,ٱلدِّينِ,عَلَى,كُلِّهِۦ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+70:26,70,26,ٱلدِّينِ,بِيَوْمِ,وَٱلَّذِينَ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+74:46,74,46,ٱلدِّينِ,بِيَوْمِ,حَتَّىٰٓ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+82:9,82,9,بِٱلدِّينِ,تُكَذِّبُونَ,وَإِنَّ,RECOMPENSE,medium,near 'kadhdhaba' (denying the Recompense) [ikhtilaf]
+82:15,82,15,ٱلدِّينِ,يَوْمَ,وَمَا,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+82:17,82,17,ٱلدِّينِ,يَوْمُ,ثُمَّ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+82:18,82,18,ٱلدِّينِ,يَوْمُ,يَوْمَ,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+83:11,83,11,ٱلدِّينِ,بِيَوْمِ,وَمَا,RECOMPENSE,high,prev='yawm' (Day of Recompense)
+95:7,95,7,بِٱلدِّينِ,بَعْدُ,أَلَيْسَ,RECOMPENSE,medium,near 'kadhdhaba' (denying the Recompense) [ikhtilaf]
+98:5,98,5,ٱلدِّينَ,لَهُ,حُنَفَآءَ,OBEDIENCE,high,'mukhlisan lahu al-din' (sincere obedience)
+98:5,98,5,دِينُ,وَذَٰلِكَ,ٱلْقَيِّمَةِ,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+107:1,107,1,بِٱلدِّينِ,يُكَذِّبُ,فَذَٰلِكَ,RECOMPENSE,medium,near 'kadhdhaba' (denying the Recompense) [ikhtilaf]
+109:6,109,6,دِينُكُمْ,لَكُمْ,وَلِىَ,RELIGION,high,possessive '...din-' (your/my/their religion)
+109:6,109,6,دِينِ,وَلِىَ,إِذَا,RELIGION,default,dominant face (way/system); tafsir to confirm nuance
+110:2,110,2,دِينِ,فِى,ٱللَّهِ,RELIGION,medium,'fi/min al-din' (the religion/way)

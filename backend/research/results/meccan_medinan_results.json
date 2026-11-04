@@ -1,0 +1,51 @@
+{
+  "n": 114,
+  "n_medinan": 28,
+  "length_pointbiserial": 0.24118513099637814,
+  "auc_length": [
+    0.6156301910299004,
+    0.009871934572413036
+  ],
+  "auc_vocab": [
+    0.815562707641196,
+    0.011530047506444964
+  ],
+  "auc_both": [
+    0.8145245016611296,
+    0.01219251263114396
+  ],
+  "auc_vocab_robust": [
+    0.9669661733615222,
+    0.006169459582414779
+  ],
+  "perm_obs": 0.8367940199335548,
+  "perm_null_mean": 0.5026420265780731,
+  "perm_null_max": 0.7138704318936877,
+  "perm_p": 0.001996007984031936,
+  "ari_vs_period": -0.01577437180446631,
+  "ari_vs_length": 0.3719188013533108,
+  "medinan_markers": [
+    "\u02be-l-h=Allah",
+    "\u02be-y-y=O you",
+    "d-w-r=their homes",
+    "n-s-w=the women",
+    "n-f-q=the hypocrites",
+    "w-f-y=We cause you to die",
+    "b-\u02be-s=Our punishment",
+    "q-l-b=their hearts",
+    "k-f-r=disbelieved",
+    "s-b-l=(the) way"
+  ],
+  "meccan_markers": [
+    "n-\u1e93-r=and see",
+    "d-\u02bf-w=they invoke",
+    "n-f-s=themselves",
+    "f-r-y=invent",
+    "k-b-r=great",
+    "q-w-l=Say",
+    "\u02be-w-l=(of) the former (people)",
+    "w-\u02bf-d=promised",
+    "s-w-\u02be=evil",
+    "j-r-m=the criminals"
+  ]
+}

@@ -62,9 +62,13 @@ SANCTIONED_BACKEND_STRINGS = frozenset(
 )
 
 
+# start.sh creates backend/venv; its site-packages are not served code.
+SKIPPED_DIRS = {"__pycache__", "venv", ".venv"}
+
+
 def _iter_py_files():
     for path in sorted(BACKEND_DIR.rglob("*.py")):
-        if "__pycache__" in path.parts:
+        if SKIPPED_DIRS & set(path.relative_to(BACKEND_DIR).parts):
             continue
         rel = path.relative_to(REPO_ROOT).as_posix()
         if rel in EXEMPT_FILES:
@@ -180,13 +184,15 @@ def test_no_backend_module_name_strings():
 def test_container_layout_imports(tmp_path):
     """Simulate the container: backend/ contents on sys.path, no repo root."""
     app_dir = tmp_path / "app"
-    shutil.copytree(BACKEND_DIR, app_dir, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(BACKEND_DIR, app_dir, ignore=shutil.ignore_patterns(*SKIPPED_DIRS))
     # The Dockerfile also ships ruh_model/ next to the backend tree
     # (COPY ruh_model/ ./ruh_model/) — the layout-aware repo_root() needs it.
+    # dirs_exist_ok: docker-compose leaves an empty backend/ruh_model/ mountpoint.
     shutil.copytree(
         REPO_ROOT / "ruh_model",
         app_dir / "ruh_model",
         ignore=shutil.ignore_patterns("__pycache__"),
+        dirs_exist_ok=True,
     )
 
     code = (
@@ -220,3 +226,24 @@ def test_container_layout_imports(tmp_path):
         f"--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr[-2000:]}"
     )
     assert "container-imports-ok" in proc.stdout
+
+
+def test_repo_root_skips_empty_compose_mountpoint(tmp_path):
+    """docker-compose mounts ./ruh_model at /app/ruh_model inside ./backend:/app,
+    so Docker leaves an empty backend/ruh_model/ on the host; a local run must
+    still resolve the repo root, not backend/."""
+    import importlib.util
+
+    root = tmp_path / "root"
+    (root / "backend" / "api").mkdir(parents=True)
+    (root / "backend" / "ruh_model").mkdir()
+    (root / "ruh_model").mkdir()
+    (root / "ruh_model" / "__init__.py").write_text("")
+    loader = root / "backend" / "api" / "_ruh_loader.py"
+    shutil.copy(BACKEND_DIR / "api" / "_ruh_loader.py", loader)
+
+    spec = importlib.util.spec_from_file_location("_ruh_loader_under_test", loader)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.repo_root() == root

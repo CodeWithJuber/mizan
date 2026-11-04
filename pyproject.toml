@@ -152,6 +152,9 @@ exclude = [
 target-version = "py311"
 line-length = 100
 src = ["backend"]
+# One-off research experiment scripts, not served code (backend/research's
+# integration layer — paths, schemas, loader, findings — stays checked).
+extend-exclude = ["backend/research/experiments", "backend/research/analyzer"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["nlp"]
@@ -192,6 +195,8 @@ addopts = "-v --tb=short"
 [tool.mypy]
 python_version = "3.12"
 explicit_package_bases = true
+# Same scope as ruff's extend-exclude: research experiment scripts.
+exclude = ["^backend/research/(experiments|analyzer)/"]
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true

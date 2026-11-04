@@ -1,0 +1,78 @@
+{
+  "corpus_file": "qac_raw.txt",
+  "corpus_sha256": "742bfac59941b2cb09736d5b7aae694af50792261fb8450cbf6afafcc340645f",
+  "english_source": "Quran.com word-by-word English (api.quran.com v4)",
+  "english_words_matched": 77429,
+  "n_words": 77429,
+  "n_verses": 6236,
+  "n_suras": 114,
+  "n_unique_forms": 18993,
+  "n_unique_norm": 14543,
+  "n_unique_lemmas": 4764,
+  "n_unique_roots": 1651,
+  "entropy_root_bits": 8.3743,
+  "perplexity_root": 331.8,
+  "entropy_form_bits": 11.8611,
+  "perplexity_form": 3720.0,
+  "entropy_norm_bits": 10.9985,
+  "graph_nodes": 1651,
+  "graph_edges": 74451,
+  "graph_density": 0.05466,
+  "top10_roots": [
+    [
+      "أله",
+      "Allah",
+      2851
+    ],
+    [
+      "قول",
+      "Say",
+      1722
+    ],
+    [
+      "كون",
+      "is",
+      1390
+    ],
+    [
+      "ربب",
+      "your Lord",
+      980
+    ],
+    [
+      "أمن",
+      "believe",
+      879
+    ],
+    [
+      "علم",
+      "know",
+      854
+    ],
+    [
+      "قوم",
+      "the people",
+      660
+    ],
+    [
+      "أيي",
+      "O you",
+      597
+    ],
+    [
+      "أتي",
+      "were given",
+      549
+    ],
+    [
+      "كفر",
+      "disbelieved",
+      525
+    ]
+  ],
+  "notes": {
+    "empirical": "frequency, info-content, entropy, topology",
+    "exploratory_only": "abjad (convention-dependent gematria, not validated)",
+    "meaning": "word_en = word-by-word translation (cited); root_en = majority gloss (derived); root_en_here = this occurrence's gloss; tafsir != arithmetic"
+  }
+}

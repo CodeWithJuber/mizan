@@ -1,0 +1,141 @@
+{
+  "target": "ummah (lemma)",
+  "n_occurrences": 58,
+  "usable_context": 58,
+  "root_emb_explained_var": 0.40216812185588574,
+  "k": 4,
+  "clusters": {
+    "0": {
+      "size": 3,
+      "top_neighbour_glosses": [
+        "[we] found",
+        "our forefathers",
+        "and indeed, we",
+        "on",
+        "their footsteps",
+        "(of) Madyan"
+      ],
+      "examples": [
+        "28:23  [عَلَيْهِ __ مِّنَ]  (on it | of)",
+        "43:22  [عَلَىٰٓ __ وَإِنَّا]  (upon | and indeed, we)",
+        "43:23  [عَلَىٰٓ __ وَإِنَّا]  (on | and indeed, we)"
+      ]
+    },
+    "1": {
+      "size": 28,
+      "top_neighbour_glosses": [
+        "every",
+        "from",
+        "before you",
+        "a witness",
+        "to",
+        "comes"
+      ],
+      "examples": [
+        "2:143  [جَعَلْنَٰكُمْ __ وَسَطًا]  (We made you | (of the) middle way)",
+        "2:213  [ٱلنَّاسُ __ وَٰحِدَةً]  (mankind | single)",
+        "3:104  [مِّنكُمْ __ يَدْعُونَ]  (among you | inviting)",
+        "3:110  [خَيْرَ __ أُخْرِجَتْ]  ((the) best | raised)"
+      ]
+    },
+    "2": {
+      "size": 19,
+      "top_neighbour_glosses": [
+        "one",
+        "but",
+        "to You",
+        "to",
+        "Allah tests you",
+        "Allah (had) willed"
+      ],
+      "examples": [
+        "2:128  [ذُرِّيَّتِنَآ __ مُّسْلِمَةً]  (our offspring | submissive)",
+        "5:48  [لَجَعَلَكُمْ __ وَٰحِدَةً]  (He (would have) made you | one)",
+        "5:66  [مِّنْهُمْ __ مُّقْتَصِدَةٌ]  (Among them | moderate)",
+        "6:38  [إِلَّآ __ أَمْثَالُكُم]  (but | like you)"
+      ]
+    },
+    "3": {
+      "size": 8,
+      "top_neighbour_glosses": [
+        "among",
+        "from",
+        "This",
+        "(which)",
+        "has passed away",
+        "for it"
+      ],
+      "examples": [
+        "2:134  [تِلْكَ __ قَدْ]  (This | (which))",
+        "2:141  [تِلْكَ __ قَدْ]  (This | (which))",
+        "7:38  [فِىٓ __ قَدْ]  (among | (who))",
+        "13:30  [فِىٓ __ قَدْ]  (to | verily)"
+      ]
+    }
+  },
+  "famous_verses": [
+    {
+      "verse": "11:8",
+      "classical": "TIME (muddat)",
+      "prev": "إِلَىٰٓ",
+      "prev_en": "for",
+      "nxt": "مَّعْدُودَةٍ",
+      "nxt_en": "determined",
+      "cluster": 1
+    },
+    {
+      "verse": "12:45",
+      "classical": "TIME (muddat)",
+      "prev": "بَعْدَ",
+      "prev_en": "after",
+      "nxt": "أَنَا۠",
+      "nxt_en": "I",
+      "cluster": 1
+    },
+    {
+      "verse": "16:120",
+      "classical": "LEADER (imam)",
+      "prev": "كَانَ",
+      "prev_en": "was",
+      "nxt": "قَانِتًا",
+      "nxt_en": "obedient",
+      "cluster": 1
+    },
+    {
+      "verse": "21:92",
+      "classical": "WAY/DIN",
+      "prev": "أُمَّتُكُمْ",
+      "prev_en": "(is) your religion ",
+      "nxt": "وَٰحِدَةً",
+      "nxt_en": "one",
+      "cluster": 2
+    },
+    {
+      "verse": "23:52",
+      "classical": "WAY/DIN",
+      "prev": "أُمَّتُكُمْ",
+      "prev_en": "your religion",
+      "nxt": "وَٰحِدَةً",
+      "nxt_en": "one",
+      "cluster": 2
+    },
+    {
+      "verse": "43:22",
+      "classical": "WAY/DIN",
+      "prev": "عَلَىٰٓ",
+      "prev_en": "upon",
+      "nxt": "وَإِنَّا",
+      "nxt_en": "and indeed, we",
+      "cluster": 0
+    },
+    {
+      "verse": "43:23",
+      "classical": "WAY/DIN",
+      "prev": "عَلَىٰٓ",
+      "prev_en": "on",
+      "nxt": "وَإِنَّا",
+      "nxt_en": "and indeed, we",
+      "cluster": 0
+    }
+  ]
+}
