@@ -8,6 +8,11 @@ the entry points. `MIZAN_OWNED_ONLY=true` prevents provider autodetection, saved
 provider preferences and per-message model overrides from selecting hosted
 inference. Selecting `LLM_PROVIDER=mizan-owned` also enables this boundary.
 The optional mem0 external extraction/embedding path is disabled in owned mode.
+Turning `MIZAN_OWNED_ONLY` off in Settings → Developer → System settings rebuilds
+every agent from `LLM_PROVIDER` and `DEFAULT_MODEL` and saves that as the provider
+preference restored at start-up. Until then the saved `mizan-owned` preference keeps
+agents on the own model after a restart, even with `LLM_PROVIDER=auto`; switching
+provider under Models & providers also clears it.
 
 Normal inference runs reviewed exact-context memory, then the local Mizan reply
 core, then an explicit abstention. It never calls the support adapter. Output

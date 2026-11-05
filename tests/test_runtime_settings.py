@@ -84,6 +84,15 @@ def test_update_persists_seals_secrets_and_reset_restores_environment(store, mon
     assert "OPENROUTER_API_KEY" not in rs.os.environ
 
 
+def test_owned_only_change_rebuilds_from_configured_provider(store):
+    # Leaving owned mode must rebuild from LLM_PROVIDER/DEFAULT_MODEL: the in-memory
+    # active provider is still mizan-owned and would re-pin every agent to it.
+    for value in ("true", "false", "true", None):
+        change = rs.update({"MIZAN_OWNED_ONLY": value}, "root")
+        assert change.applied == ["MIZAN_OWNED_ONLY"], value
+        assert change.provider_changed and change.model_changed, value
+
+
 def test_saved_values_win_at_startup_and_restart_settings_are_flagged(store, monkeypatch):
     rs.update({"MIZAN_NLP_NATIVE_WSD": "true", "OPENAI_API_KEY": "sk-test"}, "root")
     assert rs.restart_pending() == ["MIZAN_NLP_NATIVE_WSD"]
@@ -181,6 +190,8 @@ def test_only_signed_in_administrator_routes_change_settings():
     callers = sorted(
         str(path.relative_to(backend))
         for path in backend.rglob("*.py")
-        if re.search(r"runtime_settings\.update\(", path.read_text(encoding="utf-8"))
+        # A local virtualenv under backend/ holds third-party files, some not UTF-8.
+        if "venv" not in path.relative_to(backend).parts
+        and re.search(r"runtime_settings\.update\(", path.read_text(encoding="utf-8"))
     )
     assert callers == ["api/main.py"]
