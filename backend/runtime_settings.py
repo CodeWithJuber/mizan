@@ -528,7 +528,9 @@ def update(changes: dict[str, Any], actor: str) -> Change:
                 result.applied.append(key)
                 if setting.apply == "provider":
                     result.provider_changed = True
-                    if key in {"LLM_PROVIDER", "DEFAULT_MODEL"}:
+                    # Owned mode on/off must rebuild from the configured provider: the
+                    # in-memory active one is still mizan-owned after leaving it.
+                    if key in {"LLM_PROVIDER", "DEFAULT_MODEL", "MIZAN_OWNED_ONLY"}:
                         result.model_changed = True
         _write(saved)
     result.restart_required = restart_pending()
