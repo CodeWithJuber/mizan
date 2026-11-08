@@ -212,17 +212,17 @@ The launcher writes `ruh-speaker-launch/pod-recovery.json` (pod id, deadline, bu
 
 Locally, without a GPU: `cd backend && python -m tadbir.ruh_reader.speaker prepare --plan tiny --tsv docs.tsv --out /tmp/s` and `… train --shards /tmp/s --out /tmp/r`.
 
-**On a Mac with Apple silicon** (the owner's M5 Max, 64 GB), training runs on its GPU through Metal (`--device mps`; chosen by default when there is no CUDA). It runs in fp32, without autocast, and `torch.compile` is used only on CUDA. Each call trains for `--seconds` and then stops, writing a checkpoint every 20 minutes. The next call resumes from the newest whole checkpoint, so the pilot can run over several nights:
+**On a Mac with Apple silicon** (the owner's M5 Max, 64 GB), training runs on its GPU through Metal (`--device mps`; chosen by default when there is no CUDA). It runs in fp32, without autocast, and `torch.compile` is used only on CUDA. The plan's 32 windows of 1,024 tokens do not fit in one pass there: on 6 Nov one pass held 73 GB and filled 53 of 54 GB of swap, a step took 2,258 s, and the first call was killed (exit 137). `--rows 8` runs each micro-batch as four passes of 8 windows: the same windows, the same gradient up to the order of float sums and the same run key, so the Mac's checkpoints and a GPU pod's continue each other (`test_fewer_rows_per_pass_train_the_same_run`). Leave `--seconds` out on the Mac: the cosine ends at the last step or at the end of `--seconds`, whichever comes first, so every call of `--seconds 28800` would bring the learning rate down to `min_lr` and the next would raise it again. A checkpoint is written every 20 minutes; when the Mac is needed, stop the process and later run the same command, which resumes from the newest whole checkpoint (at most 20 minutes lost):
 
 ```bash
 pip install -e ".[ml]"                                    # torch with Metal (MPS) on macOS
 cd backend
 python -c "import torch; print(torch.backends.mps.is_available())"   # must print True
 python -m tadbir.ruh_reader.speaker prepare --plan pilot --out ~/ruh/shards   # downloads the pinned sources
-python -m tadbir.ruh_reader.speaker train --shards ~/ruh/shards --out ~/ruh/run --device mps --seconds 28800
+python -m tadbir.ruh_reader.speaker train --shards ~/ruh/shards --out ~/ruh/run --device mps --rows 8
 ```
 
-The pilot's numbers in §3 are for an A100 or H100 (about 2·10¹⁸ FLOPs, ≈ 19.5 GB of downloads); the Mac's speed is not measured yet. Read it from the first call's report (`tokens`, `elapsed`) before planning the nights.
+The pilot's numbers in §3 are for an A100 or H100 (about 2·10¹⁸ FLOPs, ≈ 19.5 GB of downloads); on the Mac with `--rows 8` (8 Nov, a 25 GB process; Ollama held another 25 GB of the GPU's memory for part of it) steps 2–15 took 1,282 s, about 92 s a step or 2,900 tokens a second, so the pilot's 9,537 steps need about ten days of running. Read the pace from `state.json` in each checkpoint (`step`, `elapsed`).
 
 ## 8. Limits
 
