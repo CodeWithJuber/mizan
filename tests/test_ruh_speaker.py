@@ -274,6 +274,34 @@ def test_training_resumed_from_a_checkpoint_matches_one_run(shards, home):
     assert codec.kind == "bytes" and model.parameters_count() == parts["parameters"]
 
 
+def test_fewer_rows_per_pass_train_the_same_run(shards, home, monkeypatch):
+    # A 64 GB Mac cannot hold the pilot's 32 rows in one pass; splitting each
+    # micro-batch must not change the data, the gradient or the run's identity.
+    torch = pytest.importorskip("torch")
+    from tadbir.ruh_reader import speaker_net
+
+    out, _manifest = shards
+    config, plan = speaker.CONFIGS["tiny"], speaker.PLANS["tiny"]
+    quiet = {"log": lambda _line: None, "device": "cpu"}
+    whole = speaker_net.train(out, home / "whole", config, plan, steps=3, **quiet)
+    passes: list[int] = []
+    forward = speaker_net.Speaker.forward
+
+    def counted(self, tokens, *args, **kwargs):
+        passes.append(len(tokens))
+        return forward(self, tokens, *args, **kwargs)
+
+    monkeypatch.setattr(speaker_net.Speaker, "forward", counted)
+    split = speaker_net.train(out, home / "split", config, plan, steps=2, rows=1, **quiet)
+    assert passes[: plan["batch"]] == [1] * plan["batch"]  # one window a pass
+    split = speaker_net.train(out, home / "split", config, plan, steps=1, rows=2, **quiet)
+    assert split["step"] == whole["step"] == 3 and split["calls"] == 2  # resumed, same run
+    one, two = _state(home / "whole"), _state(home / "split")
+    assert all(torch.allclose(one[name], two[name], atol=1e-5) for name in one)
+    with pytest.raises(ValueError, match="rows"):
+        speaker_net.train(out, home / "bad", config, plan, steps=1, rows=3, **quiet)
+
+
 def test_a_checkpoint_that_does_not_match_its_sha256_is_not_resumed(shards, home):
     pytest.importorskip("torch")
     from tadbir.ruh_reader import speaker_net

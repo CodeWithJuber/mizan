@@ -509,6 +509,34 @@ def default_device() -> str:
     return "cpu"
 
 
+def _backward_step(
+    runner: nn.Module,
+    windows: Windows,
+    plan: dict,
+    step: int,
+    rows: int,
+    vocab: int,
+    device: str,
+    autocast: contextlib.AbstractContextManager,
+) -> float:
+    """Back-propagate one step's micro-batches, ``rows`` windows a pass. The
+    windows are the step's own and each part's mean loss is weighted by its
+    share of the micro-batch, so the gradient is the one-pass gradient up to
+    the order of float sums. Returns the last micro-batch's mean loss."""
+    batch, accumulate = plan["batch"], plan["accumulate"]
+    seen: list[torch.Tensor] = []
+    for micro in range(accumulate):
+        seen = []
+        for part in windows.batch(plan["seed"], step, micro, batch).split(rows):
+            tokens = part.to(device)
+            with autocast:
+                logits, _ = runner(tokens[:, :-1])
+            loss = F.cross_entropy(logits.float().reshape(-1, vocab), tokens[:, 1:].reshape(-1))
+            (loss * (len(part) / batch) / accumulate).backward()
+            seen.append(loss.detach() * len(part))
+    return float(torch.stack(seen).sum() / batch)
+
+
 def train(
     shards: Path,
     out: Path,
@@ -519,13 +547,19 @@ def train(
     steps: int | None = None,
     stop: Callable[[], bool] = lambda: False,
     device: str | None = None,
+    rows: int | None = None,
     log: Callable[[str], None] = print,
 ) -> dict:
     """Train on the shards for the plan's tokens, within ``seconds`` of this
     call (and at most ``steps`` more steps), resuming this run's newest whole
     checkpoint in ``out``. A checkpoint is written every
     ``checkpoint_seconds`` and when the call ends; ``final/`` is written each
-    time it ends. Returns the report."""
+    time it ends. ``rows`` (a divisor of the plan's batch; default all of it)
+    is how many windows one forward pass holds: memory only, not the run.
+    Returns the report."""
+    rows = rows or plan["batch"]
+    if rows < 1 or plan["batch"] % rows:
+        raise ValueError(f"rows must divide the plan's batch of {plan['batch']}, not {rows}")
     manifest = speaker.verify_shards(shards)
     model_config = Config.of(config)
     device = device or default_device()
@@ -575,15 +609,9 @@ def train(
         rate = learning_rate(plan, state["step"], total, clock)
         for group in optimizer.param_groups:
             group["lr"] = rate
-        for micro in range(plan["accumulate"]):
-            tokens = windows.batch(plan["seed"], state["step"], micro, plan["batch"]).to(device)
-            with autocast:
-                logits, _ = runner(tokens[:, :-1])
-            loss = F.cross_entropy(
-                logits.float().reshape(-1, model_config.vocab), tokens[:, 1:].reshape(-1)
-            )
-            (loss / plan["accumulate"]).backward()
-            last_loss = float(loss.detach())
+        last_loss = _backward_step(
+            runner, windows, plan, state["step"], rows, model_config.vocab, device, autocast
+        )
         torch.nn.utils.clip_grad_norm_(model.parameters(), plan["clip"])
         optimizer.step()
         optimizer.zero_grad(set_to_none=True)

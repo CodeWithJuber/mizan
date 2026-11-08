@@ -1092,6 +1092,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="default: CUDA, else Apple silicon's GPU (mps), else the CPU",
     )
+    training.add_argument(
+        "--rows",
+        type=int,
+        default=None,
+        help="windows per forward pass, a divisor of the plan's batch (memory only; "
+        "the run, its data and its checkpoints are the same); default: the whole batch",
+    )
     checking = commands.add_parser("verify", help="check the shards' SHA-256")
     checking.add_argument("--shards", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -1129,6 +1136,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             PLANS[args.plan or manifest["plan"]],
             seconds=args.seconds,
             device=args.device,
+            rows=args.rows,
             log=print,
         )
         print(json.dumps({k: v for k, v in report.items() if k != "history"}, indent=1))
