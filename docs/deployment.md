@@ -17,6 +17,8 @@ is required. Existing package access must permit this repository's Actions
 token; package visibility is configured separately from repository visibility.
 See [GitHub's Container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
 
+Each deployed commit gets a 30-day receipt under `/var/lib/mizan-deploy/receipts/<repository-id>/<run-id>-<attempt>.json`. After a successful deployment, Auto Release reads the matching receipt over pinned SSH, verifies its digest and compares the recorded commit with the branch tip. Earlier deployment runs can still use their unexpired Actions receipt.
+
 The separate Auto Release workflow retains its public-repository restriction;
 it is not required to publish production images or deploy the application.
 

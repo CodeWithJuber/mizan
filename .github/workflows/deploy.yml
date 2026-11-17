@@ -10,6 +10,7 @@ on:
     paths:
       - .github/workflows/deploy.yml
       - scripts/deploy_production.sh
+      - scripts/deployment_receipt.py
       - scripts/setup_workspace_runner.py
       - deploy/known_hosts
 
@@ -114,14 +115,9 @@ jobs:
               echo 'runner=unverified' >> "$GITHUB_OUTPUT" ;;
             *) exit "$status" ;;
           esac
-          printf '%s\n' "$DEPLOY_SHA" > deployed-sha.txt
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
+            "python3 - write $GITHUB_REPOSITORY_ID $GITHUB_RUN_ID $GITHUB_RUN_ATTEMPT $DEPLOY_SHA" < scripts/deployment_receipt.py
           echo 'deployed=true' >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v7
-        if: steps.production.outputs.deployed == 'true'
-        with:
-          name: production-deployment
-          path: deployed-sha.txt
-          retention-days: 30
       - name: Workspace runner
         if: steps.production.outputs.runner != ''
         env:
