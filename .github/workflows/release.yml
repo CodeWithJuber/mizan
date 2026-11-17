@@ -42,6 +42,8 @@ jobs:
   # ──── Docker ──────────────────────────────────────────────────
   publish-docker:
     name: Publish Docker images
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
     runs-on: ubuntu-24.04
     needs: validate
     steps:

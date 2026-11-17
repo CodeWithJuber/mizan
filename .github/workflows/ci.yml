@@ -113,8 +113,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          package-manager-cache: false
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -214,6 +213,8 @@ jobs:
 
   publish-production:
     name: Publish production images
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     needs: [build, docker, provenance, browser]
