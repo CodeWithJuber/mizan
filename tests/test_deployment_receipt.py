@@ -1,6 +1,7 @@
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -49,3 +50,58 @@ class DeploymentReceiptTests(TestCase):
         self.assertIsNone(receipt(self.root, "read", *self.identity))
         receipt(self.root, "write", "101", "203", "1", self.sha)
         self.assertFalse(self.path.exists())
+
+
+class ArchivedDeploymentReceiptTests(TestCase):
+    def setUp(self):
+        from datetime import datetime
+
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.run = "100"
+        self.started = "2026-11-17T11:00:00Z"
+        self.now = datetime(2026, 11, 17, 12, tzinfo=UTC)
+        self.sha = "b" * 40
+
+    def write_archive(self, created="2026-11-17T11:01:00Z", expires="2026-12-01T00:00:00Z"):
+        import hashlib
+        import zipfile
+
+        folder = self.root / self.run / "200"
+        folder.mkdir(parents=True)
+        archive = folder / "artifact.zip"
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("deployed-sha.txt", self.sha + "\n")
+        record = {
+            "name": "production-deployment",
+            "id": 200,
+            "workflow_run": {"id": int(self.run)},
+            "created_at": created,
+            "expires_at": expires,
+            "size_in_bytes": archive.stat().st_size,
+            "digest": "sha256:" + hashlib.sha256(archive.read_bytes()).hexdigest(),
+        }
+        (folder / "metadata.json").write_text(json.dumps(record))
+        return archive
+
+    def test_reads_historical_proof_and_rejects_modified_archive(self):
+        from scripts.deployment_receipt import archived_receipt
+
+        archive = self.write_archive()
+        self.assertEqual(archived_receipt(self.root, self.run, self.started, self.now), self.sha)
+        data = archive.read_bytes()
+        archive.write_bytes(data.replace(b"b" * 40, b"c" * 40))
+        with self.assertRaises(ValueError):
+            archived_receipt(self.root, self.run, self.started, self.now)
+
+    def test_earlier_attempt_and_expired_proof_do_not_authorize_release(self):
+        from scripts.deployment_receipt import archived_receipt
+
+        self.write_archive(created="2026-11-17T10:00:00Z")
+        self.assertIsNone(archived_receipt(self.root, self.run, self.started, self.now))
+        self.assertIsNone(
+            archived_receipt(
+                self.root, self.run, "2026-11-17T09:00:00Z", self.now.replace(month=12)
+            )
+        )

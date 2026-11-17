@@ -30,7 +30,6 @@ on:
 permissions:
   contents: write
   pull-requests: read
-  actions: read
 
 concurrency:
   group: mizan-release
@@ -52,28 +51,8 @@ jobs:
       release_sha: ${{ steps.source.outputs.sha }}
       release_branch: ${{ steps.source.outputs.branch }}
     steps:
-      - name: Find a receipt from before the compute-storage migration
-        id: legacy
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.event != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          STARTED: ${{ github.event.workflow_run.run_started_at }}
-        run: |
-          set -euo pipefail
-          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" |
-            jq -sr --arg started "$STARTED" '[.[].artifacts[] | select(.name == "production-deployment" and .expired == false and .created_at >= $started)] | max_by(.created_at).id // empty')
-          echo "id=$id" >> "$GITHUB_OUTPUT"
-      - uses: actions/download-artifact@v8
-        if: steps.legacy.outputs.id != ''
-        with:
-          artifact-ids: ${{ steps.legacy.outputs.id }}
-          merge-multiple: true
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          path: deployment-proof
       - name: Check out the receipt reader and pinned host key
-        if: steps.legacy.outcome == 'success' && steps.legacy.outputs.id == ''
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event != 'pull_request'
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
@@ -83,28 +62,30 @@ jobs:
             scripts/deployment_receipt.py
           sparse-checkout-cone-mode: false
       - name: Install SSH password client
-        if: steps.legacy.outcome == 'success' && steps.legacy.outputs.id == ''
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event != 'pull_request'
         run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Read the compute-server receipt for this deployment attempt
         id: proof
-        if: steps.legacy.outcome == 'success' && steps.legacy.outputs.id == ''
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.event != 'pull_request'
         env:
           SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
           SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
           SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          STARTED: ${{ github.event.workflow_run.run_started_at }}
         run: |
           set -euo pipefail
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ && "$ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ "$STARTED" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
           sha=$(sshpass -e ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" \
-            -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" "python3 - read $GITHUB_REPOSITORY_ID $RUN_ID $ATTEMPT" < scripts/deployment_receipt.py)
+            -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" "python3 - read $GITHUB_REPOSITORY_ID $RUN_ID $ATTEMPT $STARTED" < scripts/deployment_receipt.py)
           [[ -z "$sha" || "$sha" =~ ^[a-f0-9]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Select the verified source commit
         id: source
         env:
           EVENT: ${{ github.event_name }}
-          LEGACY_ID: ${{ steps.legacy.outputs.id }}
           VERIFIED_SHA: ${{ steps.proof.outputs.sha }}
           RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           GH_TOKEN: ${{ github.token }}
@@ -112,7 +93,6 @@ jobs:
           sha="$GITHUB_SHA"
           if [ "$EVENT" = 'workflow_run' ]; then
             sha="$VERIFIED_SHA"
-            if [ -n "$LEGACY_ID" ]; then sha=$(cat deployment-proof/deployed-sha.txt); fi
             if [ -z "$sha" ]; then exit 0; fi
           fi
           [[ "$sha" =~ ^[a-f0-9]{40}$ ]] || exit 1
