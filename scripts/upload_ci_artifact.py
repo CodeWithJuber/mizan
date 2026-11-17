@@ -86,6 +86,8 @@ def oidc_token(opener):
 
 
 def verify_receipt(receipt, family, slot, digest, size):
+    if family not in ARTIFACTS or slot != ARTIFACTS[family][0]:
+        raise ValueError("unexpected artifact family or slot")
     expected = {
         "repository": "CodeWithJuber/mizan",
         "repository_id": "1166364542",
@@ -96,15 +98,31 @@ def verify_receipt(receipt, family, slot, digest, size):
         "sha256": digest,
         "size_bytes": size,
     }
-    if any(receipt.get(key) != value for key, value in expected.items()):
+    if not isinstance(receipt, dict) or any(
+        type(receipt.get(key)) is not type(value) or receipt.get(key) != value
+        for key, value in expected.items()
+    ):
         raise ValueError("server receipt does not match this run and artifact")
-    path = receipt["path"]
-    if not isinstance(path, str) or not re.fullmatch(r"/[a-zA-Z0-9/_.-]+", path):
+    identity = [expected[key] for key in ("repository_id", "run_id", "run_attempt")]
+    if any(not re.fullmatch(r"[1-9][0-9]{0,20}", value) for value in identity):
+        raise ValueError("invalid artifact run identity")
+    path = "/".join([*identity, family, slot, "artifact.zip"])
+    if receipt.get("path") != path:
         raise ValueError("invalid private artifact path")
+    if not isinstance(receipt.get("retained_until"), str):
+        raise ValueError("server receipt has no valid retention deadline")
     expires = datetime.fromisoformat(receipt["retained_until"].replace("Z", "+00:00"))
     if expires.tzinfo is None or expires <= datetime.now(UTC):
         raise ValueError("server receipt has no valid retention deadline")
     return path
+
+
+def retry_delay(error, fallback):
+    """Allow the receiver's signing-key refresh, with a bounded numeric delay."""
+    value = error.headers.get("Retry-After", "") if error.headers else ""
+    if error.code in {429, 503} and re.fullmatch(r"[0-9]{1,6}", value):
+        return max(fallback, min(int(value), 60))
+    return fallback
 
 
 def upload(archive, family, opener):
@@ -113,6 +131,7 @@ def upload(archive, family, opener):
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     size = archive.stat().st_size
     for attempt in range(3):
+        delay = 2 ** (attempt + 1)
         try:
             token = oidc_token(opener)
             with archive.open("rb") as data:
@@ -135,10 +154,11 @@ def upload(archive, family, opener):
         except urllib.error.HTTPError as error:
             if attempt == 2 or error.code not in {429, 502, 503, 504}:
                 raise RuntimeError(f"compute artifact service returned HTTP {error.code}") from None
+            delay = retry_delay(error, delay)
         except (urllib.error.URLError, TimeoutError, ConnectionError):
             if attempt == 2:
                 raise RuntimeError("compute artifact service could not be reached") from None
-        time.sleep(2 ** (attempt + 1))
+        time.sleep(delay)
     raise RuntimeError("artifact upload did not complete")
 
 
@@ -182,7 +202,7 @@ def main():
             raise ValueError("no artifact files were produced")
         opener = urllib.request.build_opener(NoRedirect())
         path, digest, size, expires = upload(archive, args.family, opener)
-    message = f"{args.family} stored on compute ({size} bytes). SHA-256 `{digest}`. Retained until {expires}. SSH path `{path}`."
+    message = f"{args.family} stored on compute ({size} bytes). SHA-256 `{digest}`. Retained until {expires}. Private relative path `{path}` (see docs/ci-artifacts.md for SSH retrieval)."
     print(message)
     with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
         print(message, file=summary)
