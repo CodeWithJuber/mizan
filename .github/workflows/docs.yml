@@ -36,11 +36,11 @@ jobs:
           python -c 'from html.parser import HTMLParser; from pathlib import Path; HTMLParser().feed(Path("docs/index.html").read_text())'
 
       - name: Setup Pages
-        if: vars.ENABLE_GITHUB_PAGES == 'true'
+        if: vars.ENABLE_GITHUB_PAGES == 'true' && github.event.repository.private == false
         uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        if: vars.ENABLE_GITHUB_PAGES == 'true'
+        if: vars.ENABLE_GITHUB_PAGES == 'true' && github.event.repository.private == false
         uses: actions/upload-pages-artifact@v5
         with:
           path: docs
