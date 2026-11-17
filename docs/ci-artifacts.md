@@ -1,13 +1,13 @@
 # Retrieve CI output from compute
 
-After each CI run, **Move CI outputs to compute** transfers its package distribution and any failed browser-test report through the pinned SSH connection. Its job summary lists each file, byte count, server path and SHA-256. A GitHub artifact stays available until the server independently reads back the persisted bytes and confirms the original digest. A failed archive job can be re-run.
+The CI package build and failed browser-test report upload their ZIPs directly to the compute server. Research-import jobs store their public key or receipt through the same service. Each job summary records the private SSH path, original SHA-256, byte count and expiry after the server has verified and persisted the bytes.
 
-On the compute host the layout is:
+The uploader authenticates with a short-lived GitHub OIDC token. Server policy limits it to the repository, workflow and output type. Storage is immutable within each run, attempt and output slot. The service grants write access only to that output.
 
-```text
-/srv/github-actions-archive/CodeWithJuber/mizan/ci/<name>/<ci-run-id>/<artifact-id>/artifact.zip
-```
+An operator with SSH access can copy the recorded file using SCP. Verify the downloaded file with `sha256sum artifact.zip`, compare it with the digest in the job summary, and unpack it to retrieve the distribution or report.
 
-An operator with SSH access can copy that file using SCP. The adjacent `metadata.json` records GitHub's original name, run ID, artifact ID, size and digest. Verify the copy with `sha256sum artifact.zip` and unpack it to retrieve the distribution or Playwright report.
+Package distributions remain for 90 days and browser reports for seven days. Research public keys remain for one day and import receipts for seven days. Historical migrated output keeps its existing retention.
 
-The server keeps `dist` for 90 days and `playwright-report` for seven days. A daily systemd cleanup applies those limits. The relay reads the two allowlisted outputs as opaque files. It runs trusted default-branch code and never executes a PR archive.
+GitHub withholds OIDC access from fork-origin and Dependabot pull requests under the default read-only permission policy. Their checks still run and emit console results, and the upload step reports that downloadable output is unavailable. The workflow does not request extra fork permissions.
+
+The original migration copies remain under `/srv/github-actions-archive/CodeWithJuber/mizan`. Their adjacent `metadata.json` records GitHub's original artifact name, run ID, artifact ID, size and digest.

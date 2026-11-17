@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: mizan-production
@@ -38,9 +39,6 @@ jobs:
           sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'python3 -' < scripts/research_transfer_key.py > research-import-public-key.jsonl || status=$?
           cat research-import-public-key.jsonl
           exit "$status"
-      - uses: actions/upload-artifact@v7
+      - name: Store the research report on compute
         if: always()
-        with:
-          name: research-import-public-key
-          path: research-import-public-key.jsonl
-          retention-days: 1
+        run: python3 scripts/upload_ci_artifact.py research-import-public-key --optional research-import-public-key.jsonl
