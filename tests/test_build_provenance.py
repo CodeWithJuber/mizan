@@ -168,23 +168,25 @@ def test_probe_checks_exported_archive_without_publishing(monkeypatch, capsys):
     assert "mode" not in receipt
 
 
-def test_same_builder_and_real_probe_gate_premerge_and_publisher():
+def test_the_real_probe_gates_premerge_and_the_production_images():
     source = (ROOT / ".github/workflows/ci.yml").read_text()
     parts = re.split(r"(?m)^  ([a-z][a-z-]*):\n", source)
     jobs = dict(zip(parts[1::2], parts[2::2], strict=True))
-    for name in ("build", "docker", "publish-production"):
+    for name in ("build", "docker", "production-images"):
         dependencies = re.search(r"needs: \[([^\]]+)\]", jobs[name])
         assert "provenance" in dependencies[1].replace(" ", "").split(",")
-    for name in ("provenance", "publish-production"):
-        job = jobs[name]
-        pin = "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
-        check = "python3 scripts/verify_build_provenance.py"
-        assert "id: buildx" in job and "driver: docker-container" in job
-        assert job.index(pin) < job.index(check)
-        for step in job.split("      - "):
-            if check in step or "scripts/build_workspace_image.sh" in step:
-                assert "BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}" in step
-        if name == "publish-production":
-            assert job.index(check) < job.index("Publish production backend")
-            assert job.index(check) < job.index("scripts/build_workspace_image.sh")
-    assert "setup-buildx-action" not in jobs["docker"]
+    job = jobs["provenance"]
+    pin = "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
+    check = "python3 scripts/verify_build_provenance.py"
+    assert "id: buildx" in job and "driver: docker-container" in job
+    assert job.index(pin) < job.index(check)
+    for step in job.split("      - "):
+        if check in step:
+            assert "BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}" in step
+    # The production images stay in the runner's own Docker: Deploy Production sends them to
+    # the server over SSH. Nothing logs in to or pushes to a registry (docs/deployment.md).
+    images = jobs["production-images"]
+    assert images.count("--load") == 3 and images.count("docker build -f docker/") == 2
+    for job in jobs.values():
+        assert "--push" not in job and "login-action" not in job and "build-push-action" not in job
+    assert "setup-buildx-action" not in jobs["docker"] + images

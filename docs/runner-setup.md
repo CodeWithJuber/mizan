@@ -8,9 +8,11 @@ It is not a pull-request workflow, general server installer, or Docker upgrade.
 The verified production baseline is commit `0176a873e266d942918de47f8888071568eeeeb2`.
 Before enabling the operations branch, retarget `EXPECTED_BACKEND_SHA` to the
 final application's deployed, CI-tested commit. The workspace runtime and runner
-images must have been published for that exact commit. The `workspace-browser`
-image (Shahid) is pulled too when it was published; it is optional, and without
-it setup continues and MIZAN reads pages without a browser. The workflow checks
+images of that exact commit must be in the self-hosted CI runner's Docker (CI's
+`production-images` job builds them); the workflow sends them to the host as
+`docker save` archives. The `workspace-browser` image (Shahid) is sent too when the
+runner has it; it is optional, and without it setup continues and MIZAN reads
+pages without a browser. The workflow checks
 main still has that SHA; the host checks that its backend image ID equals the locally installed image for that
 SHA. A newer main/backend requires a reviewed retarget, not bypassing the check.
 The baseline runtime includes the pinned plotting dependencies. A different
@@ -56,13 +58,17 @@ Docker state. Setup requires at least 3 GiB available RAM and 4 GiB free disk.
 ## Credentials and configuration
 
 The existing pinned `deploy/known_hosts` and deployment SSH settings are reused.
-The short-lived GitHub registry token arrives on stdin, is never a command-line
-argument or log entry, and is used only in a temporary root-private Docker client
-configuration. That directory is removed after pulling the full-commit tags.
-Registry tags can be reassigned, so the installer records their content IDs and
-repository digests and uses the pulled content IDs in the runner configuration.
-A retry will not silently accept a different image for an already recorded tag.
-No credential is copied into the service account or job images.
+No registry and no registry credential are used. The workflow writes each image
+as `workspace-<role>.tar.gz` (`docker save`, gzip) into its root-only directory
+under `/var/lib/mizan-deploy` and passes that directory as `--images-dir`; the
+installer refuses any other place, a symlink, or a file or directory others can
+write. Each archive is loaded into the daemon that runs it (the runner image into
+the production daemon, the runtime and browser images into the worker daemon),
+and must load exactly the commit's full tag (`ghcr.io/codewithjuber/mizan/workspace-<role>:<sha>`,
+a local name, never pulled) and nothing else. The installer records the loaded
+content IDs and uses them in the runner configuration. A retry will not silently
+accept a different image for an already recorded tag. The archives are removed
+with the directory. No credential is copied into the service account or job images.
 
 The installer generates a 48-byte random runner token on the host. Its token file,
 Compose override and rollback snapshots are root-readable only. Backend and the
@@ -137,19 +143,21 @@ execution. The installer performs these checks before recording `ready`:
 Only fixed stage names and a sanitized receipt reach GitHub logs. A failure returns
 nonzero. Do not infer functional readiness from a running container or `/health`
 alone. Local unit tests validate guard/rollback logic with fakes; actual rootless
-Docker, systemd, registry pulls and HTTP execution require this host-side run.
+Docker, systemd, image loads and HTTP execution require this host-side run.
 
 ## Upgrades during deployment
 
 The setup above runs once. After that, every Deploy Production run keeps the
 runner on the deployed commit: the workflow uploads `deploy_production.sh` and
 this script into a fresh root-only `/var/lib/mizan-deploy/release.XXXXXXXX`
-directory, and once the new backend has passed its health and public checks the
-deploy script runs
+directory. It asks the host which workspace images an upgrade would load
+(`--needed-images --inputs-digest DIGEST`, read-only, under the deploy lock),
+sends only those as archives into the same directory, and once the new backend
+has passed its health and public checks the deploy script runs
 
 ```bash
 python3 -I setup_workspace_runner.py --upgrade --sha SHA --repository codewithjuber/mizan \
-  --inherited-lock-fd 9 --inputs-digest DIGEST   # registry token on stdin
+  --inherited-lock-fd 9 --images-dir RELEASE_DIRECTORY --inputs-digest DIGEST
 ```
 
 It does so only on a host with this setup's `state.json`; anywhere else nothing
@@ -173,9 +181,9 @@ Otherwise, within 15 minutes:
    the installed and the new generation stay on disk. At least 4 GiB must be free
    (6 GiB with the browser image).
 3. The commit's runner image (production daemon) and runtime image (worker
-   daemon) are pulled and pinned by content ID. The browser image (Shahid) is
-   pulled only when one is installed (then it is required) or with
-   `--with-browser`.
+   daemon) are loaded from the deploy's archives and pinned by content ID. The
+   browser image (Shahid) is loaded only when one is installed (then it is
+   required) or with `--with-browser`. A missing archive is a failure here.
 4. The new override may differ from the old only in the runner's images, limits
    and browser setting; the backend section must be identical and the token is
    the existing one (a missing token file is an error, never a new token). It is
@@ -241,8 +249,8 @@ Compose files stop automatic rollback for manual review. If the rollback itself
 cannot be verified, the script clearly reports that result instead of readiness.
 
 For an explicit rollback, copy the same reviewed script through the pinned SSH
-connection and run it as the existing deployment user (root). No registry token
-is required:
+connection and run it as the existing deployment user (root). No images are
+needed:
 
 ```bash
 python3 /path/to/reviewed/setup_workspace_runner.py \

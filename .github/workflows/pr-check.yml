@@ -2,6 +2,7 @@ name: Branch Protection Check
 
 # Enforces quality gates on all PRs to main/master.
 # Complement this with GitHub branch protection rules (see scripts/setup-branch-protection.sh).
+# Runs on the self-hosted runner labelled mizan, like every workflow here (docs/ci-artifacts.md).
 
 on:
   pull_request:
@@ -10,30 +11,34 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install "ruff>=0.17.2,<0.18"
       - run: ruff check backend/ tests/ nlp/
       - run: ruff format --check backend/ tests/ nlp/
 
   test:
     name: Test
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install -e ".[dev,nlp,knowledge]"
       - run: pytest tests/ -v --tb=short
 
   frontend-build:
     name: Frontend Build
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

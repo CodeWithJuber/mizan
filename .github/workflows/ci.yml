@@ -1,3 +1,6 @@
+# Every job runs on the self-hosted runner labelled mizan and uses nothing GitHub bills for:
+# reports stay on the runner in $CI_RESULTS_DIR, caches on its disk, images in its Docker
+# (docs/ci-artifacts.md). The first job checks that, and every other job waits for it.
 name: CI
 
 on:
@@ -7,14 +10,27 @@ on:
     branches: [main, master]
 
 jobs:
+  billing:
+    name: Bills nothing on GitHub
+    runs-on: [self-hosted, linux, x64, mizan]
+    steps:
+      - uses: actions/checkout@v7
+      - name: No hosted runner, artifact, cache, Pages, CodeQL or GitHub Packages
+        run: bash scripts/ci/no-github-billing.sh
+
   lint:
     name: Lint
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      # The runner keeps setup-python's interpreters between jobs. Each job installs into its own
+      # environment, so it sees only what it installs, as on a new machine (docs/ci-artifacts.md).
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       # Pin to the same range as pyproject [dev] — unpinned ruff drift has
       # flipped I001 verdicts on already-committed code between releases.
       - run: pip install "ruff>=0.17.2,<0.18"
@@ -23,7 +39,8 @@ jobs:
 
   test:
     name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
@@ -32,6 +49,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: Install dependencies
         run: pip install -e ".[dev,nlp,knowledge]"
       - name: Run tests
@@ -44,12 +63,15 @@ jobs:
 
   own-research:
     name: Own architecture research invariants
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
       - run: pytest tests/test_mizan_owned*.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_cycle.py tests/test_owned_learning_service.py research/own_model/tests -q
@@ -58,47 +80,57 @@ jobs:
     name: Build package
     permissions:
       contents: read
-      id-token: write
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     needs: [lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install "build>=1.6.1,<2"
       - run: python -m build
-      - name: Store the package on compute
-        run: python scripts/upload_ci_artifact.py dist --base dist .
+      - name: Keep the package on the runner
+        run: bash scripts/ci/keep-results.sh dist dist
 
   typecheck:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install -e ".[dev,nlp,knowledge]"
       - run: PYTHONPATH=backend:. mypy backend/
 
   ruh:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
       - run: pip install -e ".[dev,nlp,knowledge]" datasets
       - run: PYTHONPATH=backend:. pytest ruh_model/tests/ -q
 
   bayan:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       # The vendored copy must match ruh_model/tokenizer/ (writes nothing).
       - run: python packages/bayan/scripts/sync_vendor.py --check
       - run: pip install pytest
@@ -107,16 +139,13 @@ jobs:
   frontend:
     permissions:
       contents: read
-      id-token: write
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -128,16 +157,19 @@ jobs:
       - run: npm run test:utils
       - run: npm run build
       - run: npm run size
+      # Chromium's system libraries are in the runner image; the browser itself is kept in the
+      # runner's cache (~/.cache/ms-playwright) between runs.
       - name: Browser tests (mocked API, desktop and phone)
-        run: npx playwright install --with-deps chromium && npm run e2e
-      - name: Store failed browser reports on compute
+        run: npx playwright install chromium && npm run e2e
+      - name: Keep failed browser reports on the runner
         if: failure()
         working-directory: .
-        run: python scripts/upload_ci_artifact.py playwright-report --optional --base frontend playwright-report test-results
+        run: bash scripts/ci/keep-results.sh playwright-report --optional --base frontend playwright-report test-results
 
   provenance:
     name: Docker provenance preflight
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
@@ -154,7 +186,7 @@ jobs:
 
   docker:
     name: Docker build
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     needs: [lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     steps:
       - uses: actions/checkout@v7
@@ -179,6 +211,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: Build isolated coding images
         run: |
           bash scripts/build_workspace_image.sh workspace-runtime mizan-workspace-runtime:v1 --load
@@ -195,7 +229,8 @@ jobs:
 
   browser:
     name: Browser sandbox (Shahid)
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
+    needs: billing
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -215,66 +250,35 @@ jobs:
           "import sys; sys.path.insert(0, '/'); import egress_proxy as e;
           assert e.public_mode() and e.host_allowed('example.org', e.allowlist())"
 
-  publish-production:
-    name: Publish production images
-    env:
-      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+  # Deploy Production sends these images from this runner's Docker to the server over SSH
+  # (docs/deployment.md): no registry, no GitHub Packages. They keep the ghcr.io/... names the
+  # server's deploy state and workspace-runner installer already record, but are never pushed.
+  production-images:
+    name: Keep production images on the runner
     if: github.event_name == 'push'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     needs: [build, docker, provenance, browser]
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v7
-      - name: Set up attestation-capable publisher
-        id: buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        with:
-          driver: docker-container
-          cache-binary: false
-      - name: Verify publisher OCI provenance before building production images
-        env:
-          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
-        run: python3 scripts/verify_build_provenance.py
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-      - id: repository
-        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - name: Publish production backend
-        uses: docker/build-push-action@v7
-        with:
-          builder: ${{ steps.buildx.outputs.name }}
-          context: .
-          file: docker/Dockerfile.backend.prod
-          push: true
-          tags: ghcr.io/${{ steps.repository.outputs.name }}/backend:${{ github.sha }}
-      - name: Publish production frontend
-        uses: docker/build-push-action@v7
-        with:
-          builder: ${{ steps.buildx.outputs.name }}
-          context: ./frontend
-          file: docker/Dockerfile.frontend.prod
-          push: true
-          tags: ghcr.io/${{ steps.repository.outputs.name }}/frontend:${{ github.sha }}
-      - name: Publish isolated workspace runtime
-        env:
-          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
-        run: >-
-          bash scripts/build_workspace_image.sh workspace-runtime
-          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runtime:${{ github.sha }} --push
-      - name: Publish private workspace runner
-        env:
-          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
-        run: >-
-          bash scripts/build_workspace_image.sh workspace-runner
-          ghcr.io/${{ steps.repository.outputs.name }}/workspace-runner:${{ github.sha }} --push
-      - name: Publish the browser sandbox (Shahid)
-        env:
-          BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
-        run: >-
-          bash scripts/build_workspace_image.sh workspace-browser
-          ghcr.io/${{ steps.repository.outputs.name }}/workspace-browser:${{ github.sha }} --push
+      - name: Production backend
+        run: docker build -f docker/Dockerfile.backend.prod -t "ghcr.io/${GITHUB_REPOSITORY,,}/backend:$GITHUB_SHA" .
+      - name: Production frontend
+        run: docker build -f docker/Dockerfile.frontend.prod -t "ghcr.io/${GITHUB_REPOSITORY,,}/frontend:$GITHUB_SHA" ./frontend
+      - name: Isolated workspace runtime
+        run: bash scripts/build_workspace_image.sh workspace-runtime "ghcr.io/${GITHUB_REPOSITORY,,}/workspace-runtime:$GITHUB_SHA" --load
+      - name: Private workspace runner
+        run: bash scripts/build_workspace_image.sh workspace-runner "ghcr.io/${GITHUB_REPOSITORY,,}/workspace-runner:$GITHUB_SHA" --load
+      - name: The browser sandbox (Shahid)
+        run: bash scripts/build_workspace_image.sh workspace-browser "ghcr.io/${GITHUB_REPOSITORY,,}/workspace-browser:$GITHUB_SHA" --load
+      # A deploy sends only the newest commit on its branch, so older commits' images are dropped.
+      # The server keeps the images it runs and the ones a rollback needs.
+      - name: Drop earlier commits' production images
+        run: |
+          set -euo pipefail
+          names="^ghcr\.io/${GITHUB_REPOSITORY,,}/(backend|frontend|workspace-(runtime|runner|browser)):[0-9a-f]{40}\$"
+          mapfile -t earlier < <(docker image ls --format '{{.Repository}}:{{.Tag}}' |
+            grep -E "$names" | grep -v ":$GITHUB_SHA\$" || true)
+          if ((${#earlier[@]})); then docker image rm "${earlier[@]}" >/dev/null || true; fi
+          docker image prune --force >/dev/null

@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   isolation:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     timeout-minutes: 20
     permissions:
       contents: read
@@ -46,6 +46,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
+      - name: Fresh Python environment
+        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: Install API test dependencies
         run: python -m pip install -e '.[dev,nlp]' 'Pillow==13.0.0'
       - name: Build the pinned private runner and isolated runtime
@@ -59,7 +61,7 @@ jobs:
         env:
           MIZAN_DATA_DIR: ${{ runner.temp }}/coding-test-data
           DB_PATH: ${{ runner.temp }}/coding-test-data/memory.db
-          # Hosted runners have internet: also prove allowlisted registries work.
+          # The runner reaches the internet over HTTPS: also prove allowlisted registries work.
           MIZAN_TEST_EGRESS_INTERNET: '1'
         run: |
           mkdir -p "$MIZAN_DATA_DIR"

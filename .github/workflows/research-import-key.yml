@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: mizan-production
@@ -15,7 +14,7 @@ concurrency:
 jobs:
   prepare:
     if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/research-key-20261025'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v7
@@ -27,7 +26,7 @@ jobs:
       - name: Validate preparation syntax
         run: python3 -m py_compile scripts/research_transfer_key.py
       - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Inspect persistent research target and create one-hour public key
         env:
           SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
@@ -42,6 +41,6 @@ jobs:
           sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'python3 -' < scripts/research_transfer_key.py > research-import-public-key.jsonl || status=$?
           cat research-import-public-key.jsonl
           exit "$status"
-      - name: Store the research report on compute
+      - name: Keep the research report on the runner
         if: always()
-        run: python3 scripts/upload_ci_artifact.py research-import-public-key --optional research-import-public-key.jsonl
+        run: bash scripts/ci/keep-results.sh research-import-public-key --optional research-import-public-key.jsonl

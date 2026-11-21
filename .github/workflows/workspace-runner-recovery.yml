@@ -14,7 +14,7 @@ concurrency:
 jobs:
   recover:
     if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/recover-workspace-runner-20261025'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     # Ten-minute lock wait, ten-minute recovery budget, and SSH/setup overhead.
     timeout-minutes: 25
     steps:
@@ -24,7 +24,7 @@ jobs:
       - name: Validate reviewed recovery script
         run: python3 -m py_compile scripts/setup_workspace_runner.py
       - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Restore and verify the protected backend snapshot
         env:
           SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
@@ -36,7 +36,10 @@ jobs:
           set -euo pipefail
           test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
           test -s deploy/known_hosts
-          current=$(gh api repos/CodeWithJuber/mizan/commits/main --jq .sha)
+          # The runner has curl and jq but not GitHub's gh CLI. The token goes in on stdin.
+          current=$(curl -fsS --retry 3 -H 'Accept: application/vnd.github+json' -H @- \
+            "$GITHUB_API_URL/repos/CodeWithJuber/mizan/commits/main" \
+            <<< "Authorization: Bearer $GH_TOKEN" | jq -r .sha)
           test "$current" = "$EXPECTED_BACKEND_SHA" || { echo '::error::Main changed; review recovery target.'; exit 1; }
           ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
           remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-recovery.XXXXXXXX')

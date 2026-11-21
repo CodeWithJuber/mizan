@@ -1,17 +1,50 @@
-# Retrieve CI output from compute
+# CI on the self-hosted runner, and where its output is
 
-The CI package build and failed browser-test report upload their ZIPs directly to the compute server. Research-import jobs store their public key or receipt through the same service. Each job summary records the private relative path, original SHA-256, byte count and expiry after the server has verified and persisted the bytes.
+Every job of every workflow in `.github/workflows/` runs on the owner's self-hosted runner, `runs-on: [self-hosted, linux, x64, mizan]`, written literally. GitHub bills nothing for it: self-hosted runners are free, and job logs and job summaries are not billed storage.
 
-The uploader authenticates with a short-lived GitHub OIDC token. Server policy limits it to the repository, workflow and output type. Storage is immutable within each run, attempt and output slot. The service grants write access only to that output.
+## What may not be added
 
-The receiver returns the exact relative path `1166364542/<run-id>/<attempt>/<family>/<slot>/artifact.zip`. The client checks every component against the current job and refuses other paths, extensions, digest or size mismatches, and expired receipts. This relative path is not a public download URL.
+These are billed for a private repository, or could send a job to something that is:
 
-An operator with SSH access can copy the recorded file using SCP. The full Linux path is `/srv/github-actions-direct/` followed by the verified relative path, for example `/srv/github-actions-direct/1166364542/123/2/dist/python-package/artifact.zip`. Use the existing pinned SSH host configuration when copying. Verify the downloaded file with `sha256sum artifact.zip`, compare it with the digest in the job summary, and unpack it to retrieve the distribution or report.
+- a GitHub-hosted runner (`ubuntu-latest`, `ubuntu-24.04`, …), or a `runs-on` with an expression, a variable or a runner group;
+- artifacts: `actions/upload-artifact`, `actions/download-artifact`, `actions/upload-pages-artifact`, `actions/deploy-pages`;
+- GitHub Pages (a paid feature on a private repository);
+- caches: `actions/cache`, a `cache:` input on a setup action, `package-manager-cache` other than `false`, Docker's `type=gha` cache;
+- GitHub Packages: `*.pkg.github.com`, logging in or pushing to `ghcr.io` (pulling public images is fine);
+- CodeQL (`github/codeql-action`);
+- a reusable workflow from another repository.
 
-Package distributions remain for 90 days and browser reports for seven days. Research public keys remain for one day and import receipts for seven days. Historical migrated output keeps its existing retention.
+`scripts/ci/no-github-billing.sh` fails on each of them and prints `FILE:LINE: why`. It is the first job of `ci.yml` (every other job waits for it), the first step of `make check` (`make no-github-billing` alone), and a pre-commit hook on `.github/*.yml`. `docker/build-push-action` would also upload a build record as an artifact unless `DOCKER_BUILD_RECORD_UPLOAD=false`; the workflows build with plain `docker build` instead.
 
-GitHub withholds OIDC access from fork-origin and Dependabot pull requests under the default read-only permission policy. Their checks still run and emit console results, and the upload step reports that downloadable output is unavailable. The workflow does not request extra fork permissions.
+## The runner
 
-The original migration copies remain under `/srv/github-actions-archive/CodeWithJuber/mizan`. Their adjacent `metadata.json` records GitHub's original artifact name, run ID, artifact ID, size and digest.
+It is GitHub's own runner image (Ubuntu 24.04, `python3` 3.12, Docker CLI with buildx and compose, `git`, `curl`, `jq`, `sshpass`, `shellcheck`, Playwright's Chromium libraries), in a container on the owner's server. It does not have the rest of GitHub's `ubuntu-24.04` image, such as Node, the `gh` CLI or extra Python versions, so the workflows set them up with `actions/setup-python` and `actions/setup-node` (`package-manager-cache: false`) and call GitHub's API with `curl` and `jq`.
 
-The old operation branches `ops/research-key-20261025` and `ops/research-import-20261025` still contain their historical GitHub artifact upload steps. They are dormant: key preparation is limited to pushes to its exact branch, and the completed import requires an explicit dispatch to its exact branch. The updated main workflows do not activate either operation. Synchronize the uploader and workflow changes before intentionally reusing those branches; do not push the key-preparation branch solely to synchronize it, because that would execute key preparation. All active upload jobs explicitly select Python 3.12 for the standard-library uploader.
+- **One job at a time.** Jobs that ran side by side on GitHub run one after another.
+- **Docker** talks to the runner's own Docker-in-Docker daemon. `services:` and `container:` do not work there; use `docker run` steps. Images and the build cache stay between runs.
+- **Kept between runs, so free caching:** setup-python's interpreters and setup-node's Node, the pip and npm caches, Playwright's browsers, Docker images. A Python job therefore makes a fresh virtual environment in `$RUNNER_TEMP` after setup-python ("Fresh Python environment"), so it sees only what it installs, as on a new machine.
+- **No GPU.** `ruh-training.yml` runs only CPU checks; real training runs on Kaggle or RunPod.
+
+## Where the output is
+
+A job keeps its files with `scripts/ci/keep-results.sh NAME [--optional] [--base DIR] PATH...`. They go to
+
+```
+$CI_RESULTS_DIR/<run id>-<attempt>/<NAME>/
+```
+
+on the server's disk, private to this repository and pruned after 14 days. The job summary prints that directory and each file's SHA-256. The path is the same inside the runner and on the server, so an operator copies it with `scp` as printed, then checks it with `sha256sum`.
+
+| NAME | Written by | When |
+| --- | --- | --- |
+| `dist` | `ci.yml`, Build package | every run: the wheel and sdist |
+| `playwright-report` | `ci.yml`, frontend | when the browser tests fail |
+| `research-import-public-key`, `research-import-receipt` | the research-import operations | when they run |
+
+Two jobs of one run hand files over through `$CI_RESULTS_DIR/<run id>-<attempt>/handoff/<name>`; none does so today. The production images are not files: CI builds them into the runner's Docker and Deploy Production sends them to the server ([deployment.md](deployment.md)).
+
+## Earlier output
+
+Output from before the move stays where it was on the compute server: the direct uploads under `/srv/github-actions-direct/` (packages 90 days, browser reports 7 days, research keys 1 day, receipts 7 days) and the migrated GitHub artifacts under `/srv/github-actions-archive/CodeWithJuber/mizan`, each with a `metadata.json`.
+
+The old operation branches `ops/research-key-20261025` and `ops/research-import-20261025` still contain their own workflow copies with GitHub artifact uploads and GitHub-hosted runners. They are dormant: key preparation runs only on a push to its exact branch, and the import only on a dispatch to its exact branch. Bring a branch up to date with `main` before using it again; do not push the key-preparation branch only to update it, because that runs key preparation.

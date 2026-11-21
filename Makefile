@@ -1,4 +1,4 @@
-.PHONY: help install install-dev install-all setup serve dev test lint format clean docker build update
+.PHONY: help install install-dev install-all setup serve dev test lint format clean docker build update no-github-billing check
 
 # Default target
 help: ## Show this help message
@@ -63,7 +63,10 @@ format: ## Format code with ruff
 typecheck: ## Run type checking with mypy
 	mypy backend/ --ignore-missing-imports
 
-check: lint typecheck test ## Run all checks (lint + typecheck + test)
+no-github-billing: ## Fail if a workflow uses something GitHub bills for
+	bash scripts/ci/no-github-billing.sh
+
+check: no-github-billing lint typecheck test ## Run all checks (billing guard + lint + typecheck + test)
 
 # ─── Docker ───────────────────────────────────────────────────
 

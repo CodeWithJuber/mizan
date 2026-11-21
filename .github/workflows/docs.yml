@@ -1,4 +1,8 @@
-name: Deploy Docs
+name: Docs
+
+# Checks the documentation on the self-hosted runner. It no longer deploys to GitHub Pages:
+# Pages on a private repository needs a paid plan, and its upload uses artifact storage
+# (docs/ci-artifacts.md). docs/ is read in the repository itself.
 
 on:
   push:
@@ -12,17 +16,11 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
 
 jobs:
   build:
     name: Build docs
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -33,27 +31,4 @@ jobs:
           test -s docs/index.html
           test -s docs/nlp.md
           test -s docs/TRAINING.md
-          python -c 'from html.parser import HTMLParser; from pathlib import Path; HTMLParser().feed(Path("docs/index.html").read_text())'
-
-      - name: Setup Pages
-        if: vars.ENABLE_GITHUB_PAGES == 'true' && github.event.repository.private == false
-        uses: actions/configure-pages@v6
-
-      - name: Upload artifact
-        if: vars.ENABLE_GITHUB_PAGES == 'true' && github.event.repository.private == false
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: docs
-
-  deploy:
-    name: Deploy to GitHub Pages
-    if: vars.ENABLE_GITHUB_PAGES == 'true' && github.event.repository.private == false
-    runs-on: ubuntu-24.04
-    needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v5
+          python3 -c 'from html.parser import HTMLParser; from pathlib import Path; HTMLParser().feed(Path("docs/index.html").read_text())'

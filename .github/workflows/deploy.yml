@@ -1,5 +1,9 @@
 name: Deploy Production
 
+# Runs on the self-hosted runner labelled mizan (docs/ci-artifacts.md). CI built this commit's
+# images into the runner's Docker (ci.yml, production-images); this job sends them to the server
+# over its SSH connection. No registry and no GitHub Packages (docs/deployment.md).
+
 on:
   workflow_run:
     workflows: [CI]
@@ -16,7 +20,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: mizan-production
@@ -25,7 +28,7 @@ concurrency:
 jobs:
   connection-check:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     steps:
       - name: Check the production SSH handshake without credentials
         env:
@@ -44,9 +47,9 @@ jobs:
        (github.event_name == 'workflow_run' &&
         github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.conclusion == 'success'))
-    runs-on: ubuntu-24.04
-    # Workflow ceiling: deploy lock 10, site deploy ~6, runner upgrade 15 and its
-    # restore 10 minutes. Docker/registry RPCs can still fail.
+    runs-on: [self-hosted, linux, x64, mizan]
+    # Workflow ceiling: sending the images, deploy lock 10, site deploy ~6, runner
+    # upgrade 15 and its restore 10 minutes. Docker RPCs can still fail.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
@@ -67,7 +70,7 @@ jobs:
           done
           test -s deploy/known_hosts || { echo '::error::Production SSH host key is not pinned'; exit 1; }
       - name: Install SSH password client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Deploy the tested images
         id: production
         env:
@@ -75,17 +78,27 @@ jobs:
           SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
           SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
           DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
         run: |
           set -euo pipefail
-          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEPLOY_BRANCH" --jq .sha)
+          # The runner has curl and jq but not GitHub's gh CLI. The token goes in on stdin.
+          current=$(curl -fsS --retry 3 -H 'Accept: application/vnd.github+json' -H @- \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$DEPLOY_BRANCH" \
+            <<< "Authorization: Bearer $GH_TOKEN" | jq -r .sha)
           if [ "$current" != "$DEPLOY_SHA" ]; then
             echo "A newer commit is on $DEPLOY_BRANCH; its CI run will deploy it."
             exit 0
           fi
-          # Keepalives: image pulls in the runner upgrade can be silent for minutes.
+          # CI built them into this runner's Docker (ci.yml, production-images). The names are
+          # the ones the server's deploy state records; nothing is pulled from a registry.
+          images="ghcr.io/${GITHUB_REPOSITORY,,}"
+          site=("$images/backend:$DEPLOY_SHA" "$images/frontend:$DEPLOY_SHA")
+          if ! docker image inspect "${site[@]}" >/dev/null 2>&1; then
+            echo "::error::This runner has no images of $DEPLOY_SHA. Re-run that commit's CI, which builds them (docs/deployment.md)."
+            exit 1
+          fi
+          # Keepalives: image loads in the runner upgrade can be silent for minutes.
           ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15
             -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
           # A private, unguessable directory for this release's scripts, removed afterwards.
@@ -96,15 +109,31 @@ jobs:
           fi
           trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf '\''$remote_dir'\''" || true' EXIT
           sshpass -e scp "${ssh_options[@]}" scripts/deploy_production.sh scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
-          # The runner's images are rebuilt on every commit; pull them only when what
+          # The runner's images are rebuilt on every commit; send and load them only when what
           # they are built from changed (docs/runner-setup.md, upgrades during deployment).
           runner_inputs=$(git ls-files -s -- backend/workspace docker/Dockerfile.workspace-runtime \
             docker/Dockerfile.workspace-runner docker/Dockerfile.workspace-browser \
             docker/workspace-runtime-requirements.txt scripts/build_workspace_image.sh \
             scripts/setup_workspace_runner.py | sha256sum | cut -d ' ' -f 1)
+          # The site's images go straight into the server's Docker, before the deploy uses them.
+          docker save "${site[@]}" | gzip -1 |
+            sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'docker load --quiet'
+          # The workspace runner's images go only when the server's managed runner will move to
+          # them, as archives in the private release directory, which the trap removes.
+          # If the server cannot say, all go: the upgrade decides, and the site deploys either way.
+          needed=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
+            "python3 -I '$remote_dir/setup_workspace_runner.py' --needed-images --sha '$DEPLOY_SHA' --inputs-digest '$runner_inputs'" </dev/null) || {
+            echo '::warning::The server did not say which workspace images its runner needs; sending all.'
+            needed='runner runtime browser'
+          }
+          for role in $needed; do
+            [[ "$role" =~ ^(runner|runtime|browser)$ ]] || { echo '::error::Unexpected workspace image'; exit 1; }
+            docker save "$images/workspace-$role:$DEPLOY_SHA" | gzip -1 |
+              sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && cat > '$remote_dir/workspace-$role.tar.gz'"
+          done
           status=0
-          printf '%s\n' "$GITHUB_TOKEN" | sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
-            "bash '$remote_dir/deploy_production.sh' '$DEPLOY_SHA' '${GITHUB_REPOSITORY,,}' '$remote_dir/setup_workspace_runner.py' '$runner_inputs'" || status=$?
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
+            "bash '$remote_dir/deploy_production.sh' '$DEPLOY_SHA' '${GITHUB_REPOSITORY,,}' '$remote_dir/setup_workspace_runner.py' '$runner_inputs'" </dev/null || status=$?
           case $status in
             0) ;;
             75)

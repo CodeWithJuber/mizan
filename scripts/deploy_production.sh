@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Run over an authenticated SSH connection. Registry token arrives on stdin.
+# Run over an authenticated SSH connection. No registry: before this runs, the
+# workflow loads the commit's backend and frontend images into this server's
+# Docker (docker save from the CI runner, over the same SSH connection).
 # Preserve the existing Compose project, .env, volumes and reverse proxy.
 # Optional: $3 = setup_workspace_runner.py, $4 = digest of the runner's inputs.
 # With them, a host that has the managed workspace runner also has it upgraded
 # after the site is live (exit 75: not upgraded, previous runner kept and
 # verified; 76: the runner needs attention). The site deploy stands either way.
+# The runner's images, when it needs them, are archives in $3's directory.
 set -euo pipefail
 umask 077
 sha=${1:?Commit SHA is required}
@@ -26,8 +29,6 @@ health_attempts=${MIZAN_DEPLOY_HEALTH_ATTEMPTS:-45}
   echo 'Health attempts must be decimal integers from 1 to 45.' >&2; exit 1;
 }
 command -v timeout >/dev/null || { echo 'Bounded health checks require timeout.' >&2; exit 1; }
-read -r registry_token
-test -n "$registry_token"
 
 state_dir=${MIZAN_DEPLOY_STATE_DIR:-/var/lib/mizan-deploy}
 mkdir -p "$state_dir"
@@ -42,8 +43,6 @@ files=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.c
 test -d "$root" && test -n "$project" && test -n "$files"
 cd "$root"
 tmp_dir=$(mktemp -d "$state_dir/pending.XXXXXXXX")
-export DOCKER_CONFIG="$tmp_dir/docker"
-mkdir -p "$DOCKER_CONFIG"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 compose=(docker compose -p "$project")
@@ -108,10 +107,11 @@ PY
 stop_timeout=$(<"$tmp_dir/stop-timeout")
 
 "${compose[@]}" -f "$tmp_dir/new.yml" config --quiet
-printf '%s' "$registry_token" | docker login ghcr.io -u "${repository%%/*}" --password-stdin
-# The runner upgrade pulls its images with the same token, on stdin, later.
-[[ "$upgrade_runner" == true ]] || unset registry_token
-"${compose[@]}" -f "$tmp_dir/new.yml" pull backend frontend
+# Compose runs only images already here (--no-build, nothing to pull): the workflow loaded them.
+docker image inspect "ghcr.io/$repository/backend:$sha" "ghcr.io/$repository/frontend:$sha" >/dev/null || {
+  echo "This commit's images are not on this server; the deploy workflow loads them first." >&2
+  exit 1
+}
 cp "$tmp_dir/rollback.yml" "$state_dir/rollback.yml"
 cp "$tmp_dir/new.yml" "$state_dir/current.yml"
 refresh_proxy() {
@@ -170,11 +170,11 @@ echo "Mizan deployed: $sha; health and anonymous-auth denial passed."
 [[ "$upgrade_runner" == true ]] || exit 0
 # Still under deploy.lock (fd 9): the installer checks that descriptor instead
 # of waiting for a lock this script holds.
-runner_args=(--upgrade --sha "$sha" --repository "$repository" --inherited-lock-fd 9)
+runner_args=(--upgrade --sha "$sha" --repository "$repository" --inherited-lock-fd 9
+  --images-dir "${runner_setup%/*}")
 [[ -z "$runner_inputs" ]] || runner_args+=(--inputs-digest "$runner_inputs")
 runner_status=0
-printf '%s\n' "$registry_token" | python3 -I "$runner_setup" "${runner_args[@]}" || runner_status=$?
-unset registry_token
+python3 -I "$runner_setup" "${runner_args[@]}" </dev/null || runner_status=$?
 case $runner_status in
   0) ;;
   75)
