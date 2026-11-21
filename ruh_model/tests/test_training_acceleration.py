@@ -4,13 +4,12 @@ import copy
 
 import pytest
 import torch
-from torch import nn
-
 from ruh_model.attention.qalb import QalbAttention, _scaled_dot_product_attention
 from ruh_model.config import RuhConfig
 from ruh_model.layers.shura_moe import ShuraMoE
 from ruh_model.model import RuhModel
 from ruh_model.train_sequence import run_training
+from torch import nn
 
 
 def dense_reference(layer, x):

@@ -4,7 +4,6 @@ import math
 
 import pytest
 import torch
-
 from ruh_model.config import RuhConfig
 from ruh_model.data.chat_sources import conversation_pairs
 from ruh_model.data.collator import RuhCollator
