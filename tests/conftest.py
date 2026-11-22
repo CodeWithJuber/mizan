@@ -13,6 +13,13 @@ import pytest
 # Ensure backend is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
+# api.main opens its databases at import, under /data when these are unset, and CI has no /data.
+# Serially an earlier test happened to import it with DB_PATH set; a parallel worker whose first
+# import is another module would fail. Set a throwaway default so the import never depends on order.
+_import_time_data = tempfile.mkdtemp(prefix="mizan-tests-")
+os.environ.setdefault("DB_PATH", os.path.join(_import_time_data, "mizan_memory.db"))
+os.environ.setdefault("QUEUE_DB_PATH", os.path.join(_import_time_data, "mizan_queue.db"))
+
 
 @pytest.fixture(autouse=True)
 def isolated_provider_mode(monkeypatch):
