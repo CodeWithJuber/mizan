@@ -30,7 +30,8 @@ It is GitHub's own runner image (Ubuntu 24.04, `python3` 3.12, Docker CLI with b
 CI does not check the same thing twice.
 
 - **The same files.** The first job of `ci.yml` asks [`skip-duplicate-actions`](https://github.com/fkirc/skip-duplicate-actions) (open source, pinned to a commit) whether an earlier run of this workflow has passed with the files of this run, as one Git tree. It reads GitHub's own list of runs, so nothing is kept on the runner. When a pull request that was up to date with `main` is merged, the push has the tree the pull request had. Then the checking jobs are skipped and the push goes straight to `production-images`, which Deploy Production waits for. In every other case everything runs: a pull request that was behind `main` is checked again after its merge, because the merge made files no run has seen.
-- **To check anyway:** start CI with **Run workflow**. The weekly run also checks in full. A re-run asks again and skips again. Only the latest 100 runs of CI are looked at.
+- **Only a push can skip.** A pull request always checks in full: it is tested as its merge into `main`, which the action does not see.
+- **To check a push anyway:** start CI with **Run workflow**. The weekly run also checks in full. A re-run asks again and skips again. Only the latest 100 runs of CI are looked at.
 - **If the action fails,** everything runs: its step may fail, and a missing answer is not a pass.
 - **One Python on pull requests and pushes:** 3.13, which the production image runs. All four supported versions (3.11 to 3.14) run on Saturdays at 02:17 UTC and when CI is started by hand, so start it by hand before a release.
 - **No second pull request workflow.** `pr-check.yml` ran lint, the tests and the frontend build that `ci.yml` already ran. On a pull request `ci.yml`'s jobs carry its names (`Lint`, `Test`, `Frontend Build`) for a branch protection rule.

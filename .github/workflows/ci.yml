@@ -38,13 +38,17 @@ jobs:
         run: bash scripts/ci/no-github-billing.sh
       # After a merge, main holds the files the pull request was tested with. When an earlier run
       # of this workflow passed with these exact files (one Git tree, in GitHub's own record), the
-      # jobs that only check are skipped and a push builds its production images at once. The
-      # weekly run and a run started by hand check in full. A fault in the action means "check":
-      # the step may fail, and a missing answer is not `true`.
+      # jobs that only check are skipped and a push builds its production images at once. A fault
+      # in the action means "check": the step may fail, and a missing answer is not `true`.
       - name: Has this code passed already?
         id: verified
         continue-on-error: true
         uses: fkirc/skip-duplicate-actions@b974a9395958c231af965b70070979a577efa578 # v5.3.2
+        with:
+          # Only a push may skip. A pull request is tested as its merge into main, which the action
+          # does not see (it goes by the branch's last commit), so a pull request always checks in
+          # full, as do the weekly run and a run started by hand.
+          do_not_skip: '["pull_request", "workflow_dispatch", "schedule", "merge_group"]'
 
   lint:
     name: Lint
