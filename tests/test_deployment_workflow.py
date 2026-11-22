@@ -25,8 +25,8 @@ if args[0] == 'inspect':
     elif 'Config.Env' in fmt:
         print(json.dumps([key + '=' + value for key, value in state['runtime_env'].items()]))
     else: print(state['images'][name])
-elif args[0] == 'login':
-    sys.stdin.read()
+elif args[:2] == ['image', 'inspect'] and state.get('missing_images'):
+    state_file.write_text(json.dumps(state)); sys.exit(1)
 elif args[0] == 'compose' and 'up' in args:
     files = [args[i+1] for i, arg in enumerate(args) if arg == '-f']
     override = json.loads(Path(files[-1]).read_text())
@@ -65,7 +65,6 @@ Path(os.environ["FAKE_SETUP_RECORD"]).write_text(json.dumps({
     "same_lock": (held.st_dev, held.st_ino) == (named.st_dev, named.st_ino),
     "contended": contended,
     "deployed": (state_dir / "deployed-sha").exists(),
-    "token_in_env": any("synthetic-registry-token" in value for value in os.environ.values()),
 }))
 sys.exit(int(os.environ["FAKE_SETUP_STATUS"]))
 """
@@ -85,6 +84,7 @@ def deploy_fixture(
     runner_args=(),
     managed_runner=False,
     runner_status=0,
+    missing_images=False,
 ):
     root = tmp_path / "existing-project"
     root.mkdir()
@@ -109,6 +109,7 @@ def deploy_fixture(
                 "fail_new": fail_new,
                 "hang_health": hang_health,
                 "failed_status_client": failed_status_client,
+                "missing_images": missing_images,
             }
         )
     )
@@ -144,7 +145,8 @@ def deploy_fixture(
     arguments = [str(arg).replace("{release}", str(release)) for arg in runner_args]
     result = subprocess.run(
         ["bash", str(SCRIPT), SHA, "codewithjuber/mizan", *arguments],
-        input="synthetic-registry-token\n",
+        # Nothing arrives on stdin any more: no registry token is sent to the server.
+        input="",
         capture_output=True,
         text=True,
         env={
@@ -161,7 +163,6 @@ def deploy_fixture(
     )
     assert data.read_text() == "existing data"
     assert "synthetic-runpod-key" not in result.stdout + result.stderr
-    assert "synthetic-registry-token" not in result.stdout + result.stderr
     for key, value in runtime_env.items():
         if value and key.endswith(("_KEY", "_TOKEN")):
             assert value not in result.stdout + result.stderr
@@ -247,10 +248,37 @@ def test_invalid_grace_refuses_before_container_stop_or_override_write(tmp_path,
     result, state, directory = deploy_fixture(tmp_path, False, grace_override=value)
     assert result.returncode != 0
     assert not state["updates"]
-    assert not any(args[0] == "login" for args in state["commands"])
+    assert not any(args[:2] == ["image", "inspect"] for args in state["commands"])
     assert (directory / "current.yml").read_text() == '{"preserve":"previous current override"}'
     assert (directory / "rollback.yml").read_text() == '{"preserve":"previous rollback override"}'
     assert "private-mistaken-value" not in result.stdout + result.stderr
+
+
+def test_images_the_workflow_did_not_load_stop_the_deploy_before_any_change(tmp_path):
+    result, state, directory = deploy_fixture(tmp_path, False, missing_images=True)
+    assert result.returncode == 1
+    assert "images are not on this server" in result.stderr
+    assert not state["updates"]
+    # Nothing is pulled: no registry, no login.
+    assert not any(args[0] in ("login", "pull") or "pull" in args for args in state["commands"])
+    assert (directory / "current.yml").read_text() == '{"preserve":"previous current override"}'
+    assert (directory / "rollback.yml").read_text() == '{"preserve":"previous rollback override"}'
+    assert not (directory / "deployed-sha").exists()
+
+
+def test_the_deploy_checks_the_loaded_images_and_pulls_nothing(tmp_path):
+    result, state, _ = deploy_fixture(tmp_path, False)
+    assert result.returncode == 0, result.stderr
+    checks = [args for args in state["commands"] if args[:2] == ["image", "inspect"]]
+    assert checks == [
+        [
+            "image",
+            "inspect",
+            f"ghcr.io/codewithjuber/mizan/backend:{SHA}",
+            f"ghcr.io/codewithjuber/mizan/frontend:{SHA}",
+        ]
+    ]
+    assert not any(args[0] in ("login", "pull") or "pull" in args for args in state["commands"])
 
 
 def test_invalid_running_grace_refuses_before_stop(tmp_path):
@@ -365,7 +393,9 @@ def test_no_runner_upgrade_without_its_script_or_a_managed_runner(tmp_path, mana
 
 
 def test_the_runner_upgrade_runs_after_the_site_is_live_under_the_deploy_lock(tmp_path):
-    result, state, _ = deploy_fixture(tmp_path, False, managed_runner=True, runner_args=RUNNER)
+    result, state, directory = deploy_fixture(
+        tmp_path, False, managed_runner=True, runner_args=RUNNER
+    )
     assert result.returncode == 0, result.stderr
     record = runner_record(tmp_path)
     assert record["argv"] == [
@@ -376,12 +406,14 @@ def test_the_runner_upgrade_runs_after_the_site_is_live_under_the_deploy_lock(tm
         "codewithjuber/mizan",
         "--inherited-lock-fd",
         "9",
+        "--images-dir",
+        str(directory / "release.AbCd1234"),
         "--inputs-digest",
         DIGEST,
     ]
-    assert record["stdin"] == "synthetic-registry-token\n"
+    # The runner's images are archives in the release directory; no token on stdin.
+    assert record["stdin"] == ""
     assert record["same_lock"] and record["contended"] and record["deployed"]
-    assert not record["token_in_env"]
     assert state["images"]["mizan-backend"] == f"ghcr.io/codewithjuber/mizan/backend:{SHA}"
 
 
@@ -414,10 +446,10 @@ def test_a_failed_site_deploy_never_touches_the_runner(tmp_path):
         ("", DIGEST),
     ],
 )
-def test_invalid_runner_arguments_are_refused_before_login(tmp_path, args):
+def test_invalid_runner_arguments_are_refused_before_any_docker_command(tmp_path, args):
     result, state, _ = deploy_fixture(tmp_path, False, managed_runner=True, runner_args=args)
     assert result.returncode != 0
-    assert not any(command[0] == "login" for command in state["commands"])
+    assert state["commands"] == []
     assert runner_record(tmp_path) is None
 
 
@@ -431,4 +463,4 @@ def test_a_symlinked_runner_script_is_refused(tmp_path):
         tmp_path, False, managed_runner=True, runner_args=(str(link), DIGEST)
     )
     assert result.returncode != 0
-    assert not any(command[0] == "login" for command in state["commands"])
+    assert state["commands"] == []

@@ -14,7 +14,7 @@ concurrency:
 jobs:
   inspect:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/workspace-runner-diagnostics-20261025'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -23,7 +23,7 @@ jobs:
       - name: Validate read-only diagnostics
         run: python3 -m py_compile scripts/workspace_runner_diagnostics.py
       - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Inspect recovery state without modifying the server
         env:
           SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}

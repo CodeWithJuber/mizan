@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Provision only Mizan's dedicated rootless workspace worker on its known host.
 
-The registry credential is read once from stdin. All subprocess output is private;
-only stage names and verified, non-secret receipts are printed. Run as root over
+No registry is used: the workflow sends each workspace image from the CI runner as a
+`docker save` archive into the private directory it gives as --images-dir, and the image
+is loaded into the daemon that runs it. All subprocess output is private; only stage
+names and verified, non-secret receipts are printed. Run as root over
 the existing pinned SSH connection. See docs/runner-setup.md before executing.
 """
 
@@ -208,6 +210,65 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def images_directory_pattern() -> str:
+    """Where a workflow may put image archives: its private directory under DEPLOY_STATE."""
+    return rf"{re.escape(str(DEPLOY_STATE))}/(release|workspace-setup)\.[A-Za-z0-9]{{8}}"
+
+
+def image_archive(directory: Path | None, role: str) -> Path | None:
+    """The workflow's `docker save` of one workspace image, or None when it sent none."""
+    require(
+        directory is not None and bool(re.fullmatch(images_directory_pattern(), str(directory))),
+        "No private images directory was given",
+    )
+    info = directory.lstat()
+    require(
+        stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and not info.st_mode & 0o022,
+        "Unsafe images directory",
+    )
+    path = directory / f"workspace-{role}.tar.gz"
+    if not path.exists() and not path.is_symlink():
+        return None
+    info = path.lstat()
+    require(
+        stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and not info.st_mode & 0o022,
+        "Unsafe workspace image archive",
+    )
+    return path
+
+
+def generation_wanted(
+    state: dict, limits: tuple[int, int, int], inputs_digest: str | None, with_browser: bool
+) -> bool:
+    """False when the installed runner already runs what this commit's images are built from."""
+    installed = state.get("images") or {}
+    return not (
+        inputs_digest
+        and state.get("inputs_digest") == inputs_digest
+        and limits == CURRENT_LIMITS
+        and (installed.get("browser") or not with_browser)
+    )
+
+
+def needed_images(inputs_digest: str | None, with_browser: bool) -> list[str]:
+    """The workspace images an --upgrade to this commit would load: the deploy sends only these."""
+    path = STATE_ROOT / "state.json"
+    if not path.exists() and not path.is_symlink():
+        return []
+    state = read_json(path)
+    if state.get("manager") != MANAGER or state.get("phase") != "ready":
+        # No managed runner, or one an upgrade restores or leaves alone without new images.
+        return []
+    roles = ["runner", "runtime"]
+    if (state.get("images") or {}).get("browser") or with_browser:
+        roles.append("browser")
+    try:
+        limits = runner_limits(json.loads(OVERRIDE.read_text()))
+    except (SetupError, OSError, ValueError, KeyError, TypeError):
+        return roles  # The upgrade itself reports a drifted install.
+    return roles if generation_wanted(state, limits, inputs_digest, with_browser) else []
+
+
 def compose_document(value: dict) -> str:
     """Compose interpolates JSON too: escape literal dollars in runtime values."""
 
@@ -402,7 +463,7 @@ def workspace_override(
     pinned = (runtime_image, runner_image, *((browser_image,) if browser_image else ()))
     require(
         all(re.fullmatch(r"sha256:[a-f0-9]{64}", image) for image in pinned),
-        "Worker images must be pinned to locally pulled content IDs",
+        "Worker images must be pinned to locally loaded content IDs",
     )
     return {
         "services": {
@@ -424,7 +485,7 @@ def workspace_override(
                     "DOCKER_HOST": "unix:///var/run/docker.sock",
                     "MIZAN_WORKSPACE_RUNNER_TOKEN": token,
                     "MIZAN_WORKSPACE_RUNTIME_IMAGE": runtime_image,
-                    # Shahid, MIZAN's browser sandbox, when its image was pulled.
+                    # Shahid, MIZAN's browser sandbox, when its image was loaded.
                     **({"MIZAN_WORKSPACE_BROWSER_IMAGE": browser_image} if browser_image else {}),
                 },
                 "volumes": [
@@ -818,11 +879,18 @@ SESSION_STEPS = {
 
 class Installer:
     def __init__(
-        self, sha: str, commands: Commands | None = None, *, research_dir: str | None = None
+        self,
+        sha: str,
+        commands: Commands | None = None,
+        *,
+        research_dir: str | None = None,
+        images_dir: Path | None = None,
     ):
         validate_research_option(research_dir)
         self.sha = sha
         self.research_dir = research_dir
+        # Where the workflow put this commit's workspace image archives (--images-dir).
+        self.images_dir = images_dir
         self.commands = commands or Commands()
         self.state: dict = {}
         self.worker: list[str] = []
@@ -1290,71 +1358,70 @@ class Installer:
             "Required worker cgroup controllers are not delegated",
         )
 
-    def pull_images(self, registry_token: str) -> None:
-        with tempfile.TemporaryDirectory(prefix="registry-", dir=STATE_ROOT) as directory:
-            env = {"DOCKER_CONFIG": directory}
-            self.run_command(
-                [
-                    *DOCKER,
-                    "login",
-                    "ghcr.io",
-                    "--username",
-                    REPOSITORY.split("/")[0],
-                    "--password-stdin",
-                ],
-                stage="Authenticate private image pulls",
-                stdin=registry_token + "\n",
-                env=env,
+    def load_image(self, role: str, daemon: list[str], *, optional: bool) -> dict | None:
+        """Load the workflow's archive of one workspace image into the daemon that runs it."""
+        source = f"ghcr.io/{REPOSITORY}/workspace-{role}:{self.sha}"
+        archive = image_archive(self.images_dir, role)
+        if archive is None:
+            require(optional, f"The deploy sent no workspace {role} image for this commit")
+            report("Workspace runner: browser image not available; Shahid stays off.")
+            return None
+        try:
+            loaded = self.run_command(
+                [*daemon, "load", "--quiet", "--input", str(archive)],
+                stage=f"Load tested workspace {role} image",
+                timeout=900 if role == "browser" else 600,
+                check=not optional,
             )
-            images = self.state.setdefault("images", {})
-            roles = (("runtime", self.worker), ("runner", DOCKER), ("browser", self.worker))
-            for role, daemon in roles:
-                source = f"ghcr.io/{REPOSITORY}/workspace-{role}:{self.sha}"
-                previous = images.get(role)
-                if previous:
-                    present = self.run_command(
-                        [*daemon, "image", "inspect", previous["id"]],
-                        stage="Check previously pinned image",
-                        check=False,
-                    )
-                    if present.returncode == 0:
-                        continue
-                try:
-                    pulled = self.run_command(
-                        [*daemon, "pull", source],
-                        stage=f"Pull tested workspace {role} image",
-                        env=env,
-                        timeout=900 if role == "browser" else 600,
-                        check=role != "browser",
-                    )
-                except SetupError:
-                    if role != "browser":
-                        raise
-                    pulled = subprocess.CompletedProcess([], 1, "", "")
-                if pulled.returncode != 0:
-                    # Optional: without its image MIZAN reads pages but has no browser.
-                    report("Workspace runner: browser image not available; Shahid stays off.")
+        except SetupError:
+            if not optional:
+                raise
+            loaded = subprocess.CompletedProcess([], 1, "", "")
+        if loaded.returncode:
+            report("Workspace runner: browser image not available; Shahid stays off.")
+            return None
+        # Only this commit's image may arrive: the archive must not tag anything else here.
+        names = [line for line in loaded.stdout.splitlines() if line.startswith("Loaded image")]
+        require(names == [f"Loaded image: {source}"], "The archive held another image")
+        image = json.loads(
+            self.run_command(
+                [*daemon, "image", "inspect", source],
+                stage=f"Pin workspace {role} image content",
+            ).stdout
+        )[0]
+        require(
+            bool(re.fullmatch(r"sha256:[a-f0-9]{64}", image["Id"])),
+            "Unexpected loaded image identity",
+        )
+        return {
+            "id": image["Id"],
+            "source_tag": source,
+            "repo_digests": image.get("RepoDigests", []),
+        }
+
+    def load_images(self) -> None:
+        images = self.state.setdefault("images", {})
+        roles = (("runtime", self.worker), ("runner", DOCKER), ("browser", self.worker))
+        for role, daemon in roles:
+            previous = images.get(role)
+            if previous:
+                present = self.run_command(
+                    [*daemon, "image", "inspect", previous["id"]],
+                    stage="Check previously pinned image",
+                    check=False,
+                )
+                if present.returncode == 0:
                     continue
-                image = json.loads(
-                    self.run_command(
-                        [*daemon, "image", "inspect", source],
-                        stage=f"Pin workspace {role} image content",
-                    ).stdout
-                )[0]
-                require(
-                    bool(re.fullmatch(r"sha256:[a-f0-9]{64}", image["Id"])),
-                    "Unexpected pulled image identity",
-                )
-                require(
-                    not previous or previous["id"] == image["Id"],
-                    "Registry tag changed since this setup began",
-                )
-                images[role] = {
-                    "id": image["Id"],
-                    "source_tag": source,
-                    "repo_digests": image.get("RepoDigests", []),
-                }
-                self.save()
+            # Optional: without its image MIZAN reads pages but has no browser.
+            image = self.load_image(role, daemon, optional=role == "browser")
+            if image is None:
+                continue
+            require(
+                not previous or previous["id"] == image["id"],
+                "This commit's image changed since this setup began",
+            )
+            images[role] = image
+            self.save()
 
     def token(self, *, create: bool = True) -> str:
         path = STATE_ROOT / "runner-token"
@@ -1951,7 +2018,7 @@ class Installer:
             timeout=180,
         )
 
-    def setup(self, registry_token: str) -> None:
+    def setup(self) -> None:
         state_path = STATE_ROOT / "state.json"
         recovering = state_path.exists() and read_json(state_path).get("phase") == "applying"
         self.preflight(recovering=recovering)
@@ -1989,7 +2056,7 @@ class Installer:
         self.install_packages()
         self.account()
         self.setup_daemon()
-        self.pull_images(registry_token)
+        self.load_images()
         try:
             self.apply()
         except (SetupError, OSError, ValueError, KeyError) as setup_error:
@@ -2039,8 +2106,9 @@ class Upgrade(Installer):
         *,
         inputs_digest: str | None = None,
         with_browser: bool = False,
+        images_dir: Path | None = None,
     ):
-        super().__init__(sha, commands)
+        super().__init__(sha, commands, images_dir=images_dir)
         self.inputs_digest = inputs_digest
         self.with_browser = with_browser
         self.deadline = time.monotonic() + UPGRADE_SECONDS
@@ -2050,19 +2118,19 @@ class Upgrade(Installer):
         # The override before the last upgrade: what a failed one is restored to.
         self.previous_override = STATE_ROOT / "override.previous"
 
-    def run(self, registry_token: str) -> str:
+    def run(self) -> str:
         """``absent``, ``current`` or ``upgraded``; otherwise UpgradeRolledBack/Unrecovered."""
         path = STATE_ROOT / "state.json"
         if not path.exists() and not path.is_symlink():
             report("Workspace runner: no managed runner on this host; nothing to upgrade.")
             return "absent"
         try:
-            return self.upgrade(registry_token)
+            return self.upgrade()
         except (UpgradeRolledBack, UpgradeUnrecovered):
             raise
         except (SetupError, OSError, ValueError, KeyError) as error:
             cause = error_text(error)
-            self.discard_pulled()
+            self.discard_loaded()
             if self.verified:
                 raise UpgradeRolledBack(
                     f"Runner not upgraded: {cause}; the previous runner was kept and verified"
@@ -2071,7 +2139,7 @@ class Upgrade(Installer):
                 f"Runner not upgraded: {cause}; the installed runner was not verified"
             ) from None
 
-    def upgrade(self, registry_token: str) -> str:
+    def upgrade(self) -> str:
         private_directory(STATE_ROOT)
         self.state = read_json(STATE_ROOT / "state.json")
         require(self.state.get("manager") == MANAGER, "Runner state belongs to another installer")
@@ -2108,7 +2176,7 @@ class Upgrade(Installer):
             raise UpgradeRolledBack(
                 "An interrupted upgrade was restored and verified; this deploy did not upgrade"
             )
-        self.discard_pulled()
+        self.discard_loaded()
         require(
             OVERRIDE.is_file()
             and not OVERRIDE.is_symlink()
@@ -2120,12 +2188,7 @@ class Upgrade(Installer):
         old_images = self.state["images"]
         self.verify_runner(files, images=old_images, limits=old_limits)
         self.verified = True
-        if (
-            self.inputs_digest
-            and self.state.get("inputs_digest") == self.inputs_digest
-            and old_limits == CURRENT_LIMITS
-            and (old_images.get("browser") or not self.with_browser)
-        ):
+        if not generation_wanted(self.state, old_limits, self.inputs_digest, self.with_browser):
             self.session_phase("check", secrets.token_hex(16), secrets.token_hex(16))
             report(
                 f"Workspace runner current ({self.state.get('sha', '')[:12]}): its inputs did "
@@ -2138,8 +2201,8 @@ class Upgrade(Installer):
             shutil.disk_usage("/var/lib").free >= (6 if browser else 4) * 1024**3,
             "Not enough free disk for the new runner images",
         )
-        new_images = self.pull_generation(
-            registry_token, browser=browser, browser_required=bool(old_images.get("browser"))
+        new_images = self.load_generation(
+            browser=browser, browser_required=bool(old_images.get("browser"))
         )
         token = self.token(create=False)
         new_document = workspace_override(
@@ -2276,65 +2339,20 @@ class Upgrade(Installer):
             timeout=180,
         )
 
-    def pull_generation(
-        self, registry_token: str, *, browser: bool, browser_required: bool
-    ) -> dict:
+    def load_generation(self, *, browser: bool, browser_required: bool) -> dict:
         images: dict = {}
-        self.state["upgrade"] = {"stage": "pulling", "sha": self.sha, "images": images}
+        self.state["upgrade"] = {"stage": "loading", "sha": self.sha, "images": images}
         self.save()
         roles = [("runner", DOCKER), ("runtime", self.worker)]
         if browser:
             roles.append(("browser", self.worker))
-        with tempfile.TemporaryDirectory(prefix="registry-", dir=STATE_ROOT) as directory:
-            env = {"DOCKER_CONFIG": directory}
-            self.run_command(
-                [
-                    *DOCKER,
-                    "login",
-                    "ghcr.io",
-                    "--username",
-                    REPOSITORY.split("/")[0],
-                    "--password-stdin",
-                ],
-                stage="Authenticate private image pulls",
-                stdin=registry_token + "\n",
-                env=env,
-            )
-            for role, daemon in roles:
-                source = f"ghcr.io/{REPOSITORY}/workspace-{role}:{self.sha}"
-                optional = role == "browser" and not browser_required
-                try:
-                    pulled = self.run_command(
-                        [*daemon, "pull", source],
-                        stage=f"Pull tested workspace {role} image",
-                        env=env,
-                        timeout=900 if role == "browser" else 600,
-                        check=not optional,
-                    )
-                except SetupError:
-                    if not optional:
-                        raise
-                    pulled = subprocess.CompletedProcess([], 1, "", "")
-                if pulled.returncode:
-                    report("Workspace runner: browser image not available; Shahid stays off.")
-                    continue
-                image = json.loads(
-                    self.run_command(
-                        [*daemon, "image", "inspect", source],
-                        stage=f"Pin workspace {role} image content",
-                    ).stdout
-                )[0]
-                require(
-                    bool(re.fullmatch(r"sha256:[a-f0-9]{64}", image["Id"])),
-                    "Unexpected pulled image identity",
-                )
-                images[role] = {
-                    "id": image["Id"],
-                    "source_tag": source,
-                    "repo_digests": image.get("RepoDigests", []),
-                }
+        for role, daemon in roles:
+            optional = role == "browser" and not browser_required
+            image = self.load_image(role, daemon, optional=optional)
+            if image is not None:
+                images[role] = image
                 self.save()
-        self.state["upgrade"]["stage"] = "pulled"
+        self.state["upgrade"]["stage"] = "loaded"
         self.save()
         return images
 
@@ -2370,7 +2388,7 @@ class Upgrade(Installer):
                 report(f"Workspace runner: the {role} image {tag} is still in use; kept.")
 
     def prune_previous(self) -> None:
-        """Before a pull, drop the generation older than the installed one (two stay)."""
+        """Before a load, drop the generation older than the installed one (two stay)."""
         previous = self.state.get("previous_images")
         if not previous:
             return
@@ -2379,15 +2397,15 @@ class Upgrade(Installer):
         self.state.pop("previous_images")
         self.save()
 
-    def discard_pulled(self) -> None:
-        """Images pulled by a run that stopped before the switch are not kept."""
+    def discard_loaded(self) -> None:
+        """Images loaded by a run that stopped before the switch are not kept."""
         upgrade = self.state.get("upgrade")
         if not upgrade or self.state.get("phase") != "ready" or not self.worker:
             return
         try:
             self.discard_generation(upgrade.get("images") or {})
         except (SetupError, OSError, ValueError, KeyError):
-            report("Workspace runner: unused pulled images could not be removed; kept.")
+            report("Workspace runner: unused loaded images could not be removed; kept.")
         self.state.pop("upgrade", None)
         with contextlib.suppress(SetupError, OSError):
             self.save()
@@ -2599,6 +2617,15 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Move an installed runner to this commit's images (run by deploy_production.sh)",
     )
+    mode.add_argument(
+        "--needed-images",
+        action="store_true",
+        help="Print the workspace images an --upgrade would load; the deploy sends only these",
+    )
+    parser.add_argument(
+        "--images-dir",
+        help="The private directory where the workflow put this commit's image archives",
+    )
     parser.add_argument(
         "--research-dir",
         choices=[RESEARCH_DIR],
@@ -2611,20 +2638,25 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--inputs-digest",
-        help="With --upgrade: digest of the runner's inputs; an unchanged one skips the pull",
+        help="With --upgrade: digest of the runner's inputs; an unchanged one loads nothing",
     )
     parser.add_argument(
         "--with-browser",
         action="store_true",
-        help="With --upgrade: also pull the browser sandbox image (Shahid)",
+        help="With --upgrade: also load the browser sandbox image (Shahid)",
     )
     args = parser.parse_args(argv)
-    if args.upgrade and args.research_dir:
+    if (args.upgrade or args.needed_images) and args.research_dir:
         parser.error("--upgrade keeps the installed research setting")
-    if not args.upgrade and (
-        args.inherited_lock_fd is not None or args.inputs_digest or args.with_browser
-    ):
-        parser.error("--inherited-lock-fd, --inputs-digest and --with-browser need --upgrade")
+    if not (args.upgrade or args.needed_images) and (args.inputs_digest or args.with_browser):
+        parser.error("--inputs-digest and --with-browser need --upgrade or --needed-images")
+    if not args.upgrade and args.inherited_lock_fd is not None:
+        parser.error("--inherited-lock-fd needs --upgrade")
+    if args.rollback or args.needed_images:
+        if args.images_dir is not None:
+            parser.error("--images-dir is only for a setup or an --upgrade")
+    elif args.images_dir is None or not re.fullmatch(images_directory_pattern(), args.images_dir):
+        parser.error(f"--images-dir must be a directory matching {images_directory_pattern()}")
     if args.inherited_lock_fd is not None and not 3 <= args.inherited_lock_fd <= 255:
         parser.error("--inherited-lock-fd must be a descriptor from 3 to 255")
     if args.inputs_digest is not None and not re.fullmatch(r"[a-f0-9]{64}", args.inputs_digest):
@@ -2640,27 +2672,29 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         validate_target(args.sha, args.repository)
-        credential = "" if args.rollback else sys.stdin.readline(8192).rstrip("\r\n")
-        require(
-            args.rollback or bool(credential) and len(credential) < 8190,
-            "Registry credential must arrive on stdin",
-        )
+        images_dir = Path(args.images_dir) if args.images_dir else None
         os.umask(0o077)
         for signal_number in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
             signal.signal(signal_number, interrupted)
         with deployment_lock(args.inherited_lock_fd):
+            if args.needed_images:
+                print(" ".join(needed_images(args.inputs_digest, args.with_browser)), flush=True)
+                return 0
             if args.upgrade:
                 Upgrade(
-                    args.sha, inputs_digest=args.inputs_digest, with_browser=args.with_browser
-                ).run(credential)
+                    args.sha,
+                    inputs_digest=args.inputs_digest,
+                    with_browser=args.with_browser,
+                    images_dir=images_dir,
+                ).run()
                 return 0
-            installer = Installer(args.sha, research_dir=args.research_dir)
+            installer = Installer(args.sha, research_dir=args.research_dir, images_dir=images_dir)
             if args.rollback:
                 installer.preflight(recovering=True)
                 installer.load_state(rollback=True)
                 installer.rollback()
             else:
-                installer.setup(credential)
+                installer.setup()
     except UpgradeRolledBack as error:
         report(f"Workspace runner NOT upgraded: {error}", error=True)
         return NOT_UPGRADED

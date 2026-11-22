@@ -9,6 +9,8 @@ name: Auto Release
 #   - Label "release:skip" → skip release entirely
 #
 # Can also be triggered manually via workflow_dispatch.
+#
+# Runs on the self-hosted runner labelled mizan (docs/ci-artifacts.md). GitHub releases are free.
 
 on:
   workflow_run:
@@ -38,7 +40,7 @@ concurrency:
 jobs:
   determine-release:
     name: Determine release type
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     # Skip release commits to avoid infinite loops
     if: >-
       github.event.repository.private == false &&
@@ -90,13 +92,18 @@ jobs:
           RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The runner has curl and jq but not GitHub's gh CLI. The token goes in on stdin.
+          github_api() {
+            curl -fsS --retry 3 -H 'Accept: application/vnd.github+json' -H @- "$GITHUB_API_URL/$1" \
+              <<< "Authorization: Bearer $GH_TOKEN"
+          }
           sha="$GITHUB_SHA"
           if [ "$EVENT" = 'workflow_run' ]; then
             sha="$VERIFIED_SHA"
             if [ -z "$sha" ]; then exit 0; fi
           fi
           [[ "$sha" =~ ^[a-f0-9]{40}$ ]] || exit 1
-          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_BRANCH" --jq .sha)
+          current=$(github_api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_BRANCH" | jq -r .sha)
           if [ "$current" != "$sha" ]; then exit 0; fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "branch=$RELEASE_BRANCH" >> "$GITHUB_OUTPUT"
@@ -113,6 +120,11 @@ jobs:
           MANUAL_BUMP: ${{ github.event.inputs.bump_type }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The runner has curl and jq but not GitHub's gh CLI. The token goes in on stdin.
+          github_api() {
+            curl -fsS --retry 3 -H 'Accept: application/vnd.github+json' -H @- "$GITHUB_API_URL/$1" \
+              <<< "Authorization: Bearer $GH_TOKEN"
+          }
           BUMP=""
           IS_PRE="false"
 
@@ -133,9 +145,9 @@ jobs:
           fi
 
           # Check merged PR labels
-          PR_NUMBER=$(gh api "repos/$GITHUB_REPOSITORY/commits/$(git rev-parse HEAD)/pulls" --jq '[.[] | select(.merged_at != null)] | last | .number // empty')
+          PR_NUMBER=$(github_api "repos/$GITHUB_REPOSITORY/commits/$(git rev-parse HEAD)/pulls" | jq -r '[.[] | select(.merged_at != null)] | last | .number // empty')
           if [ -n "$PR_NUMBER" ]; then
-            LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' 2>/dev/null || echo "")
+            LABELS=$(github_api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" 2>/dev/null | jq -r '.labels[].name' 2>/dev/null || echo "")
 
             if echo "$LABELS" | grep -q "release:skip"; then
               {
@@ -187,7 +199,7 @@ jobs:
 
   auto-release:
     name: Create release
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     needs: determine-release
     if: needs.determine-release.outputs.should_release == 'true'
     steps:
@@ -317,7 +329,7 @@ jobs:
           fi
 
           # Save for release notes
-          echo "$ENTRY" > /tmp/release_notes.md
+          echo "$ENTRY" > "$RUNNER_TEMP/release_notes.md"
 
           # Prepend to CHANGELOG.md
           if [ -f CHANGELOG.md ]; then
@@ -345,7 +357,7 @@ jobs:
         with:
           tag_name: "v${{ steps.bump.outputs.new_version }}"
           name: "MIZAN v${{ steps.bump.outputs.new_version }}"
-          body_path: /tmp/release_notes.md
+          body_path: ${{ runner.temp }}/release_notes.md
           draft: false
           prerelease: ${{ needs.determine-release.outputs.is_prerelease == 'true' }}
           generate_release_notes: true

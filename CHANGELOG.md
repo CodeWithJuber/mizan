@@ -58,6 +58,7 @@ All notable changes to this project will be documented in this file.
   - Playwright tests on desktop and phone against a mock API.
 
 ### Changed
+- CI runs on the owner's self-hosted runner and GitHub bills nothing for it. Every job of every workflow says `runs-on: [self-hosted, linux, x64, mizan]`. Outputs (the package, failed browser reports, research receipts) stay on the runner in `$CI_RESULTS_DIR` for 14 days (`scripts/ci/keep-results.sh`). No artifacts, caches, Pages or GitHub Packages: CI builds the production images into the runner's Docker and Deploy Production sends them to the server over its SSH connection, where the backend and frontend load directly and the workspace runner's images arrive as archives the installer loads (`--images-dir`, only those `--needed-images` names). No registry token reaches the server any more. `scripts/ci/no-github-billing.sh` keeps it so: the first CI job, `make check` and a pre-commit hook (`docs/ci-artifacts.md`).
 - A runner older than the backend now answers the session and browser routes with 503 "The private runner on this server predates sandbox sessions" instead of a bare 404. Deploy Production uploads its scripts to a fresh root-only release directory, allows 45 minutes, and fails its last step when the runner was not upgraded.
 - New Compose setups select owned inference; hosted model overrides and mem0 calls are disabled in owned mode.
 - Own model drafts are excluded from the legacy training exporter; useful general chat and automatic neural learning remain unverified.
@@ -89,6 +90,7 @@ All notable changes to this project will be documented in this file.
   The root accuracy on the 172-word QAC-derived gold set rose from 79/172 to 81/172 (60/172 in the published 0.1.0). The vendored copy had drifted from upstream; CI now runs `sync_vendor.py --check` and the package tests.
 
 ### Removed
+- GitHub-billed CI features: the GitHub Pages docs deploy (`docs.yml` only validates; `ENABLE_GITHUB_PAGES` is no longer read), image pushes to ghcr.io (commit images from CI, version and `latest` images from a release), and the compute-server upload of CI output (`scripts/upload_ci_artifact.py`), replaced by `$CI_RESULTS_DIR`.
 - The `DEEP_FACULTY_LOOP` setting ("Active faculty loop") and the `deep_faculty_loop` field of `GET /api/nafs/{agent_id}/faculties`. The setting promised that Basira, Hawa and Hikmah would gate the agent, but no code acted on it. A saved value is ignored. The gates that act are Amanah, approvals, Hudud and Sidq.
 
 ## [v3.3.0] — 2026-10-01

@@ -25,6 +25,7 @@ setup = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(setup)
 
 OLD_SHA, NEW_SHA = "a" * 40, "b" * 40
+RELEASE = "/var/lib/mizan-deploy/release.AbCd1234"
 TOKEN = "t" * 64
 BACKEND_IMAGE = "sha256:" + "0" * 64
 UID = 1002
@@ -169,7 +170,9 @@ class Host:
         self.root = root
         self.calls: list[tuple[list[str], str]] = []
         self.tags = {item["source_tag"]: item["id"] for item in OLD.values()}
+        # What the deploy can send: one `docker save` archive per tag (see `send_images`).
         self.registry = {item["source_tag"]: item["id"] for item in NEW.values()}
+        self.loaded_names: dict[str, str] = {}
         self.runner = runner_container(json.loads(setup.OVERRIDE.read_text()))
         self.proxy: dict | None = None
         self.sessions_open: list[str] = []
@@ -210,11 +213,12 @@ class Host:
         found = self.tags.get(name)
         return self.done(argv, json.dumps([{"Id": found}]) if found else "", 0 if found else 1)
 
-    def pull(self, argv, rest):
-        if rest[1] not in self.registry:
-            raise setup.SetupError("Pull: command exited 1")
-        self.tags[rest[1]] = self.registry[rest[1]]
-        return self.done(argv)
+    def load(self, argv, rest):
+        assert rest[:3] == ["load", "--quiet", "--input"]
+        source = Path(rest[3]).read_text()
+        self.tags[source] = self.registry[source]
+        name = self.loaded_names.get(source, source)
+        return self.done(argv, f"Loaded image: {name}\n")
 
     def root_daemon(self, argv, rest, stdin):
         if rest == ["inspect", "mizan-backend"]:
@@ -224,8 +228,8 @@ class Host:
         if rest[:2] == ["image", "rm"]:
             self.tags.pop(rest[2], None)
             return self.done(argv)
-        if rest[0] == "pull":
-            return self.pull(argv, rest)
+        if rest[0] == "load":
+            return self.load(argv, rest)
         if rest[0] == "compose":
             if "ps" in rest:
                 return self.done(argv, self.runner["Id"])
@@ -290,8 +294,8 @@ class Host:
         if rest[:2] == ["image", "rm"]:
             self.tags.pop(rest[2], None)
             return self.done(argv)
-        if rest[0] == "pull":
-            return self.pull(argv, rest)
+        if rest[0] == "load":
+            return self.load(argv, rest)
         if rest[0] == "logs":
             return self.done(argv, "egress denied registry.npmjs.org\nunrelated line\n")
         return self.done(argv)
@@ -353,8 +357,20 @@ def host(tmp_path, monkeypatch):
     return fake
 
 
+def send_images(host) -> Path:
+    """The deploy's private release directory, with an archive of each image it can send."""
+    directory = setup.DEPLOY_STATE / "release.AbCd1234"
+    directory.mkdir(mode=0o700, exist_ok=True)
+    for archive in directory.glob("workspace-*.tar.gz"):
+        archive.unlink()
+    for source in host.registry:
+        role = source.rsplit("/workspace-", 1)[1].split(":")[0]
+        (directory / f"workspace-{role}.tar.gz").write_text(source)
+    return directory
+
+
 def upgrade(host, monkeypatch, **options) -> setup.Upgrade:
-    runner = setup.Upgrade(NEW_SHA, host, **options)
+    runner = setup.Upgrade(NEW_SHA, host, images_dir=send_images(host), **options)
     checks: list[str] = []
 
     def preflight(**_):
@@ -549,16 +565,32 @@ def test_the_deploy_argv_is_accepted_and_mixed_modes_are_refused():
             "9",
             "--inputs-digest",
             "e" * 64,
+            "--images-dir",
+            RELEASE,
         ]
     )
     assert args.upgrade and args.inherited_lock_fd == 9 and args.inputs_digest == "e" * 64
+    assert args.images_dir == RELEASE
+    asked = setup.parse_arguments(
+        ["--needed-images", "--sha", NEW_SHA, "--inputs-digest", "e" * 64, "--with-browser"]
+    )
+    assert asked.needed_images and asked.with_browser and asked.images_dir is None
+    assert setup.parse_arguments(["--rollback", "--sha", NEW_SHA]).images_dir is None
     for argv in (
         ["--upgrade", "--rollback"],
-        ["--upgrade", "--research-dir", setup.RESEARCH_DIR],
-        ["--inherited-lock-fd", "9"],
-        ["--with-browser"],
-        ["--upgrade", "--inherited-lock-fd", "2"],
-        ["--upgrade", "--inputs-digest", "E" * 64],
+        ["--upgrade", "--research-dir", setup.RESEARCH_DIR, "--images-dir", RELEASE],
+        ["--inherited-lock-fd", "9", "--images-dir", RELEASE],
+        ["--with-browser", "--images-dir", RELEASE],
+        ["--upgrade", "--inherited-lock-fd", "2", "--images-dir", RELEASE],
+        ["--upgrade", "--inputs-digest", "E" * 64, "--images-dir", RELEASE],
+        # Images come only from a workflow's private directory, and only where they are used.
+        ["--upgrade"],
+        ["--images-dir", RELEASE + "/.."],
+        ["--upgrade", "--images-dir", "/tmp/release.AbCd1234"],
+        ["--rollback", "--images-dir", RELEASE],
+        ["--needed-images", "--images-dir", RELEASE],
+        ["--needed-images", "--inherited-lock-fd", "9"],
+        ["--needed-images", "--upgrade"],
     ):
         with pytest.raises(SystemExit):
             setup.parse_arguments(["--sha", NEW_SHA, *argv])
@@ -576,8 +608,8 @@ def test_the_deploy_argv_is_accepted_and_mixed_modes_are_refused():
 def test_upgrade_exit_codes(monkeypatch, raised, code):
     seen = {}
 
-    def run(self, credential):
-        seen["credential"] = credential
+    def run(self):
+        seen["images"] = str(self.images_dir)
         if raised:
             raise raised
         return "upgraded"
@@ -591,10 +623,11 @@ def test_upgrade_exit_codes(monkeypatch, raised, code):
     monkeypatch.setattr(setup, "deployment_lock", lock)
     monkeypatch.setattr(setup.signal, "signal", lambda *_: None)
     monkeypatch.setattr(setup.os, "umask", lambda _: 0)
-    monkeypatch.setattr(sys, "stdin", io.StringIO("registry-token\n"))
-    argv = ["--upgrade", "--sha", NEW_SHA, "--inherited-lock-fd", "9"]
+    # No credential: nothing is read from stdin any more.
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    argv = ["--upgrade", "--sha", NEW_SHA, "--inherited-lock-fd", "9", "--images-dir", RELEASE]
     assert setup.main(argv) == code
-    assert seen == {"credential": "registry-token", "fd": 9}
+    assert seen == {"images": RELEASE, "fd": 9}
 
 
 # ── Upgrades on the fake host ─────────────────────────────────────────────
@@ -602,7 +635,7 @@ def test_upgrade_exit_codes(monkeypatch, raised, code):
 
 def test_no_managed_runner_means_nothing_to_upgrade(host, monkeypatch):
     (setup.STATE_ROOT / "state.json").unlink()
-    assert upgrade(host, monkeypatch).run("token") == "absent"
+    assert upgrade(host, monkeypatch).run() == "absent"
     assert not host.calls
 
 
@@ -611,14 +644,14 @@ def test_a_setup_that_never_completed_is_left_alone(host, monkeypatch, phase):
     current = state()
     current["phase"] = phase
     (setup.STATE_ROOT / "state.json").write_text(json.dumps(current))
-    assert upgrade(host, monkeypatch).run("token") == "absent"
+    assert upgrade(host, monkeypatch).run() == "absent"
     assert not host.calls
 
 
 def test_the_legacy_runner_is_upgraded_and_proves_sessions(host, monkeypatch):
     legacy = setup.OVERRIDE.read_text()
     runner = upgrade(host, monkeypatch, inputs_digest="e" * 64)
-    assert runner.run("registry-token") == "upgraded"
+    assert runner.run() == "upgraded"
 
     final = state()
     assert final["phase"] == "ready" and final["sha"] == NEW_SHA
@@ -644,8 +677,14 @@ def test_the_legacy_runner_is_upgraded_and_proves_sessions(host, monkeypatch):
     flat = " ".join(" ".join(argv) for argv, _ in host.calls)
     for forbidden in ("systemctl", "useradd", "apt-get", "loginctl", "frontend"):
         assert forbidden not in flat
-    # The registry token reached only docker login, on stdin.
-    assert "registry-token" not in flat
+    # No registry: nothing is pulled or logged in to.
+    assert not any("pull" in argv or "login" in argv for argv, _ in host.calls)
+    # Each image came from the deploy's archive, into the daemon that runs it.
+    loads = {argv[-1].rsplit("/", 1)[1]: argv[:3] for argv, _ in host.calls if "load" in argv}
+    assert loads == {
+        "workspace-runner.tar.gz": setup.DOCKER,
+        "workspace-runtime.tar.gz": WORKER,
+    }
 
 
 def test_unchanged_inputs_only_check_the_running_runner(host, monkeypatch):
@@ -659,9 +698,9 @@ def test_unchanged_inputs_only_check_the_running_runner(host, monkeypatch):
     (setup.STATE_ROOT / "state.json").write_text(json.dumps(current))
     host.runner = runner_container(document)
     host.tags.update(host.registry)
-    assert upgrade(host, monkeypatch, inputs_digest="e" * 64).run("token") == "current"
+    assert upgrade(host, monkeypatch, inputs_digest="e" * 64).run() == "current"
     assert host.phases == ["check"]
-    assert not any("pull" in argv or "up" in argv for argv, _ in host.calls)
+    assert not any("load" in argv or "up" in argv for argv, _ in host.calls)
 
 
 @pytest.mark.parametrize(
@@ -682,7 +721,7 @@ def test_a_failure_after_the_switch_restores_the_previous_runner(host, monkeypat
     else:
         host.fail = {failure}
     with pytest.raises(setup.UpgradeRolledBack, match="restored and verified"):
-        runner.run("token")
+        runner.run()
     assert setup.OVERRIDE.read_text() == legacy
     final = state()
     assert final["phase"] == "ready" and final["images"] == OLD and final["sha"] == OLD_SHA
@@ -703,12 +742,12 @@ def test_an_unverified_restore_is_resumed_by_the_next_deploy(host, monkeypatch):
     host.fail_phases = {"probe"}
     host.fail = {"Restore the previous private runner"}
     with pytest.raises(setup.UpgradeUnrecovered, match="next deploy"):
-        upgrade(host, monkeypatch).run("token")
+        upgrade(host, monkeypatch).run()
     assert state()["phase"] == "upgrading"
 
     host.fail = set()
     with pytest.raises(setup.UpgradeRolledBack, match="interrupted upgrade was restored"):
-        upgrade(host, monkeypatch).run("token")
+        upgrade(host, monkeypatch).run()
     assert setup.OVERRIDE.read_text() == legacy
     assert state()["phase"] == "ready" and host.runner["Image"] == OLD["runner"]["id"]
 
@@ -717,24 +756,24 @@ def test_a_failure_before_the_switch_changes_nothing_live(host, monkeypatch):
     legacy = setup.OVERRIDE.read_text()
     del host.registry[NEW["runtime"]["source_tag"]]
     with pytest.raises(setup.UpgradeRolledBack, match="kept and verified"):
-        upgrade(host, monkeypatch).run("token")
+        upgrade(host, monkeypatch).run()
     assert setup.OVERRIDE.read_text() == legacy
     assert not any("up" in argv for argv, _ in host.calls)
     final = state()
     assert final["phase"] == "ready" and "upgrade" not in final and final["images"] == OLD
-    # The runner image that did pull is not left behind.
+    # The runner image that did load is not left behind.
     assert NEW["runner"]["source_tag"] not in host.tags
 
 
 def test_a_drifted_install_is_not_touched(host, monkeypatch):
     setup.OVERRIDE.write_text(setup.OVERRIDE.read_text() + "\n")
     with pytest.raises(setup.UpgradeUnrecovered, match="changed outside"):
-        upgrade(host, monkeypatch).run("token")
-    assert not any("pull" in argv or "up" in argv for argv, _ in host.calls)
+        upgrade(host, monkeypatch).run()
+    assert not any("load" in argv or "up" in argv for argv, _ in host.calls)
 
 
 @pytest.mark.parametrize("case", ["off", "asked", "installed"])
-def test_the_browser_is_pulled_only_when_installed_or_asked_for(host, monkeypatch, case):
+def test_the_browser_is_loaded_only_when_installed_or_asked_for(host, monkeypatch, case):
     browser = tag("browser", NEW_SHA)
     host.registry[browser] = image_id("7")
     if case == "installed":
@@ -745,16 +784,18 @@ def test_the_browser_is_pulled_only_when_installed_or_asked_for(host, monkeypatc
         (setup.STATE_ROOT / "state.json").write_text(json.dumps(current))
         host.runner = runner_container(legacy_override(installed))
         host.tags[installed["browser"]["source_tag"]] = installed["browser"]["id"]
-    assert upgrade(host, monkeypatch, with_browser=case == "asked").run("token") == "upgraded"
-    pulled = any(argv[-2:] == ["pull", browser] for argv, _ in host.calls)
-    assert pulled is (case != "off")
+    assert upgrade(host, monkeypatch, with_browser=case == "asked").run() == "upgraded"
+    loaded = any(
+        "load" in argv and argv[-1].endswith("/workspace-browser.tar.gz") for argv, _ in host.calls
+    )
+    assert loaded is (case != "off")
     environment = json.loads(setup.OVERRIDE.read_text())["services"]["workspace-runner"][
         "environment"
     ]
     assert ("MIZAN_WORKSPACE_BROWSER_IMAGE" in environment) is (case != "off")
 
 
-def test_an_installed_browser_that_cannot_be_pulled_keeps_the_previous_runner(host, monkeypatch):
+def test_an_installed_browser_that_was_not_sent_keeps_the_previous_runner(host, monkeypatch):
     installed = generation(OLD_SHA, "1", "2", browser="8")
     setup.OVERRIDE.write_text(setup.compose_document(legacy_override(installed)))
     current = state()
@@ -762,8 +803,84 @@ def test_an_installed_browser_that_cannot_be_pulled_keeps_the_previous_runner(ho
     (setup.STATE_ROOT / "state.json").write_text(json.dumps(current))
     host.runner = runner_container(legacy_override(installed))
     with pytest.raises(setup.UpgradeRolledBack, match="kept and verified"):
-        upgrade(host, monkeypatch).run("token")
+        upgrade(host, monkeypatch).run()
     assert not any("up" in argv for argv, _ in host.calls)
+
+
+def test_a_first_setup_loads_the_sent_images_and_the_browser_is_optional(host):
+    installer = setup.Installer(NEW_SHA, host, images_dir=send_images(host))
+    installer.worker = WORKER
+    installer.state = {}
+    installer.load_images()
+    assert installer.state["images"] == NEW
+    host.registry[tag("browser", NEW_SHA)] = image_id("7")
+    with_browser = setup.Installer(NEW_SHA, host, images_dir=send_images(host))
+    with_browser.worker = WORKER
+    with_browser.state = {}
+    with_browser.load_images()
+    assert with_browser.state["images"]["browser"]["id"] == image_id("7")
+    del host.registry[NEW["runtime"]["source_tag"]]
+    missing = setup.Installer(NEW_SHA, host, images_dir=send_images(host))
+    missing.worker = WORKER
+    missing.state = {}
+    with pytest.raises(setup.SetupError, match="no workspace runtime image"):
+        missing.load_images()
+
+
+def test_an_archive_that_tags_another_image_is_refused(host, monkeypatch):
+    source = NEW["runner"]["source_tag"]
+    host.loaded_names[source] = f"ghcr.io/{setup.REPOSITORY}/backend:{NEW_SHA}"
+    with pytest.raises(setup.UpgradeRolledBack, match="another image"):
+        upgrade(host, monkeypatch).run()
+    assert not any("up" in argv for argv, _ in host.calls)
+    assert state()["images"] == OLD
+
+
+@pytest.mark.parametrize("unsafe", ["symlink", "directory", "writable"])
+def test_unsafe_archives_and_directories_are_refused(host, monkeypatch, tmp_path, unsafe):
+    runner = upgrade(host, monkeypatch)
+    archive = runner.images_dir / "workspace-runner.tar.gz"
+    if unsafe == "symlink":
+        elsewhere = tmp_path / "elsewhere.tar.gz"
+        elsewhere.write_text(NEW["runner"]["source_tag"])
+        archive.unlink()
+        archive.symlink_to(elsewhere)
+    elif unsafe == "directory":
+        runner.images_dir = tmp_path / "release.AbCd1234"
+        runner.images_dir.mkdir()
+    else:
+        archive.chmod(0o666)
+    with pytest.raises(setup.UpgradeRolledBack, match="Unsafe|images directory"):
+        runner.run()
+    assert not any("load" in argv or "up" in argv for argv, _ in host.calls)
+
+
+def test_the_deploy_is_told_which_images_an_upgrade_would_load(host):
+    # The installed runner has the legacy limits: an upgrade wants a new generation.
+    assert setup.needed_images("e" * 64, False) == ["runner", "runtime"]
+    assert setup.needed_images("e" * 64, True) == ["runner", "runtime", "browser"]
+    current = state()
+    current.update(images=copy.deepcopy(NEW), inputs_digest="e" * 64, sha=NEW_SHA)
+    document = setup.workspace_override(
+        UID, UID, TOKEN, runtime_image=NEW["runtime"]["id"], runner_image=NEW["runner"]["id"]
+    )
+    setup.OVERRIDE.write_text(setup.compose_document(document))
+    (setup.STATE_ROOT / "state.json").write_text(json.dumps(current))
+    # The same inputs, limits and browser setting: the upgrade only checks the runner.
+    assert setup.needed_images("e" * 64, False) == []
+    assert setup.needed_images("f" * 64, False) == ["runner", "runtime"]
+    assert setup.needed_images(None, False) == ["runner", "runtime"]
+    assert setup.needed_images("e" * 64, True) == ["runner", "runtime", "browser"]
+    # A drifted override: send everything, and let the upgrade report the drift.
+    setup.OVERRIDE.write_text("{}")
+    assert setup.needed_images("e" * 64, False) == ["runner", "runtime"]
+    # An interrupted upgrade is restored, and an unfinished setup left alone: no images.
+    for phase in ("upgrading", "applying", "preparing"):
+        current["phase"] = phase
+        (setup.STATE_ROOT / "state.json").write_text(json.dumps(current))
+        assert setup.needed_images("f" * 64, True) == []
+    (setup.STATE_ROOT / "state.json").unlink()
+    assert setup.needed_images("f" * 64, True) == []
 
 
 def test_pruning_keeps_two_generations_and_removes_only_recorded_tags(host, monkeypatch):

@@ -83,9 +83,11 @@ the dedicated daemon socket owner's numeric UID/GID; the runner drops all Linux
 capabilities and cannot bypass socket permissions. The image supports an
 unprivileged runner user. Production images use immutable commit tags
 `ghcr.io/codewithjuber/mizan/workspace-runtime:<sha>` and
-`ghcr.io/codewithjuber/mizan/workspace-runner:<sha>`, published by the main CI
-pipeline after isolation checks. Set `MIZAN_WORKSPACE_RUNTIME_IMAGE` and
-`MIZAN_WORKSPACE_RUNNER_IMAGE` to those tags. CI also publishes
+`ghcr.io/codewithjuber/mizan/workspace-runner:<sha>`, built by the main CI
+pipeline on the self-hosted runner after isolation checks and sent to the server
+by Deploy Production (local names: nothing is pushed to or pulled from ghcr.io,
+see `deployment.md`). Set `MIZAN_WORKSPACE_RUNTIME_IMAGE` and
+`MIZAN_WORKSPACE_RUNNER_IMAGE` to those images. CI also builds
 `ghcr.io/codewithjuber/mizan/workspace-browser:<sha>`; Shahid's browser jobs run
 only when the runner has `MIZAN_WORKSPACE_BROWSER_IMAGE` set to it (see
 `shahid.md`). The backend and runner share only the private API token. The runner

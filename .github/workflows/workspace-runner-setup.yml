@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: mizan-production
@@ -15,7 +14,7 @@ concurrency:
 jobs:
   setup:
     if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/enable-workspace-runner-20261026'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -32,23 +31,36 @@ jobs:
           test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
           test -s deploy/known_hosts
       - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Provision and verify the dedicated rootless runner
         env:
           SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
           SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
           SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
-          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-          # Retarget only after the final main CI/image publish and deployment.
+          # Retarget only after the final main CI (its production-images job) and deployment.
           EXPECTED_BACKEND_SHA: 0176a873e266d942918de47f8888071568eeeeb2
         run: |
           set -euo pipefail
-          current=$(gh api repos/CodeWithJuber/mizan/commits/main --jq .sha)
+          # The runner has curl and jq but not GitHub's gh CLI. The token goes in on stdin.
+          current=$(curl -fsS --retry 3 -H 'Accept: application/vnd.github+json' -H @- \
+            "$GITHUB_API_URL/repos/CodeWithJuber/mizan/commits/main" \
+            <<< "Authorization: Bearer $GH_TOKEN" | jq -r .sha)
           test "$current" = "$EXPECTED_BACKEND_SHA" || { echo '::error::Main changed; review and retarget this setup before execution.'; exit 1; }
+          # The workspace images come from this runner's Docker, where CI built them; no registry.
+          images="ghcr.io/codewithjuber/mizan"
+          docker image inspect "$images/workspace-runtime:$EXPECTED_BACKEND_SHA" "$images/workspace-runner:$EXPECTED_BACKEND_SHA" >/dev/null 2>&1 ||
+            { echo '::error::This runner has no workspace images of that commit; re-run its CI first.'; exit 1; }
           ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
           remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-setup.XXXXXXXX')
           [[ "$remote_dir" =~ ^/var/lib/mizan-deploy/workspace-setup\.[A-Za-z0-9]{8}$ ]]
-          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -f '\''$remote_dir/setup.py'\'' && rmdir '\''$remote_dir'\''" || true' EXIT
+          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf '\''$remote_dir'\''" || true' EXIT
           sshpass -e scp "${ssh_options[@]}" scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/setup.py"
-          printf '%s\n' "$GITHUB_TOKEN" | sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote_dir/setup.py' --sha '$EXPECTED_BACKEND_SHA' --repository codewithjuber/mizan --research-dir /data/mizan/research"
+          # The browser image (Shahid) is optional, as it was in the registry.
+          for role in runtime runner browser; do
+            image="$images/workspace-$role:$EXPECTED_BACKEND_SHA"
+            docker image inspect "$image" >/dev/null 2>&1 || continue
+            docker save "$image" | gzip -1 |
+              sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && cat > '$remote_dir/workspace-$role.tar.gz'"
+          done
+          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote_dir/setup.py' --sha '$EXPECTED_BACKEND_SHA' --repository codewithjuber/mizan --research-dir /data/mizan/research --images-dir '$remote_dir'" </dev/null

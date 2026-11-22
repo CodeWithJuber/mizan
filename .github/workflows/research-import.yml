@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: mizan-production
@@ -15,7 +14,7 @@ concurrency:
 jobs:
   import:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/research-import-20261025'
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, x64, mizan]
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
@@ -37,7 +36,7 @@ jobs:
           assert re.fullmatch('[0-9a-f]{32}', value['key_id'])
           PY
       - name: Install SSH client
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Run pinned import without backend recreation
         env:
           SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
@@ -58,6 +57,6 @@ jobs:
           sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote/research_server_import.py' < '$remote/research-transfer.encrypted.json'" > research-import-receipt.jsonl || status=$?
           cat research-import-receipt.jsonl
           exit "$status"
-      - name: Store the research report on compute
+      - name: Keep the research report on the runner
         if: always()
-        run: python3 scripts/upload_ci_artifact.py research-import-receipt --optional research-import-receipt.jsonl
+        run: bash scripts/ci/keep-results.sh research-import-receipt --optional research-import-receipt.jsonl

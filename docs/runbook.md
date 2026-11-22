@@ -38,9 +38,9 @@ An administrator can also call `GET /api/doctor` for environment diagnostics. On
 
 **What already happened.** The script restores the previous images itself when a health check or the anonymous-401 check fails. Production is therefore on the last good release.
 
-1. Read the failed job's log. "Deployment did not pass health/auth checks; restoring previous images" means the new images started but were unhealthy.
+1. Read the failed job's log. "Deployment did not pass health/auth checks; restoring previous images" means the new images started but were unhealthy. "This runner has no images of <sha>" means the self-hosted runner's Docker lost them: re-run that commit's CI, then this deploy.
 2. Fix the cause on a branch and merge it. CI runs, and Deploy Production follows on its own.
-3. To redeploy the current `main` without a code change, for example after a transient registry or SSH failure, start **Actions → Deploy Production → Run workflow** on `main`. It deploys only the commit that is still the head of the branch.
+3. To redeploy the current `main` without a code change, for example after a transient SSH failure, start **Actions → Deploy Production → Run workflow** on `main`. It deploys only the commit that is still the head of the branch.
 
 ## Workspace runner not upgraded by a deploy
 
@@ -48,7 +48,7 @@ An administrator can also call `GET /api/doctor` for environment diagnostics. On
 
 **What already happened.** The new site is live and recorded in `deployed-sha`. On 75 the previous runner was restored (or never replaced) and verified: one-shot code runs, but anything the new runner adds (for example sandbox sessions) is still missing. The log names the failed stage, and for egress failures the hosts the proxy refused (`egress denied <host>`) or could not reach (`egress unreachable <host>`).
 
-1. Read the stage in the log. "Not enough free disk" or a pull failure changed nothing live; free space or retry. A failed sandbox session check (npm, PyPI, confinement) points at the worker daemon's outbound network or the egress proxy.
+1. Read the stage in the log. "Not enough free disk" or a failed image load changed nothing live; free space or retry. A failed sandbox session check (npm, PyPI, confinement) points at the worker daemon's outbound network or the egress proxy.
 2. Fix the cause and run **Deploy Production** again on `main`. The upgrade runs again; an interrupted restore (phase `upgrading` in `/var/lib/mizan-deploy/workspace-runner/state.json`) is finished first.
 3. **76 is an escalation.** The runner could not be verified, or its managed files changed outside the installer. Do not edit `state.json`, the override or `override.previous` by hand; read [runner-setup.md](runner-setup.md#upgrades-during-deployment) and escalate.
 
@@ -56,7 +56,7 @@ The chat answers "The private runner on this server predates sandbox sessions" (
 
 ## A deployment passed but the release is bad
 
-**Preferred: revert through `main`.** Revert the commit (`git revert <sha>`), open a pull request and merge it. CI publishes the images and Deploy Production ships them, with the usual checks.
+**Preferred: revert through `main`.** Revert the commit (`git revert <sha>`), open a pull request and merge it. CI builds the images on the runner and Deploy Production sends them to the host, with the usual checks.
 
 **Emergency: restore the previous images on the host.** Each deployment keeps the images it replaced in `/var/lib/mizan-deploy/rollback.yml`. This repeats the script's own `rollback()`:
 

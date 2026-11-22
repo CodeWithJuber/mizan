@@ -133,7 +133,7 @@ consistency and efficiency when contributing to `mizan`.
 | `make lint`                   | Lint sources and tests (`ruff check backend/ tests/`)    |
 | `make format`                 | `ruff format` + `ruff check --fix`                       |
 | `make typecheck`              | `mypy backend/ --ignore-missing-imports`                 |
-| `make check`                  | Run lint + typecheck + test                              |
+| `make check`                  | Run the billing guard + lint + typecheck + test          |
 | `ruff format --check backend/ nlp/ tests/` | Verify formatting as CI does (line-length 100) |
 | `npm run typecheck` / `lint` / `test` / `build` / `size` / `e2e` | Frontend checks (in `frontend/`) |
 | `python scripts/api_reference.py` | Regenerate the API reference after adding a route    |

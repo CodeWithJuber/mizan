@@ -362,7 +362,7 @@ make test           # pytest tests/
 make lint           # ruff check backend/ tests/
 make format         # ruff format + safe fixes
 make typecheck      # mypy backend/
-make check          # lint + typecheck + test
+make check          # billing guard + lint + typecheck + test
 make build          # build the Python package
 ```
 

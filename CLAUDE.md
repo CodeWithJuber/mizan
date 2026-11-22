@@ -20,7 +20,8 @@ make serve          # Backend only (uvicorn, --reload, port 8000)
 make cli            # Interactive CLI chat (mizan chat)
 make test           # pytest tests/ -v
 make test-cov       # pytest with coverage (term + html)
-make check          # lint + typecheck + test (full pipeline)
+make check          # billing guard + lint + typecheck + test (full pipeline)
+make no-github-billing  # Fail if a workflow uses something GitHub bills for
 make lint           # ruff check backend/ tests/
 make format         # ruff format + ruff check --fix
 make typecheck      # mypy backend/ --ignore-missing-imports
@@ -156,10 +157,10 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 
 - pytest with asyncio auto mode; tests in `tests/` (agents, API, memory, QCA, security, router, task_queue, learner, e2e — many `*_comprehensive.py`).
 - Ruh model has its own tests in `ruh_model/tests/`.
-- Run `make check` for the full lint + typecheck + test pipeline before pushing.
+- Run `make check` for the full billing guard + lint + typecheck + test pipeline before pushing.
 - Frontend (`cd frontend`): `npm run typecheck`, `npm run lint` (oxlint with a warning cap, then `scripts/color-ratchet.mjs`), `npm test` (Vitest, `src/**/*.spec.ts[x]`), `npm run test:utils` (the older node-script tests), `npm run build`, `npm run size` (`.size-limit.json` budgets), `npm run e2e` (Playwright, desktop + phone, against `e2e/mock-server.mjs`: no backend or model; `SCREENSHOTS=1 npx playwright test screens` saves screenshots).
-- Pre-commit hook runs ruff (`.pre-commit-config.yaml`).
-- CI: `.github/workflows/` — `ci.yml`, `pr-check.yml`, `release.yml`, `auto-release.yml`, `docs.yml`.
+- Pre-commit hooks run ruff and the billing guard on workflow changes (`.pre-commit-config.yaml`).
+- CI: `.github/workflows/` — `ci.yml`, `pr-check.yml`, `release.yml`, `auto-release.yml`, `docs.yml`, `deploy.yml` and the `ops/*` operations. Every job runs on the owner's self-hosted runner, `runs-on: [self-hosted, linux, x64, mizan]` written literally; never add a GitHub-hosted runner, an artifact, a cache, Pages, CodeQL or a ghcr.io login/push (`scripts/ci/no-github-billing.sh`: the first CI job, `make check`, pre-commit). Outputs go to `$CI_RESULTS_DIR` via `scripts/ci/keep-results.sh`; production images go from the runner's Docker to the server over SSH (`docs/ci-artifacts.md`, `docs/deployment.md`).
 
 ## Security Notes
 

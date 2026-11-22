@@ -89,7 +89,7 @@ git checkout -b feature/your-feature-name
 ### 3. Run Checks
 
 ```bash
-make check  # Runs lint + typecheck + tests
+make check  # Runs the billing guard + lint + typecheck + tests
 ```
 
 Or individually:
@@ -102,7 +102,7 @@ make test-cov   # Run tests with coverage (term + html)
 make typecheck  # mypy backend/ --ignore-missing-imports
 ```
 
-CI also lints and format-checks `nlp/` (`ruff check backend/ nlp/ tests/`, `ruff format --check backend/ nlp/ tests/`) and checks the frontend:
+CI runs on the owner's self-hosted runner (label `mizan`) and must use nothing GitHub bills for: no GitHub-hosted runner, artifact, cache, Pages or ghcr.io push ([docs/ci-artifacts.md](docs/ci-artifacts.md)). `make check` runs that guard too. CI also lints and format-checks `nlp/` (`ruff check backend/ nlp/ tests/`, `ruff format --check backend/ nlp/ tests/`) and checks the frontend:
 
 ```bash
 cd frontend

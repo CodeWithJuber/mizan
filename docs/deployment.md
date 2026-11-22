@@ -2,34 +2,41 @@
 
 When production misbehaves or a deployment fails, follow the [runbook](runbook.md). This page explains how deployment works.
 
-Mizan production image publishing and deployment support both private and
+Mizan production image builds and deployment support both private and
 public repositories. Keep the repository's intended visibility; it does not
-need to be public to deploy. These workflows use standard `ubuntu-24.04`
-GitHub-hosted runners. Private-repository usage follows the account's Actions
-allowance and billing settings; no larger or GPU GitHub runners are used.
-The existing VPS and RunPod services retain their separate costs.
+need to be public to deploy. Every workflow runs on the owner's self-hosted
+runner labelled `mizan` and uses nothing GitHub bills for
+([ci-artifacts.md](ci-artifacts.md)). The existing VPS and RunPod services
+retain their separate costs.
 
-CI publishes commit-tagged images to GHCR with its repository-scoped
-`GITHUB_TOKEN` and `packages: write`. Deployment uses `packages: read` and
-passes its short-lived token over the existing verified SSH connection for
-the server's registry login. No anonymous registry access or public repository
-is required. Existing package access must permit this repository's Actions
-token; package visibility is configured separately from repository visibility.
-See [GitHub's Container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry).
+No registry is involved. CI's `production-images` job builds the commit's
+backend, frontend, `workspace-runtime`, `workspace-runner` and
+`workspace-browser` images into the runner's own Docker. Deploy Production,
+on the same runner, sends them to the server over its verified SSH connection
+(`docker save | gzip | ssh … docker load`). The images keep the names the
+server's deploy state and runner installer already record
+(`ghcr.io/codewithjuber/mizan/<image>:<sha>`), but they are never pushed to or
+pulled from ghcr.io: GitHub Packages is billed for a private repository. The
+runner keeps only the newest commit's images; the server keeps the images it
+runs and the ones a rollback needs. If the runner no longer has a commit's
+images (its Docker was reset), re-run that commit's CI before deploying it.
 
 Each deployed commit gets a 30-day receipt under `/var/lib/mizan-deploy/receipts/<repository-id>/<run-id>-<attempt>.json`. After a successful deployment, Auto Release reads the matching receipt over pinned SSH, verifies its digest and compares the recorded commit with the branch tip. Earlier deployment runs read their archived receipt from the same compute host, verifying GitHub's original digest and the triggering attempt's start time.
 
 The separate Auto Release workflow retains its public-repository restriction;
 it is not required to publish production images or deploy the application.
 
-After a main/master merge, CI validates the source and publishes production
+After a main/master merge, CI validates the source and builds the production
 backend/frontend images tagged with the exact commit, together with the
 `workspace-runtime`, `workspace-runner` and `workspace-browser` (Shahid)
-images. `Deploy Production`
+images, on the runner. `Deploy Production`
 runs only after that CI succeeds, skips an obsolete commit, checks the pinned
 SSH host key, uploads `deploy_production.sh` and `setup_workspace_runner.py`
 into a fresh root-only `/var/lib/mizan-deploy/release.XXXXXXXX` directory
-(removed afterwards), and updates the existing Compose project's backend/frontend.
+(removed afterwards), loads the backend and frontend images into the server's
+Docker, sends the workspace images there as archives only when the managed
+runner will move to them (`setup_workspace_runner.py --needed-images`), and
+updates the existing Compose project's backend/frontend.
 The running reverse proxy, database volume, host configuration and `.env`
 are preserved. Nginx reloads to resolve the new container addresses as soon
 as they start (and again after the checks), so the restart window is the old
@@ -48,8 +55,9 @@ proxy, confinement) before keeping them; a failure restores and verifies the
 previous runner ([runner-setup.md](runner-setup.md#upgrades-during-deployment)).
 The new site stays live either way: the run records the release and then fails
 its last step, "Workspace runner", so a runner that was not upgraded is visible.
-The job allows 45 minutes: the lock wait, the site deploy and the runner's
-15-minute upgrade with its 10-minute restore.
+The job allows 45 minutes: sending the images, the lock wait, the site deploy
+and the runner's 15-minute upgrade with its 10-minute restore. The runner needs
+outbound SSH to the server for this, as it does for the operations workflows.
 
 Required Mizan Actions secrets:
 
@@ -79,9 +87,12 @@ secrets. The endpoint defaults to `your-endpoint-id`, or set repository variable
 the endpoint's template to that image, preserving resource limits and keeping
 minimum workers at zero. A failed smoke check restores the previous template.
 
-Docs are validated on their relevant changes. Set `ENABLE_GITHUB_PAGES=true`
-only after enabling the repository's Pages site with GitHub Actions as its
-source. PyPI publication similarly requires explicit
-`ENABLE_PYPI_PUBLISH=true` and a configured trusted publisher. Both are
-repository variables, and the Pages deployment and the PyPI publish job also
-run only for a public repository.
+Docs are validated on their relevant changes, on the runner. They are no longer
+deployed to GitHub Pages, which needs a paid plan for a private repository;
+`ENABLE_GITHUB_PAGES` is no longer read. PyPI publication requires explicit
+`ENABLE_PYPI_PUBLISH=true` (a repository variable) and a configured trusted
+publisher, and runs only for a public repository. The release workflow mints
+the short-lived PyPI token from GitHub's OIDC token itself and uploads with
+`twine`, because `pypa/gh-action-pypi-publish` runs in a Docker container
+action the self-hosted runner cannot mount its workspace into. A release builds
+its Docker images as a check but no longer publishes them to ghcr.io.
