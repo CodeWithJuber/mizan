@@ -27,7 +27,7 @@ Read in this order. Each step takes a few minutes.
 
 ### Prerequisites
 
-- Python 3.11+ (CI tests 3.11, 3.12, 3.13 and 3.14)
+- Python 3.11+ (CI tests 3.13 on every pull request, and 3.11, 3.12, 3.13 and 3.14 every week)
 - Node.js 24 LTS and npm 11+ (for the frontend)
 - Git
 

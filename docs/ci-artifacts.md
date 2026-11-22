@@ -25,6 +25,18 @@ It is GitHub's own runner image (Ubuntu 24.04, `python3` 3.12, Docker CLI with b
 - **Kept between runs, so free caching:** setup-python's interpreters and setup-node's Node, the pip and npm caches, Playwright's browsers, Docker images. A Python job therefore makes a fresh virtual environment in `$RUNNER_TEMP` after setup-python ("Fresh Python environment"), so it sees only what it installs, as on a new machine.
 - **No GPU.** `ruh-training.yml` runs only CPU checks; real training runs on Kaggle or RunPod.
 
+## Checked once
+
+The runner runs one job at a time, so CI does not check the same thing twice.
+
+- **The same files.** `scripts/ci/ci-verified.sh` (from the github-runners kit, unchanged) keeps a small record in `$CI_RESULTS_DIR/verified` when every checking job of `ci.yml` has passed (its last job, `passed`). The first job asks it whether the files of this run, as one Git tree, have passed before. A pull request is tested as its merge into `main`, so the push that follows the merge has the same tree when `main` did not move in between. Then the checking jobs are skipped and the push goes straight to `production-images`, which Deploy Production waits for. In every other case everything runs.
+- **To check anyway:** start CI with **Run workflow**, or re-run it. The weekly run also checks in full. A record counts for 14 days.
+- **One Python on pull requests and pushes:** 3.13, which the production image runs. All four supported versions (3.11 to 3.14) run on Saturdays at 02:17 UTC and when CI is started by hand, so start it by hand before a release.
+- **No second pull request workflow.** `pr-check.yml` ran lint, the tests and the frontend build that `ci.yml` already ran. On a pull request `ci.yml`'s jobs carry its names (`Lint`, `Test`, `Frontend Build`) for a branch protection rule.
+- **A new checking job** is added to the `needs` of `passed`, or code could be recorded as passed without it.
+
+What this gives up: coverage is uploaded from pull requests and from pushes that check, not from a push whose files had already passed; a break that only an older or newer Python shows is found by the weekly run, not on the pull request; and a pass is about the files, so a dependency that changed after it is also found by the weekly run.
+
 ## Where the output is
 
 A job keeps its files with `scripts/ci/keep-results.sh NAME [--optional] [--base DIR] PATH...`. They go to
@@ -37,7 +49,7 @@ on the server's disk, private to this repository and pruned after 14 days. The j
 
 | NAME | Written by | When |
 | --- | --- | --- |
-| `dist` | `ci.yml`, Build package | every run: the wheel and sdist |
+| `dist` | `ci.yml`, Build package | every run that checks (see Checked once): the wheel and sdist |
 | `playwright-report` | `ci.yml`, frontend | when the browser tests fail |
 | `research-import-public-key`, `research-import-receipt` | the research-import operations | when they run |
 
