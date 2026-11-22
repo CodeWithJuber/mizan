@@ -95,8 +95,14 @@ jobs:
         run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: Install dependencies
         run: pip install -e ".[dev,nlp,knowledge]"
+      # Six workers, whole modules together (module and class fixtures stay on one worker).
+      # The learning-cycle files run their stages as subprocesses with fixed time limits, so
+      # they run alone afterwards, when no other worker is loading the machine.
       - name: Run tests
-        run: pytest tests/ -v --tb=short --cov=backend --cov-report=xml
+        run: |
+          learning="tests/test_owned_learning_cycle.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_service.py"
+          pytest tests/ -v --tb=short -n 6 --dist loadscope $(printf -- '--ignore=%s ' $learning) --cov=backend
+          pytest $learning -v --tb=short --cov=backend --cov-append --cov-report=xml
       - name: Upload coverage
         if: matrix.python-version == '3.13'
         uses: codecov/codecov-action@v7
