@@ -25,19 +25,26 @@ It is GitHub's own runner image (Ubuntu 24.04, `python3` 3.12, Docker CLI with b
 - **Kept between runs, so free caching:** setup-python's interpreters and setup-node's Node, the pip and npm caches, Playwright's browsers, Docker images. A Python job therefore makes a fresh virtual environment in `$RUNNER_TEMP` after setup-python ("Fresh Python environment"), so it sees only what it installs, as on a new machine.
 - **No GPU.** `ruh-training.yml` runs only CPU checks; real training runs on Kaggle or RunPod.
 
-## Checked once
+## What a run checks
 
-CI does not check the same thing twice.
+Each change gets its heavy jobs once, on `main` after the merge. Agents push a pull request many times, so its runs stay quick. `scripts/ci/plan.py`, in the first job of `ci.yml`, decides what a run checks (`tests/test_ci_plan.py` pins its rules).
 
-- **The same files.** The first job of `ci.yml` asks [`skip-duplicate-actions`](https://github.com/fkirc/skip-duplicate-actions) (open source, pinned to a commit) whether an earlier run of this workflow has passed with the files of this run, as one Git tree. It reads GitHub's own list of runs, so nothing is kept on the runner. When a pull request that was up to date with `main` is merged, the push has the tree the pull request had. Then the checking jobs are skipped and the push goes straight to `production-images`, which Deploy Production waits for. In every other case everything runs: a pull request that was behind `main` is checked again after its merge, because the merge made files no run has seen.
-- **Only a push can skip.** A pull request always checks in full: it is tested as its merge into `main`, which the action does not see.
-- **To check a push anyway:** start CI with **Run workflow**. The weekly run also checks in full. A re-run asks again and skips again. Only the latest 100 runs of CI are looked at.
-- **If the action fails,** everything runs: its step may fail, and a missing answer is not a pass.
-- **One Python on pull requests and pushes:** 3.13, which the production image runs. All four supported versions (3.11 to 3.14) run on Saturdays at 02:17 UTC and when CI is started by hand, so start it by hand before a release.
-- **No second pull request workflow.** `pr-check.yml` ran lint, the tests and the frontend build that `ci.yml` already ran. On a pull request `ci.yml`'s jobs carry its names (`Lint`, `Test`, `Frontend Build`) for a branch protection rule.
-- **A new checking job** gets `if: needs.billing.outputs.verified != 'true'`, like the others, or it runs again on files that already passed.
+| | Pull request (every push to it) | Push to `main` (a merge) | Weekly, and **Run workflow** |
+| --- | --- | --- | --- |
+| Typecheck (`mypy`, frontend `tsc`) | yes | yes | yes |
+| Unit tests | the ones its change reaches | all | all, on Python 3.11 to 3.14 |
+| Lint (`ruff`, `oxlint`, colour ratchet) | no | yes | yes |
+| Heavy jobs | no | the ones the merge reaches | all |
 
-What this gives up: coverage is uploaded from pull requests and from pushes that check, not from a push whose files had already passed; a break that only an older or newer Python shows is found by the weekly run, not on the pull request; and a pass is about the files, so a dependency that changed after it is also found by the weekly run.
+- **Unit tests a pull request runs.** Python: the test files it changes, the test files whose imports reach a changed module (transitively, read from the source), and the test files that name a changed file. `ruh`, `bayan` and the own-research invariants run when the change reaches their tests. Vitest runs `--changed` against `main`, and every spec when the frontend's package or build configuration changes; `npm run test:utils` runs when the frontend changes. Every Python test runs when the change touches shared code (`tests/conftest.py` and what it imports, `backend/core/`, the settings, the providers, `api/main.py`, `agents/base.py`), data under `backend/`, configuration, dependencies or a workflow, deletes a module, or changes a module no test reaches. Most backend modules are imported by what `conftest.py` imports, so a backend change usually runs them all.
+- **Heavy jobs** are the Docker build, the browser sandbox (Shahid), the package build, the frontend build with its size budget and browser tests, and `coding-workspace.yml`. On `main` the plan compares the merge with `main` before it (`github.event.before`) and runs the ones whose inputs changed: the images' `COPY` lines and build contexts, the wheel's packages, `frontend/`. A change to `ci.yml` or `scripts/ci/`, a path outside every known place, or a push with no commit before it runs them all. They wait for the quick jobs, so a cheap failure stops them. The frontend's heavy steps run after that job's own checks, which spares a second `npm ci`.
+- **Production images** are built on every push to `main`, as before: Deploy Production sends them. The provenance preflight runs with them.
+- **The same files.** The first job also asks [`skip-duplicate-actions`](https://github.com/fkirc/skip-duplicate-actions) (open source, pinned to a commit) whether an earlier run of this workflow has passed with the files of this run, as one Git tree. The plan trusts that pass only from a full run: a push to `main`, the weekly run or a run by hand. A pull request's run checks only part, so its pass never counts. When one does count, the checking jobs are skipped and the push goes straight to `production-images`. If the action fails, everything runs: a missing answer is not a pass. Only the latest 100 runs of CI are looked at.
+- **To check a branch in full before merging:** `gh workflow run ci.yml --ref <branch>`, which also lets the merge skip to the production images when the branch was up to date with `main`. Start it by hand before a release too: it tests all four Pythons.
+- **No second pull request workflow.** `pr-check.yml` ran lint, the tests and the frontend build that `ci.yml` already ran. On a pull request `ci.yml`'s jobs carry its names (`Lint`, `Test`, `Frontend Build`) for a branch protection rule; a job the plan skips counts as passed.
+- **A new job** reads its line from the plan: a quick check gets `if: needs.billing.outputs.verified != 'true'` (or its own plan output), a heavy one `needs:` the quick jobs and `if: ${{ !cancelled() && !failure() && needs.billing.outputs.<job> == 'true' }}`, with its inputs added to `HEAVY` in `scripts/ci/plan.py`.
+
+What this gives up: lint findings and the heavy jobs' failures show up on `main` after the merge, not on the pull request, and a failure there holds the deploy back until a fix is merged; a test the import graph misses (an import by a computed name) is caught on `main`; coverage is uploaded only from runs of the whole suite; a break that only an older or newer Python shows is found by the weekly run; and a pass is about the files, so a dependency that changed after it is also found by the weekly run.
 
 ## Where the output is
 
@@ -51,7 +58,7 @@ on the server's disk, private to this repository and pruned after 14 days. The j
 
 | NAME | Written by | When |
 | --- | --- | --- |
-| `dist` | `ci.yml`, Build package | every run that checks (see Checked once): the wheel and sdist |
+| `dist` | `ci.yml`, Build package | a push to `main` that changed the package, the weekly run and a run by hand (see What a run checks): the wheel and sdist |
 | `playwright-report` | `ci.yml`, frontend | when the browser tests fail |
 | `research-import-public-key`, `research-import-receipt` | the research-import operations | when they run |
 
