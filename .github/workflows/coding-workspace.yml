@@ -1,20 +1,8 @@
 name: Coding Workspace Isolation
 
+# Heavy (two images, real sandboxes): it runs once per change, on main after the merge, when the
+# merge changed what it tests (docs/ci-artifacts.md, What a run checks), and by hand.
 on:
-  pull_request:
-    paths:
-      - 'backend/workspace/**'
-      - 'backend/api/coding_workspace.py'
-      - 'backend/api/workspace_sessions.py'
-      - 'backend/api/artifacts.py'
-      - 'backend/skills/builtin/coding_workspace.py'
-      - 'docker/Dockerfile.workspace-*'
-      - 'tests/test_coding_workspace.py'
-      - 'tests/test_workspace_sessions.py'
-      - 'scripts/build_workspace_image.sh'
-      - 'tests/test_workspace_image_build.py'
-      - 'scripts/setup_workspace_runner.py'
-      - '.github/workflows/coding-workspace.yml'
   push:
     branches: [main]
     paths:
