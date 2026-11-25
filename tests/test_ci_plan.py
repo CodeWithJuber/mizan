@@ -250,7 +250,7 @@ def test_only_a_full_run_lets_main_skip_its_checks():
     duplicate = next(step for step in steps if "skip-duplicate-actions" in step.get("uses", ""))
     assert "pull_request" in duplicate["with"]["do_not_skip"]
     # The plan reads which run passed these files: a pull request's partial run never counts.
-    planned = next(step for step in steps if "scripts/ci/plan.py" in step.get("run", ""))
+    planned = next(step for step in steps if step.get("id") == "plan")
     assert "skipped_by" in planned["env"]["SKIPPED_BY"]
     assert JOBS["billing"]["outputs"]["verified"] == "${{ steps.plan.outputs.verified }}"
 
@@ -259,3 +259,33 @@ def test_the_coding_workspace_isolation_runs_once_on_main_after_the_merge():
     triggers = yaml.safe_load((ROOT / ".github/workflows/coding-workspace.yml").read_text())[True]
     assert "pull_request" not in triggers
     assert triggers["push"]["branches"] == ["main"] and triggers["push"]["paths"]
+
+
+def test_main_is_compared_with_the_last_commit_a_full_run_passed():
+    # Newest first, as GitHub lists them. A pull request's pass checks only part, so it never counts.
+    runs = {
+        "workflow_runs": [
+            {"event": "pull_request", "conclusion": "success", "head_sha": "pr"},
+            {"event": "push", "conclusion": "failure", "head_sha": "failed"},
+            {"event": "push", "conclusion": "success", "head_sha": "passed"},
+            {"event": "schedule", "conclusion": "success", "head_sha": "weekly"},
+        ]
+    }
+    assert ci_plan.last_passed(runs) == "passed"
+    assert ci_plan.last_passed({"workflow_runs": runs["workflow_runs"][:2]}) is None
+    assert ci_plan.last_passed({}) is None
+    # Nothing found: the step fails, BASE stays empty and the plan runs every heavy job.
+    lookup = subprocess.run(
+        ["python3", str(ROOT / "scripts/ci/plan.py"), "--last-passed"],
+        input='{"workflow_runs": []}',
+        capture_output=True,
+        text=True,
+    )
+    assert lookup.returncode == 1 and lookup.stdout == ""
+    assert ci_plan.changed_files("", ROOT) is None
+    steps = JOBS["billing"]["steps"]
+    green = next(step for step in steps if step.get("id") == "green")
+    assert "status=success" in green["run"] and "--last-passed" in green["run"]
+    assert green["continue-on-error"] is True
+    planned = next(step for step in steps if step.get("id") == "plan")
+    assert planned["env"]["BASE"].endswith("|| steps.green.outputs.base }}")

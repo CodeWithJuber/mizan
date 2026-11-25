@@ -4,15 +4,17 @@
     python3 scripts/ci/plan.py
 
 Standard library only. It reads GITHUB_EVENT_NAME; BASE, the commit the change is compared with
-(a pull request: its merge commit's first parent, main as it is; a push to main: main before the
-push, github.event.before); and SHOULD_SKIP and SKIPPED_BY, skip-duplicate-actions' answer for
+(a pull request: its merge commit's first parent, main as it is; a push to main: the last commit a
+full run of this workflow passed on main, which `--last-passed` picks from GitHub's list of its
+successful runs); and SHOULD_SKIP and SKIPPED_BY, skip-duplicate-actions' answer for
 this run's files. It prints key=value lines and appends them to $GITHUB_OUTPUT.
 
 Each change gets its heavy jobs once, on main after the merge:
 - A pull request gets typecheck and the unit tests its change reaches. No lint, no heavy job:
   agents push a pull request many times.
-- A push to main gets lint, typecheck and every unit test, and the heavy jobs whose inputs the
-  merge changed. A path the plan cannot place, or a push with no commit before it, runs them all.
+- A push to main gets lint, typecheck and every unit test, and the heavy jobs whose inputs changed
+  since the last commit main passed, so a heavy job that failed on one merge runs again on the next.
+  A path the plan cannot place, or a push with no passed commit to compare with, runs them all.
 - The weekly run and a run by hand check everything.
 - A push to main goes straight to the production images only when an earlier full run (a push,
   the weekly run or a run by hand) passed with the same files. A pull request's run checks only
@@ -355,7 +357,26 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
     return result | {job: flag[job in reached] for job in HEAVY}
 
 
+def last_passed(answer: dict) -> str | None:
+    """The newest commit a full run passed, from GitHub's list of this workflow's runs, newest first."""
+    for run in answer.get("workflow_runs") or []:
+        if (
+            run.get("event") in FULL_RUNS
+            and run.get("conclusion") == "success"
+            and run.get("head_sha")
+        ):
+            return run["head_sha"]
+    return None
+
+
 def main() -> int:
+    if sys.argv[1:] == ["--last-passed"]:
+        sha = last_passed(json.load(sys.stdin))
+        if sha is None:
+            print("No full run of this workflow passed on this branch", file=sys.stderr)
+            return 1
+        print(sha)
+        return 0
     event = os.environ.get("GITHUB_EVENT_NAME", "")
     base = os.environ.get("BASE", "")
     passed_by = None

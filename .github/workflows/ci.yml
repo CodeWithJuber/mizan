@@ -5,8 +5,8 @@
 # Each change gets its heavy jobs once, on main after the merge (docs/ci-artifacts.md, What a run
 # checks), and scripts/ci/plan.py, in the first job, says what this run checks:
 # - a pull request: typecheck and the unit tests its change reaches. No lint, no heavy job.
-# - a push to main: lint, typecheck, every unit test, and the heavy jobs whose inputs the merge
-#   changed compared with main before it (all of them when it cannot place the change).
+# - a push to main: lint, typecheck, every unit test, and the heavy jobs whose inputs changed
+#   since the last commit this workflow passed on main (all of them when it cannot place the change).
 # - the weekly run and a run by hand: everything, on every supported Python.
 # A push to main goes straight to the production images when an earlier full run (never a pull
 # request's) passed with the same files.
@@ -70,18 +70,33 @@ jobs:
           # does not see (it goes by the branch's last commit), so a pull request always runs its
           # checks, as do the weekly run and a run started by hand.
           do_not_skip: '["pull_request", "workflow_dispatch", "schedule", "merge_group"]'
-      # A push to main is compared with main before it. Without that commit (a new branch, a
-      # force-push), the plan cannot place the change and runs every heavy job.
-      - name: Fetch main before the push
+      # A push to main is compared with the last commit a full run of this workflow passed on main
+      # (GitHub's record of its runs), not only with main before the push: when a merge's heavy job
+      # fails, the next push checks that merge's change again, so a passing run, which Deploy
+      # Production follows, never ships code a failed run did not clear. Without that commit (the
+      # lookup failed, none of the last 100 runs passed, it cannot be fetched), the plan cannot
+      # place the change and runs every heavy job.
+      - name: Fetch the last commit main passed
+        id: green
         if: github.event_name == 'push'
         continue-on-error: true
         env:
-          BEFORE: ${{ github.event.before }}
-        run: git fetch --no-tags --depth=1 origin "$BEFORE"
+          GH_TOKEN: ${{ github.token }}
+          RUNS: ${{ github.api_url }}/repos/${{ github.repository }}/actions/workflows/ci.yml/runs
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          sha=$(curl -fsS --retry 2 --get -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" --data-urlencode "branch=$BRANCH" \
+              -d status=success -d exclude_pull_requests=true -d per_page=100 "$RUNS" \
+            | python3 scripts/ci/plan.py --last-passed)
+          git fetch --no-tags --depth=1 origin "$sha"
+          echo "base=$sha" >> "$GITHUB_OUTPUT"
+          echo "Compared with $sha, the last commit this workflow passed on $BRANCH."
       - name: What does this run check?
         id: plan
         env:
-          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || github.event.before }}
+          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || steps.green.outputs.base }}
           SHOULD_SKIP: ${{ steps.duplicate.outputs.should_skip }}
           SKIPPED_BY: ${{ steps.duplicate.outputs.skipped_by }}
         run: python3 scripts/ci/plan.py
