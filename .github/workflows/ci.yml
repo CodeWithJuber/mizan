@@ -8,8 +8,9 @@
 # - a push to main: typecheck and every unit test, then the production images Deploy Production
 #   sends.
 # - the weekly run and a run by hand: typecheck and every unit test, on every supported Python.
-# The runner is a small server (4 shared vCPU, 8 GB), so no run lints, starts a browser or builds
-# anything a deploy does not ship. Those run by hand (docs/ci-artifacts.md, Not in CI).
+# The runner is a small server (4 shared vCPU, 8 GB), so no run lints, starts a browser, installs
+# torch to test or train a model, or builds anything a deploy does not ship. Those run by hand
+# (docs/ci-artifacts.md, Not in CI).
 # A push to main goes straight to the production images when an earlier full run (never a pull
 # request's) passed with the same files.
 name: CI
@@ -40,8 +41,6 @@ jobs:
     outputs:
       verified: ${{ steps.plan.outputs.verified }}
       pytest: ${{ steps.plan.outputs.pytest }}
-      ruh: ${{ steps.plan.outputs.ruh }}
-      own: ${{ steps.plan.outputs.own }}
       bayan: ${{ steps.plan.outputs.bayan }}
       vitest: ${{ steps.plan.outputs.vitest }}
       utils: ${{ steps.plan.outputs.utils }}
@@ -104,48 +103,27 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev,nlp,knowledge]"
       # Six workers, whole modules together (module and class fixtures stay on one worker).
-      # The learning-cycle files run their stages as subprocesses with fixed time limits, so
-      # they run alone afterwards, when no other worker is loading the machine.
+      # The learning-cycle files run the owned model's training stages, so CI leaves them out
+      # (scripts/ci/plan.py, NOT_IN_CI; docs/ci-artifacts.md, Not in CI). A pull request's plan
+      # never names them.
       - name: Run tests
         env:
           TESTS: ${{ needs.billing.outputs.pytest }}
         run: |
-          learning="tests/test_owned_learning_cycle.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_service.py"
           if [ "$TESTS" = all ]; then
-            pytest tests/ -v --tb=short -n 6 --dist loadscope $(printf -- '--ignore=%s ' $learning) --cov=backend
-            pytest $learning -v --tb=short --cov=backend --cov-append --cov-report=xml
+            learning="tests/test_owned_learning_cycle.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_service.py"
+            pytest tests/ -v --tb=short -n 6 --dist loadscope $(printf -- '--ignore=%s ' $learning) --cov=backend --cov-report=xml
             exit 0
           fi
-          # A pull request: the test files its change reaches (scripts/ci/plan.py), the same way.
+          # A pull request: the test files its change reaches (scripts/ci/plan.py).
           [ -n "$TESTS" ] || { echo '::error::The plan named no tests'; exit 1; }
-          parallel=() alone=()
-          for file in $TESTS; do
-            case " $learning " in *" $file "*) alone+=("$file") ;; *) parallel+=("$file") ;; esac
-          done
-          if ((${#parallel[@]})); then pytest "${parallel[@]}" -v --tb=short -n 6 --dist loadscope; fi
-          if ((${#alone[@]})); then pytest "${alone[@]}" -v --tb=short; fi
+          pytest $TESTS -v --tb=short -n 6 --dist loadscope
       # Coverage of the whole suite only: a pull request's selection would read as a drop.
       - name: Upload coverage
         if: matrix.python-version == '3.13' && needs.billing.outputs.pytest == 'all'
         uses: codecov/codecov-action@v7
         with:
           files: coverage.xml
-
-  own-research:
-    name: Own architecture research invariants
-    runs-on: [self-hosted, linux, x64, mizan]
-    needs: billing
-    if: needs.billing.outputs.own == 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
-      - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
-      - run: pytest tests/test_mizan_owned*.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_cycle.py tests/test_owned_learning_service.py research/own_model/tests -q
 
   # Typecheck runs on every run, pull requests included.
   typecheck:
@@ -161,21 +139,6 @@ jobs:
         run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install -e ".[dev,nlp,knowledge]"
       - run: PYTHONPATH=backend:. mypy backend/
-
-  ruh:
-    runs-on: [self-hosted, linux, x64, mizan]
-    needs: billing
-    if: needs.billing.outputs.ruh == 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
-      - run: pip install -e ".[dev,nlp,knowledge]" datasets
-      - run: PYTHONPATH=backend:. pytest ruh_model/tests/ -q
 
   bayan:
     runs-on: [self-hosted, linux, x64, mizan]
@@ -253,7 +216,7 @@ jobs:
     # that passed a full run before) does not hold it back, and one that failed does.
     if: ${{ !cancelled() && !failure() && github.event_name == 'push' }}
     runs-on: [self-hosted, linux, x64, mizan]
-    needs: [billing, test, typecheck, ruh, bayan, frontend, own-research, provenance]
+    needs: [billing, test, typecheck, bayan, frontend, provenance]
     permissions:
       contents: read
     steps:

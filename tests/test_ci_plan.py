@@ -1,6 +1,7 @@
 """What one CI run checks (scripts/ci/plan.py; docs/ci-artifacts.md, What a run checks)."""
 
 import importlib.util
+import re
 import subprocess
 from pathlib import Path
 
@@ -12,7 +13,7 @@ SPEC = importlib.util.spec_from_file_location("ci_plan", ROOT / "scripts/ci/plan
 ci_plan = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ci_plan)
 
-SUITES = ("ruh", "own", "bayan", "utils")
+SUITES = ("bayan", "utils")
 
 
 @pytest.fixture
@@ -105,7 +106,7 @@ def test_a_pull_request_runs_a_changed_test_and_the_tests_that_name_a_changed_fi
 def test_a_pull_request_runs_every_unit_test_when_the_change_cannot_be_placed(repo, path):
     result = pull_request(["docs/other.md", path], repo)
     assert result["pytest"] == "all"
-    assert all(result[suite] == "true" for suite in ("ruh", "own", "bayan"))
+    assert result["bayan"] == "true"
     assert result["provenance"] == "false"
 
 
@@ -114,18 +115,22 @@ def test_a_pull_request_without_a_diff_runs_every_unit_test(repo):
     assert result["pytest"] == "all" and result["vitest"] == "all" and result["utils"] == "true"
 
 
-def test_the_other_unit_test_jobs_run_on_a_pull_request_only_when_it_reaches_them(repo):
-    ruh = pull_request(["ruh_model/model.py"], repo)
-    assert ruh["ruh"] == "true" and ruh["own"] == "false" and ruh["pytest"] == "none"
-    own = pull_request(["backend/mizan_owned/cycle.py"], repo)
-    assert own["own"] == "true"
-    assert selected(own) == ["tests/test_owned_learning_cycle.py", "tests/test_scan.py"]
-    assert pull_request(["research/own_model/tests/test_own.py"], repo)["own"] == "true"
+def test_a_pull_request_never_selects_the_model_and_training_tests(repo):
+    # They install torch or run the owned model's training stages (docs/ci-artifacts.md, Not in CI).
+    model = pull_request(["ruh_model/model.py"], repo)
+    assert model["pytest"] == "none" and model["bayan"] == "false"
+    owned = pull_request(["backend/mizan_owned/cycle.py"], repo)
+    assert selected(owned) == ["tests/test_scan.py"]  # not tests/test_owned_learning_cycle.py
+    assert pull_request(["research/own_model/tests/test_own.py"], repo)["pytest"] == "none"
+    assert pull_request(["tests/test_owned_learning_cycle.py"], repo)["pytest"] == "none"
+
+
+def test_bayan_runs_on_a_pull_request_only_when_it_reaches_it(repo):
     assert pull_request(["packages/bayan/src/bayan/__init__.py"], repo)["bayan"] == "true"
     # The vendored copy must match ruh_model/tokenizer/ (packages/bayan/scripts/sync_vendor.py).
     tokenizer = pull_request(["ruh_model/tokenizer/bayan.py"], repo)
-    assert tokenizer["bayan"] == "true" and tokenizer["ruh"] == "true"
-    assert tokenizer["pytest"] == "none"
+    assert tokenizer["bayan"] == "true" and tokenizer["pytest"] == "none"
+    assert pull_request(["backend/leaf/words.py"], repo)["bayan"] == "false"
 
 
 def test_a_pull_request_runs_the_frontend_specs_its_change_reaches(repo):
@@ -194,7 +199,7 @@ def test_the_real_repository_places_a_frontend_change_and_a_test_change():
 
 # ci.yml acts on the plan. These pin what the plan cannot enforce by itself.
 JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
-QUICK = {"test", "typecheck", "ruh", "bayan", "frontend", "own-research"}
+QUICK = {"test", "typecheck", "bayan", "frontend"}
 
 
 def needs(job):
@@ -212,8 +217,8 @@ def test_the_production_images_wait_for_every_check_and_not_for_a_skipped_one():
 
 
 def test_each_job_runs_only_when_the_plan_says_so():
-    outputs = {"ruh": "ruh", "bayan": "bayan", "own-research": "own"}
-    outputs |= {"provenance": "provenance", "test": "pytest", "typecheck": "verified"}
+    outputs = {"bayan": "bayan", "provenance": "provenance", "test": "pytest"}
+    outputs["typecheck"] = "verified"
     for job, output in outputs.items():
         assert f"needs.billing.outputs.{output}" in JOBS[job]["if"], job
     # The first job passes on every answer the plan gives, and nothing else.
@@ -235,6 +240,26 @@ def test_ci_never_lints_or_starts_a_browser():
         text = workflow.read_text().lower()
         for tool in tools:
             assert tool not in text, (workflow.name, tool)
+
+
+def test_ci_never_installs_torch_or_runs_the_model_and_training_tests():
+    # The owner's decision of 26 Nov 2026 (docs/ci-artifacts.md, Not in CI).
+    assert not (ROOT / ".github/workflows/ruh-training.yml").exists()
+    assert not {"ruh", "own-research"} & set(JOBS)
+    for event in ("pull_request", "push", "schedule", "workflow_dispatch"):
+        assert not {"ruh", "own"} & set(ci_plan.plan(event, None, ROOT)), event
+    learning = [path for path in ci_plan.NOT_IN_CI if path.startswith("tests/")]
+    assert len(learning) == 3
+    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        jobs = yaml.safe_load(workflow.read_text())["jobs"].values()
+        for run in (step.get("run", "") for job in jobs for step in job.get("steps", [])):
+            for line in run.splitlines():
+                assert not ("pip install" in line and "torch" in line), (workflow.name, line)
+            assert "ruh_model/tests" not in run and "own_model/tests" not in run, workflow.name
+            # A run of the whole suite names the learning-cycle files only to leave them out.
+            for path in learning:
+                if path in run or re.search(r"\bpytest tests/(\s|$)", run):
+                    assert path in run and "--ignore" in run, (workflow.name, path)
 
 
 def test_ci_builds_only_what_deploy_production_ships():

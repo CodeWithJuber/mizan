@@ -16,8 +16,9 @@ $GITHUB_OUTPUT.
 - A push to main goes straight to the production images only when an earlier full run (a push,
   the weekly run or a run by hand) passed with the same files. A pull request's run checks only
   part, so its pass never counts.
-- The runner is a small server, so no run lints, starts a browser or builds anything a deploy does
-  not ship. Those run by hand (docs/ci-artifacts.md, Not in CI).
+- The runner is a small server, so no run lints, starts a browser, runs the model and training
+  tests (NOT_IN_CI) or builds anything a deploy does not ship. Those run by hand
+  (docs/ci-artifacts.md, Not in CI).
 
 The unit tests a pull request runs: the test files it changes, the test files whose imports reach
 a changed module (transitively, read from the source), and the test files that name a changed
@@ -65,13 +66,15 @@ EVERY_TEST = (
 )
 # A test that reads every backend module (test_container_imports.py, test_runtime_settings.py).
 TREE_SCAN = 'rglob("*.py")'
-# ci.yml's other unit-test jobs, by the test files they run.
-OWN_RESEARCH = (
-    "tests/test_mizan_owned*.py",
-    "tests/test_owned_checkpoint_activation.py",
-    "tests/test_owned_learning_cycle.py",
-    "tests/test_owned_learning_service.py",
+# Model and training tests CI never runs: they install torch or run the owned model's training
+# stages (docs/ci-artifacts.md, Not in CI). They still count as tests, so a change that reaches
+# only them runs none of them rather than every test. ci.yml's test job ignores the same files.
+NOT_IN_CI = (
+    "ruh_model/tests/",
     "research/own_model/tests/",
+    "tests/test_owned_learning_cycle.py",
+    "tests/test_owned_checkpoint_activation.py",
+    "tests/test_owned_learning_service.py",
 )
 # packages/bayan/scripts/sync_vendor.py --check compares the vendored copy with these.
 BAYAN_SOURCES = ("packages/bayan/", "ruh_model/tokenizer/", "backend/qca/roots.py")
@@ -240,7 +243,7 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
     """What this run checks, as the strings ci.yml's conditions read."""
     flag = {True: "true", False: "false"}
     result = {"verified": "false", "pytest": "none", "vitest": "none"}
-    result |= {name: "false" for name in ("ruh", "own", "bayan", "utils", "provenance")}
+    result |= {name: "false" for name in ("bayan", "utils", "provenance")}
 
     if event == "pull_request":
         tests = unit_tests(changed, root)
@@ -251,11 +254,10 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
             vitest = "changed"  # vitest run --changed: the specs whose imports reach the change
         else:
             vitest = "none"
-        python = " ".join(t for t in tests if t.startswith("tests/")) if not every else "all"
+        run = [t for t in tests if t.startswith("tests/") and not matches(t, NOT_IN_CI)]
+        python = "all" if every else " ".join(run)
         result |= {
             "pytest": python or "none",
-            "ruh": flag[every or any(t.startswith("ruh_model/tests/") for t in tests)],
-            "own": flag[every or any(matches(t, OWN_RESEARCH) for t in tests)],
             "bayan": flag[
                 every
                 or any(t.startswith("packages/bayan/tests/") for t in tests)
@@ -270,7 +272,7 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
         return result | {"verified": "true"}
 
     result |= {"pytest": "all", "vitest": "all", "provenance": "true"}
-    return result | {name: "true" for name in ("ruh", "own", "bayan", "utils")}
+    return result | {name: "true" for name in ("bayan", "utils")}
 
 
 def main() -> int:
