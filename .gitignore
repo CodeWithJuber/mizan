@@ -74,3 +74,5 @@ backend/research/datasets/raw/*
 backend/research/analyzer/output/
 backend/research/experiments/data/
 backend/research/experiments/output/
+# Candidate sense models are release assets (scripts/fetch_nlp_candidates.py)
+nlp/artifacts/candidate_*/model.joblib

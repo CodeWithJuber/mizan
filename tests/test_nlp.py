@@ -234,8 +234,14 @@ def test_artifact_version_reported():
 # ── D. Candidate artifact (Track 2, mizan-sense-wsd v1.1.0-data) ───────────
 
 CANDIDATE_DIR = Path(wsd.__file__).resolve().parent / "artifacts" / "candidate_data_v1"
+# The candidates' pickles are release assets, pinned by their manifests (docs/nlp.md).
+needs_candidate = pytest.mark.skipif(
+    not (CANDIDATE_DIR / "model.joblib").is_file(),
+    reason="candidate model not downloaded: python3 scripts/fetch_nlp_candidates.py",
+)
 
 
+@needs_candidate
 def test_candidate_manifest_validates_with_checksums():
     """The Track-2 candidate manifest must validate against its shipped
     files, including sha256 checksums (checked before any unpickling)."""
@@ -261,6 +267,7 @@ def _load_candidate_artifact(monkeypatch):
     assert wsd.artifact_version() == "1.1.0-data"
 
 
+@needs_candidate
 def test_candidate_smoke_merged_ajr_reward(monkeypatch):
     """Merged sense: after the أَجْر payment→reward merge, the candidate
     predicts only qcsmp2:أَجْر:reward for أَجْر."""
@@ -278,6 +285,7 @@ def test_candidate_smoke_merged_ajr_reward(monkeypatch):
         wsd.reset_for_tests()
 
 
+@needs_candidate
 def test_candidate_smoke_interrogative_ayy(monkeypatch):
     """Targeted mining: an interrogative أَيّ form must now resolve to
     qcsmp2:أَيّ:so which with high confidence (was 0.0 recall pre-mining)."""

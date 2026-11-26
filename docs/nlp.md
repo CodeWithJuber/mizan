@@ -150,6 +150,19 @@ The wheel packages `nlp` (with `artifacts/default/`), but PyPI's latest
 test accuracy 0.7592). The v1.2.1 artifact described here (3.3.0) ships
 from source only.
 
+## Candidate artifacts
+
+`nlp/artifacts/` also holds three candidates from the Phase 3 tracks
+(`candidate_data_v1`, `candidate_model_v1`, `candidate_phasea`). Nothing
+loads them at run time; they are kept to reproduce the preregistered
+comparisons. Their `manifest.json` and `sense_inventory.json` are in the
+repository, but their `model.joblib` files are assets of the
+`nlp-candidates-v1` GitHub release, so the repository does not carry three
+more pickles. Each manifest pins its model's SHA-256, and
+`python3 scripts/fetch_nlp_candidates.py` downloads a candidate only when the
+file matches it (`--check` reports what is present). The candidate tests in
+`tests/test_nlp.py` skip until it has run.
+
 ## Further reading
 
 - [`nlp/DESIGN.md`](../nlp/DESIGN.md) — interface spec and wiring plan
