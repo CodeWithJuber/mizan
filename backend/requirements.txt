@@ -77,6 +77,6 @@ scikit-learn>=1.9.1,<1.10
 joblib>=1.6.0,<2
 
 # Rūḥ Model (local Arabic-native model)
-torch>=2.14.1,<2.15
+torch>=2.14.1,<2.16
 numpy>=2.4.6,<2.5; python_version < "3.12"
 numpy>=2.5.3,<3; python_version >= "3.12"
