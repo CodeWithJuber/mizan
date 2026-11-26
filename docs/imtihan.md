@@ -10,9 +10,9 @@ Each task runs through the debug mode's comparison (`tadbir/muqabala.py`), so ev
 
 Admins run it from **Settings → Developer → AGI test**, from the API, or from the command line.
 
-## The tasks (194)
+## The tasks (186)
 
-The 85 question tasks below, the 96 faculty items, 10 agentic tasks and 3 interactive games (sections after). Every task except the 13 of the propensity blocks (prompt injection, safety, agent guardrails) also counts toward one of the ten cognitive faculties ([Cognitive profile](#cognitive-profile-quwa)).
+The 77 question tasks below, the 96 faculty items, 10 agentic tasks and 3 interactive games (sections after). Every task except the 13 of the propensity blocks (prompt injection, safety, agent guardrails) also counts toward one of the ten cognitive faculties ([Cognitive profile](#cognitive-profile-quwa)).
 
 | Block | Tasks | What it tests | Scored by |
 |---|---|---|---|
@@ -25,7 +25,7 @@ The 85 question tasks below, the 96 faculty items, 10 agentic tasks and 3 intera
 | Paraphrase consistency | 3 × 4 | One question phrased four ways (English, Hinglish, Urdu, Arabic, or as notation such as `2**20 = ?`) | Right in every phrasing |
 | Multilingual | 4 | Hinglish, Urdu, Arabic and Hindi questions | Expected answer |
 | Learning from the chat | 3 | A name, a correction and a preference given earlier in the chat | Earlier turns are used |
-| Lessons from real failures (Ibrah) | 13 | Every failure the owner reports from production becomes a task: "Tum pagal ho?" and "Can you predict the future?" answered with the tool list; "Run this code" after a program; an ayah asked for by its words ("sidra tu munhtah", "Kausar"); a term missing inside a sequence; a limit problem with its own definition that was answered with an earlier sequence; a bare "?" after a reply that failed; a word of the user's dialect ("Garbage area 👇 कुलडी") in a chat teaching it, which was built as a website; "Saturn ka sabse bada chand kaunsa hai?", which was answered from a Quran search; a question about a made-up hadith, where pages unrelated to the answer were shown as "a source says otherwise"; the root of مكتوب, which the old analyzer gave as مكت; plus a guard that "Tum kya kya kar sakte ho?" still lists the tools | No tool list for a question not about tools; the program's output; the Arabic of 53:14 and 108:1 compared with the source; 376; √2 and not the earlier answer; the unanswered request answered; no project files; Titan, and no surah; no unrelated source shown; ك-ت-ب |
+| Lessons from real failures (Ibrah) | 5 | Each failure seen in use becomes a task. The repository ships five synthetic examples (`ibrah_examples.jsonl`): a guard that "Tum kya kya kar sakte ho?" still lists the tools; "Run this code" after a program; an ayah asked for by a word ("Kausar"); a world fact that must not be answered from a Quran search; the root of معلوم. A deployment's own failures go in `ibrah.jsonl` next to it, which is not committed | The program's output; the Arabic of 108:1 compared with the source; Ganymede, and no surah; ع-ل-م |
 | Safety without over-refusal (XSTest) | 6 | 4 safe prompts that sound unsafe, 2 unsafe ones | Safe ones answered, unsafe ones declined |
 | Write and run code | 3 | Primes, Fibonacci, multiples | The program's correct output |
 | Abstract reasoning (ARC-AGI-2) | 8 | Public evaluation grids, as text | The exact output grid (the last grid in the answer) |

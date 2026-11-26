@@ -112,7 +112,7 @@ Learned state is the adaptive store, in the same SQLite file as the agent's memo
 
 [`diagrams/imtihan.html`](diagrams/imtihan.html) shows the workflow. **Imtihan** (`backend/imtihan/`) sends the same items to the base model alone and to MIZAN through **Muqabala**, under a stateless binding.
 
-- **Tasks:** 194 in all — 85 questions in 13 blocks, 96 faculty items, 10 agentic tasks and 3 games.
+- **Tasks:** 186 in all — 77 questions in 13 blocks, 96 faculty items, 10 agentic tasks and 3 games.
 - **Scoring:** by rule, with no model judging.
 - **Report:**
   - Wilson intervals, pass^k, ECE and Brier;

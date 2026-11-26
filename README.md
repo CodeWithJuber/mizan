@@ -133,7 +133,7 @@ Then open `http://localhost:3100` for the web app. The API is on `http://localho
 - **Basar** ([docs/basar.md](docs/basar.md)): images in chat, re-encoded without EXIF.
 
 **Evaluation**
-- **Imtihan** ([docs/imtihan.md](docs/imtihan.md)): 194 tasks sent to the base model alone and to MIZAN, scored by rule, with Wilson intervals. It includes:
+- **Imtihan** ([docs/imtihan.md](docs/imtihan.md)): 186 tasks sent to the base model alone and to MIZAN, scored by rule, with Wilson intervals. It includes:
   - agentic tasks;
   - ARC-style games;
   - a ten-faculty cognitive profile (Quwa) against a human panel.
