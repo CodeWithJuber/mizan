@@ -103,3 +103,15 @@ SPDX-License-Identifier = "CC-BY-SA-4.0"
 path = "ruh_model/benchmarks/data/morph_gold_qac_test.tsv"
 SPDX-FileCopyrightText = "2026 Juber Shaikh (Q-CSMP v2)"
 SPDX-License-Identifier = "CC-BY-4.0"
+
+# The Contributor Covenant 2.1, with this project's contact method.
+[[annotations]]
+path = "CODE_OF_CONDUCT.md"
+SPDX-FileCopyrightText = "Contributor Covenant (https://www.contributor-covenant.org)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Adapted from the Apache Software Foundation's Individual Contributor License Agreement.
+[[annotations]]
+path = "CLA.md"
+SPDX-FileCopyrightText = ["The Apache Software Foundation", "2026 Juber Shaikh (Hostlelo)"]
+SPDX-License-Identifier = "Apache-2.0"

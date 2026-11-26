@@ -402,7 +402,7 @@ mizan/
 The repository includes:
 
 - containers, Nginx, health checks and deploy workflows;
-- a production deployment, updated automatically after each merge to `main` (see [docs/deployment.md](docs/deployment.md); when something breaks, [docs/runbook.md](docs/runbook.md)).
+- a production deployment, updated after each merge to `main` once a maintainer approves the run (see [docs/deployment.md](docs/deployment.md); when something breaks, [docs/runbook.md](docs/runbook.md)).
 
 What it does not yet provide:
 
@@ -459,7 +459,11 @@ In SQLite and files under `$MIZAN_DATA_DIR`, per user where it concerns them. Ma
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). A change that alters behaviour updates the matching document under `docs/`. If it changes the architecture, it also updates the diagram sources in `docs/diagrams/`.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). A change that alters behaviour updates the matching document under `docs/`. If it changes the architecture, it also updates the diagram sources in `docs/diagrams/`. Contributors sign the [Contributor License Agreement](CLA.md) once, on their first pull request, and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Report a vulnerability privately through GitHub's **Report a vulnerability** on the Security tab, not in a public issue. See [`SECURITY.md`](SECURITY.md).
 
 ## License
 

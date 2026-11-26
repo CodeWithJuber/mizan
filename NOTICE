@@ -32,6 +32,18 @@ nlp/artifacts/
   (docs/nlp.md).
 
 
+Documents
+---------
+
+CODE_OF_CONDUCT.md
+  The Contributor Covenant, version 2.1 (https://www.contributor-covenant.org),
+  CC BY 4.0, with this project's contact method filled in.
+
+CLA.md
+  Adapted from the Apache Software Foundation's Individual Contributor License
+  Agreement (v2.2).
+
+
 Fonts
 -----
 

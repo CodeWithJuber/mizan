@@ -22,6 +22,9 @@ Read in this order. Each step takes a few minutes.
 - [Adding Features](#adding-features)
 - [Testing](#testing)
 - [Reporting Issues](#reporting-issues)
+- [Security issues](#security-issues)
+- [Code of Conduct](#code-of-conduct)
+- [License and the CLA](#license-and-the-cla)
 
 ## Getting Started
 
@@ -363,16 +366,24 @@ Shared fixtures in `tests/conftest.py`: `temp_db`, `mock_wali`, `mock_izn`, and 
 
 When you open an issue:
 
-- Use [GitHub Issues](https://github.com/CodeWithJuber/mizan/issues)
+- Use [GitHub Issues](https://github.com/CodeWithJuber/mizan/issues) (a security issue goes to [SECURITY.md](SECURITY.md) instead)
 - Include reproduction steps
 - Include relevant logs or error messages
 - Specify your environment (OS, Python version)
 - Run `mizan doctor` and include the output
 
+## Security issues
+
+Report a vulnerability privately through GitHub's **Report a vulnerability** (the repository's Security tab), never in a public issue or pull request. [SECURITY.md](SECURITY.md) says what to include.
+
 ## Code of Conduct
 
-Be respectful, constructive, and inclusive. We follow the [Contributor Covenant](https://www.contributor-covenant.org/).
+Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md) (Contributor Covenant 2.1). It says how to report a concern.
 
-## License
+## License and the CLA
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+MIZAN is licensed under the [GNU Affero General Public License v3.0 only](LICENSE); some parts keep another licence ([NOTICE](NOTICE), [REUSE.toml](REUSE.toml)). Your contribution is distributed under the licence of the files it changes.
+
+Before your first pull request is merged, you sign the [Contributor License Agreement](CLA.md) once: the **CLA** check comments on the pull request, and you reply with the sentence it gives. The CLA grants the maintainer a licence to your contribution, including the right to relicense it, and keeps your own rights to it. If you contribute for an employer, make sure you may.
+
+A new file, or third-party code or data, gets its copyright and licence in `REUSE.toml` (or an SPDX header) so that `reuse lint` passes, and data gets its source and licence in its directory's `LICENSES.md`. Never commit data whose licence does not allow redistribution: fetch it from its source when the code runs, as `backend/research/datasets/LICENSES.md` describes.
