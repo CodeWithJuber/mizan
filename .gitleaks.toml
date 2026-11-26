@@ -1,0 +1,16 @@
+# gitleaks (.github/workflows/security.yml) with its default rules. The paths below hold no
+# secret: SHA-256 digests of tokenizer files that the generic-key rule reads as keys, a public
+# prompt-injection dataset's attack examples (backend/tadbir/data/amanah/LICENSES.md), and test
+# fixtures with fake keys. A real secret anywhere else still fails the scan.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Digests, public attack examples and fake test keys"
+paths = [
+  '''^docs/evidence/2026-10-25/minimind_cpu_generation\.json$''',
+  '''^scripts/verify_minimind_release\.py$''',
+  '''^notebooks/kaggle/[^/]+/quranic_training\.ipynb$''',
+  '''^backend/tadbir/data/amanah/[^/]+\.tsv$''',
+  '''^tests/test_ruh_speaker\.py$''',
+]
