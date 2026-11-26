@@ -464,7 +464,7 @@ A server does not train. A version trained and gated on another machine is insta
 `POST /api/tadrib/reader` (admins) takes this body:
 
 ```json
-{"repo": "Zubairshaikh/mizan-ruh-reader", "revision": "<commit>", "weights": "reader-seed0.pt", "report": "seed0.json", "sha256": "<weights SHA-256>"}
+{"repo": "<owner>/<reader-repo>", "revision": "<commit>", "weights": "reader-seed0.pt", "report": "seed0.json", "sha256": "<weights SHA-256>"}
 ```
 
 `ruh_reader.install_trained` then does five things, in order:

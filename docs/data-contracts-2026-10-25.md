@@ -7,11 +7,11 @@ illustration with placeholders, not real Quran/Hadith text or gold labels.
 
 | Resource | Use and scope |
 |---|---|
-| [mizan-corpus-v2](https://huggingface.co/datasets/Zubairshaikh/mizan-corpus-v2) | User's programmatic corpus; the private model card pins revision `3b2521c64cd7861a138e185da4810ed20ada2950`. This patch did not recount all shards. |
-| [mizan-full-sft](https://huggingface.co/Zubairshaikh/mizan-full-sft) | Private completed MiniMind release; code/tokenizer/final checkpoint were authenticated, downloaded and checked in this repair. |
-| [Pinned filtered/training data](https://huggingface.co/Zubairshaikh/mizan-full-sft/tree/2ecc917266a626db919fd6af154f9f0d3a286bcf/datasets) | Card reports 1,325,484 supported SFT train rows; teacher-forced loss is not QA accuracy. Counts are card-reported here. |
+| [mizan-corpus-v2](https://huggingface.co/datasets/Zubairshaikh/mizan-corpus-v2) | User's programmatic corpus; the private MiniMind model card (available on request) pins revision `3b2521c64cd7861a138e185da4810ed20ada2950`. This patch did not recount all shards. |
+| mizan-full-sft (private, available on request) | Completed MiniMind release; code/tokenizer/final checkpoint were authenticated, downloaded and checked in this repair. |
+| Pinned filtered/training data in mizan-full-sft at revision `2ecc917266a626db919fd6af154f9f0d3a286bcf` (private, available on request) | Card reports 1,325,484 supported SFT train rows; teacher-forced loss is not QA accuracy. Counts are card-reported here. |
 | [Q-CSMP v2](https://huggingface.co/datasets/Zubairshaikh/qcsmp-v2) | Historical root/sense data underlying the packaged WSD artifacts; preserve annotation provenance and known label limitations. |
-| [quran-datasets-v2](https://huggingface.co/datasets/Zubairshaikh/quran-datasets-v2) | Earlier private collection supplied in the conversation; contents not re-audited in this patch. |
+| [quran-datasets-v2](https://huggingface.co/datasets/Zubairshaikh/quran-datasets-v2) | Earlier collection; contents not re-audited in this patch. |
 | [Qwen3 S4](https://huggingface.co/Zubairshaikh/qwen3-0.6b-quran-s4) | Earlier separate model; neither Ruh nor MiniMind weights. Not rerun here. |
 | [Quranic Arabic Corpus](https://corpus.quran.com/) | Candidate primary morphology resource; ingestion/license/annotation review needed for new experiments. No fresh corpus verification claimed here. |
 | [Tanzil downloads](https://tanzil.net/download/) | Candidate exact Quran text source. Preserve edition, terms, verse IDs and original bytes; no invented quotations. |
@@ -58,7 +58,7 @@ wording. Distinguish verse text, translation, tafsir, commentary and model outpu
 
 ## MiniMind input and compatibility
 
-Use the **pinned private trainer's** data loader/chat template when continuing
+Use the **pinned private trainer's** (available on request) data loader/chat template when continuing
 MiniMind training. Its worker uses Hugging Face `apply_chat_template`, not Ruh's
 `role: content` serializer. Its final checkpoint has a 2048-token serving limit.
 Ruh byte windows and MiniMind subword token counts are different units.

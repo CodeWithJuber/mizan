@@ -4,7 +4,7 @@ Calls the RunPod serverless endpoint (GPU) instead of running the model
 locally on CPU. The endpoint speaks OpenAI chat-completion format.
 
 Env vars:
-    RUNPOD_ENDPOINT_ID: e.g. "your-endpoint-id"
+    RUNPOD_ENDPOINT_ID: your RunPod serverless endpoint ID
     RUNPOD_API_KEY: RunPod API key
 """
 

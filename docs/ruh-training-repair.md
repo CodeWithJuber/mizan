@@ -1,6 +1,6 @@
 # Ruh sentence and dialogue training repair
 
-The owner's private `zubairshaikh/ruh-model-training` notebook was inspected
+The owner's private Ruh training notebook (available on request) was inspected
 through the authenticated official Kaggle API. Every curriculum stage invokes
 `ruh_model.train --generate-data`: the same tiny root-exposure templates are
 regenerated for all 50 epochs. The notebook copies a stale `ruh-model-code` dataset
@@ -92,7 +92,7 @@ baseline, valid UTF-8 and negation tests, and a versioned worker checkpoint mani
 
 ## Verified pilot results
 
-Kaggle private notebook `zubairshaikh/ruh-training-repair-validation`, version 1,
+A private Kaggle notebook (the validation run, available on request), version 1,
 completed successfully. Kaggle allocated two Tesla T4 devices despite the P100
 request; training used cuda:0. The notebook ran about 66 seconds, with 1,000 steps
 in 25.2 seconds over 741,045 supervised byte targets. Held-out CE fell from 6.9170
@@ -148,7 +148,7 @@ held-out generation and checkpoint digests. No candidate is promoted by this PR.
 
 ## Full-size evaluation and temporary continuation
 
-Private `zubairshaikh/ruh-full-training-repair`, version 1, completed on 2026-10-01.
+A private Kaggle notebook (the full training repair, available on request), version 1, completed on 2026-10-01.
 The 45,985,563-parameter V2 model trained 8,437 steps in 1,350 seconds over
 4,475,738 supervised bytes; the complete notebook ran 1,480 seconds including
 setup, data downloads and artifact packaging. Kaggle again supplied two T4s;

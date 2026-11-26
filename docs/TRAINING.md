@@ -84,8 +84,7 @@ python -m ruh_model.train --stage nutfah --generate-data
 
 ### Kaggle GPU workflow
 
-The reference GPU run uses a Kaggle notebook
-(`kaggle.com/code/zubairshaikh/notebook00da3d7a2d`):
+The reference GPU run used a private Kaggle notebook (available on request):
 
 1. Accelerator: **GPU T4 x2**.
 2. Clone the repo and install deps in a setup cell

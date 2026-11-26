@@ -75,7 +75,7 @@ export default function WelcomePage({
             (provider) =>
               provider.name.startsWith("ruh") && provider.configured,
           ),
-          link: "https://github.com/CodeWithJuber/ruh-serverless",
+          link: "https://github.com/CodeWithJuber/mizan/tree/main/ruh_model",
         },
         {
           id: "anthropic",
