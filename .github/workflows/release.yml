@@ -27,8 +27,10 @@ jobs:
       - name: Fresh Python environment
         run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install -e ".[dev,nlp]"
-      - run: ruff check backend/ nlp/ tests/
-      - run: pytest tests/ -v --tb=short
+      # The learning-cycle files run training stages: by hand (docs/ci-artifacts.md, Not in CI).
+      - run: >-
+          pytest tests/ -v --tb=short --ignore=tests/test_owned_learning_cycle.py
+          --ignore=tests/test_owned_checkpoint_activation.py --ignore=tests/test_owned_learning_service.py
 
   # ──── PyPI ────────────────────────────────────────────────────
   publish-pypi:

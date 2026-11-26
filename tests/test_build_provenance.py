@@ -172,9 +172,8 @@ def test_the_real_probe_gates_premerge_and_the_production_images():
     source = (ROOT / ".github/workflows/ci.yml").read_text()
     parts = re.split(r"(?m)^  ([a-z][a-z-]*):\n", source)
     jobs = dict(zip(parts[1::2], parts[2::2], strict=True))
-    for name in ("build", "docker", "production-images"):
-        dependencies = re.search(r"needs: \[([^\]]+)\]", jobs[name])
-        assert "provenance" in dependencies[1].replace(" ", "").split(",")
+    dependencies = re.search(r"needs: \[([^\]]+)\]", jobs["production-images"])
+    assert "provenance" in dependencies[1].replace(" ", "").split(",")
     job = jobs["provenance"]
     pin = "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
     check = "python3 scripts/verify_build_provenance.py"
@@ -189,4 +188,4 @@ def test_the_real_probe_gates_premerge_and_the_production_images():
     assert images.count("--load") == 3 and images.count("docker build -f docker/") == 2
     for job in jobs.values():
         assert "--push" not in job and "login-action" not in job and "build-push-action" not in job
-    assert "setup-buildx-action" not in jobs["docker"] + images
+    assert "setup-buildx-action" not in images

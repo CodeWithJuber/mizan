@@ -98,9 +98,11 @@ def test_attempt_deadline_is_fixed_and_all_workspace_ci_paths_use_helper():
     assert "limit=3m\n" in script and '[[ "$1" == workspace-browser ]] && limit=10m' in script
     ci = (ROOT / ".github/workflows/ci.yml").read_text()
     coding = (ROOT / ".github/workflows/coding-workspace.yml").read_text()
-    assert ci.count("bash scripts/build_workspace_image.sh") == 6
+    # Only the production images build them: three, which Deploy Production sends.
+    assert ci.count("bash scripts/build_workspace_image.sh") == 3
     assert coding.count("bash scripts/build_workspace_image.sh") == 2
-    assert coding.count("- 'scripts/build_workspace_image.sh'") == 2
-    assert coding.count("- 'tests/test_workspace_image_build.py'") == 2
+    # One paths list: the isolation runs on main after the merge, not on pull requests.
+    assert coding.count("- 'scripts/build_workspace_image.sh'") == 1
+    assert coding.count("- 'tests/test_workspace_image_build.py'") == 1
     assert "timeout-minutes: 20" in coding
     assert "BASE_REGISTRY=mirror.gcr.io/library" not in ci + coding
