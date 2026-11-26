@@ -1,0 +1,112 @@
+MIZAN
+Copyright (C) 2026 Juber Shaikh (Hostlelo)
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3 (AGPL-3.0-only). See LICENSE. Versions before
+the relicensing in November 2026 were released under the Apache License 2.0.
+
+REUSE.toml gives the copyright and licence of every file, and LICENSES/ holds
+the text of each licence used. The parts under another licence, and the
+third-party material in this repository, are listed below.
+
+
+Code under another licence
+--------------------------
+
+packages/bayan/
+  Bayan, the tokenizer package (bayan-tokenizer on PyPI), a copy of
+  ruh_model/tokenizer/ published on its own so other software can embed it.
+  Copyright (c) 2026 MIZAN Contributors. MIT License (packages/bayan/LICENSE).
+
+frontend/src/components/ui/
+  Components generated with shadcn/ui (https://ui.shadcn.com) and adapted.
+  Copyright (c) 2023 shadcn. MIT License (LICENSES/MIT.txt).
+
+nlp/artifacts/
+  The sense-disambiguation models and their sense inventories. Apache License
+  2.0, as each manifest.json declares (LICENSES/Apache-2.0.txt). They were
+  trained on Q-CSMP v2 (Juber Shaikh, 2026, Zenodo,
+  https://doi.org/10.5281/zenodo.23024527, CC BY 4.0), which is not
+  redistributed here. The candidates' model.joblib files are release assets
+  (docs/nlp.md).
+
+
+Fonts
+-----
+
+backend/research/datasets/raw/arabic_font.ttf
+  Amiri Regular 1.002. Copyright 2010-2022 The Amiri Project Authors
+  (https://github.com/aliftype/amiri). Licensed under the SIL Open Font
+  License, Version 1.1 (LICENSES/OFL-1.1.txt), also available with a FAQ at
+  https://openfontlicense.org.
+
+
+Data
+----
+
+Each data directory names its sources, licences, changes and attributions in
+its own LICENSES.md:
+
+backend/imtihan/tasks/LICENSES.md
+  ARC-AGI-2 tasks (ARC Prize Foundation, Apache License 2.0), TruthfulQA
+  questions (Lin, Hilton and Evans, Apache License 2.0), XSTest prompts
+  (Röttger et al., CC BY 4.0). Everything else there was written for MIZAN.
+
+backend/tadbir/data/amanah/LICENSES.md
+  Windows of deepset/prompt-injections and jackhhao/jailbreak-classification
+  (Apache License 2.0), Lakera/gandalf_ignore_instructions,
+  reshabhs/SPML_Chatbot_Prompt_Injection and microsoft/llmail-inject-challenge
+  (MIT), FineWeb-Edu (ODC-By 1.0, also subject to the Common Crawl terms of
+  use), Tatoeba (CC BY 2.0 FR), and lines written for MIZAN (CC0 1.0).
+
+backend/tadbir/data/lughah/LICENSES.md
+  Tatoeba sentences (CC BY 2.0 FR), Hinglish-Everyday-Conversations-1M (MIT),
+  every seventh ayah of the Quran's Uthmani text from the Tanzil Project
+  (verbatim, under Tanzil's terms: LICENSES/LicenseRef-Tanzil.txt), and lines
+  written for MIZAN (CC0 1.0).
+
+backend/tadbir/data/qamus/LICENSES.md
+  Word lexicons computed from MASSIVE 1.1 (Copyright Amazon.com Inc. or its
+  affiliates, CC BY 4.0) and, for Roman Hindi/Urdu, Aksharantar (AI4Bharat,
+  IIT Madras; CC BY 4.0 and CC0 1.0). No utterance of either is included.
+
+backend/tadbir/data/gharib/LICENSES.md
+  words.json.gz is adapted from wordfreq's data (Robyn Speer, 2022,
+  https://doi.org/10.5281/zenodo.7199437) and is licensed under CC BY-SA 4.0
+  (LICENSES/CC-BY-SA-4.0.txt), with the sources wordfreq asks to credit.
+
+backend/tadbir/ruh_reader/LICENSES.md
+  The sources the Ruh reader is trained and measured on. Its corpus and
+  weights are downloaded and built on the machine that trains it, not shipped.
+
+backend/research/datasets/LICENSES.md
+  The research package's inputs: the Amiri font (above) and tags written for
+  MIZAN are shipped; the Quranic Arabic Corpus morphology (Kais Dukes, GPL,
+  https://corpus.quran.com), Quran.com's word-by-word glosses and the hadith
+  collections are downloaded from their sources when the scripts run.
+
+backend/tadbir/data/qasd/facets.tsv
+  Lines written for MIZAN (CC0 1.0) and requests from MASSIVE 1.1 train
+  (Copyright Amazon.com Inc. or its affiliates, CC BY 4.0).
+
+backend/tadbir/data/iqtibas/calibration.tsv
+  Short quotations of the Quran's text from the Tanzil Project (Tanzil's
+  terms), its transliteration, and the Saheeh International translation, to
+  calibrate one parameter.
+
+ruh_model/benchmarks/data/morph_gold_qac_test.tsv
+  172 (word, root) pairs from the test split of Q-CSMP v2 (CC BY 4.0). Its
+  roots follow the annotation of the Quranic Arabic Corpus
+  (https://corpus.quran.com).
+
+
+Downloaded when MIZAN runs
+--------------------------
+
+MIZAN downloads some data and models once, from their original sources and
+pinned by SHA-256 where the source allows, into $MIZAN_DATA_DIR: among them
+the Quranic Arabic Corpus morphology (GPL), the hadith collections of
+fawazahmed0/hadith-api, the Quran editions Fihris reads, the NLI model and the
+Whisper weights. They are not part of this repository and keep their own
+licences; docs/architecture.md lists the external services and data.

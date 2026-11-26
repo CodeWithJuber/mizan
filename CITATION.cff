@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use MIZAN in your work, please cite it as below."
+title: "MIZAN: an agentic personal AI with a Quranic cognitive architecture"
+type: software
+authors:
+  - family-names: Shaikh
+    given-names: Juber
+    affiliation: Hostlelo
+repository-code: "https://github.com/CodeWithJuber/mizan"
+license: AGPL-3.0-only
+version: 3.3.0
+keywords:
+  - personal AI
+  - agents
+  - cognitive architecture
+  - Arabic NLP
+  - Quran

@@ -1,0 +1,105 @@
+# Copyright and licence of every file (https://reuse.software, `reuse lint`). MIZAN is
+# AGPL-3.0-only; the annotations after the first name what is under another licence. A later
+# annotation wins for the paths it matches. Sources and changes are in NOTICE and in each data
+# directory's LICENSES.md.
+version = 1
+SPDX-PackageName = "MIZAN"
+SPDX-PackageSupplier = "Juber Shaikh (Hostlelo)"
+SPDX-PackageDownloadLocation = "https://github.com/CodeWithJuber/mizan"
+
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "2026 Juber Shaikh (Hostlelo)"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
+# Bayan, the tokenizer package published on its own (vendored from ruh_model/tokenizer/).
+[[annotations]]
+path = "packages/bayan/**"
+SPDX-FileCopyrightText = "2026 MIZAN Contributors"
+SPDX-License-Identifier = "MIT"
+
+# Components generated from shadcn/ui and adapted.
+[[annotations]]
+path = "frontend/src/components/ui/**"
+SPDX-FileCopyrightText = ["2023 shadcn", "2026 Juber Shaikh (Hostlelo)"]
+SPDX-License-Identifier = "MIT"
+
+# The sense-model artifacts declare Apache-2.0 in their manifests (nlp/artifact.py).
+[[annotations]]
+path = "nlp/artifacts/*/**"
+SPDX-FileCopyrightText = "2026 Juber Shaikh (Hostlelo)"
+SPDX-License-Identifier = "Apache-2.0"
+
+# The Amiri font, for Arabic labels in the research figures.
+[[annotations]]
+path = "backend/research/datasets/raw/arabic_font.ttf"
+SPDX-FileCopyrightText = "2010-2022 The Amiri Project Authors (https://github.com/aliftype/amiri)"
+SPDX-License-Identifier = "OFL-1.1"
+
+# Imtihan tasks from public benchmarks (backend/imtihan/tasks/LICENSES.md).
+[[annotations]]
+path = "backend/imtihan/tasks/arc.jsonl"
+SPDX-FileCopyrightText = "ARC Prize Foundation"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "backend/imtihan/tasks/knowledge.jsonl"
+SPDX-FileCopyrightText = "2022 Stephanie Lin, Jacob Hilton, Owain Evans (TruthfulQA)"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "backend/imtihan/tasks/safety.jsonl"
+SPDX-FileCopyrightText = "2024 Paul Röttger et al. (XSTest)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Amanah's corpus: windows of the licensed datasets in backend/tadbir/data/amanah/LICENSES.md.
+[[annotations]]
+path = ["backend/tadbir/data/amanah/attack.tsv", "backend/tadbir/data/amanah/data.tsv", "backend/tadbir/data/amanah/heldout_*.tsv"]
+SPDX-FileCopyrightText = ["deepset GmbH", "Lakera AI", "jackhhao", "the SPML authors (reshabhs)", "Microsoft Corporation", "Hugging Face (FineWeb-Edu)", "Tatoeba contributors", "2026 Juber Shaikh (Hostlelo)"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT AND ODC-By-1.0 AND LicenseRef-CC-BY-2.0-FR AND AGPL-3.0-only AND CC0-1.0"
+
+[[annotations]]
+path = ["backend/tadbir/data/amanah/authored.tsv", "backend/tadbir/data/lughah/authored.tsv", "backend/tadbir/data/tahiyya/*.tsv", "backend/tadbir/data/qasd/intents.tsv"]
+SPDX-FileCopyrightText = "2026 Juber Shaikh (Hostlelo)"
+SPDX-License-Identifier = "CC0-1.0"
+
+# Qasd's facets: lines written for MIZAN and MASSIVE 1.1 train requests.
+[[annotations]]
+path = "backend/tadbir/data/qasd/facets.tsv"
+SPDX-FileCopyrightText = ["2026 Juber Shaikh (Hostlelo)", "Amazon.com Inc. or its affiliates (MASSIVE)"]
+SPDX-License-Identifier = "CC0-1.0 AND CC-BY-4.0"
+
+# Lughah's corpus (backend/tadbir/data/lughah/LICENSES.md).
+[[annotations]]
+path = ["backend/tadbir/data/lughah/ar.tsv", "backend/tadbir/data/lughah/en.tsv", "backend/tadbir/data/lughah/hi.tsv", "backend/tadbir/data/lughah/hi-latn.tsv", "backend/tadbir/data/lughah/ur.tsv", "backend/tadbir/data/lughah/name.tsv", "backend/tadbir/data/lughah/quote.tsv"]
+SPDX-FileCopyrightText = ["Tatoeba contributors", "Abhishekcr448 (Hinglish-Everyday-Conversations-1M)", "Tanzil Project (https://tanzil.net)", "2026 Juber Shaikh (Hostlelo)"]
+SPDX-License-Identifier = "LicenseRef-CC-BY-2.0-FR AND MIT AND LicenseRef-Tanzil AND CC0-1.0"
+
+# Iqtibas's calibration: short quotations of the Quran's text and translations.
+[[annotations]]
+path = "backend/tadbir/data/iqtibas/calibration.tsv"
+SPDX-FileCopyrightText = ["Tanzil Project (https://tanzil.net)", "2026 Juber Shaikh (Hostlelo)"]
+SPDX-License-Identifier = "LicenseRef-Tanzil AND AGPL-3.0-only"
+
+# Qamus's lexicons, computed from MASSIVE 1.1 (and Aksharantar for Roman Hindi/Urdu).
+[[annotations]]
+path = ["backend/tadbir/data/qamus/ar-en.json.gz", "backend/tadbir/data/qamus/hi-en.json.gz", "backend/tadbir/data/qamus/ta-en.json.gz", "backend/tadbir/data/qamus/ur-en.json.gz"]
+SPDX-FileCopyrightText = "Amazon.com Inc. or its affiliates (MASSIVE)"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "backend/tadbir/data/qamus/hi-latn.json.gz"
+SPDX-FileCopyrightText = ["Amazon.com Inc. or its affiliates (MASSIVE)", "AI4Bharat, IIT Madras (Aksharantar)"]
+SPDX-License-Identifier = "CC-BY-4.0 AND CC0-1.0"
+
+# Gharib's word frequencies, adapted from wordfreq's data.
+[[annotations]]
+path = "backend/tadbir/data/gharib/words.json.gz"
+SPDX-FileCopyrightText = ["2022 Robyn Speer (wordfreq)", "2026 Juber Shaikh (Hostlelo)"]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# (word, root) pairs from the test split of Q-CSMP v2 (Zenodo 10.5281/zenodo.23024527).
+[[annotations]]
+path = "ruh_model/benchmarks/data/morph_gold_qac_test.tsv"
+SPDX-FileCopyrightText = "2026 Juber Shaikh (Q-CSMP v2)"
+SPDX-License-Identifier = "CC-BY-4.0"

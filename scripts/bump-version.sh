@@ -112,6 +112,7 @@ success "backend/_version.py"
 
 # 3. pyproject.toml
 sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$ROOT_DIR/pyproject.toml"
+sed -i "s/^version: .*/version: $NEW_VERSION/" "$ROOT_DIR/CITATION.cff"
 success "pyproject.toml"
 
 # 4. frontend/package.json

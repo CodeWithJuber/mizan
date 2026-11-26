@@ -281,6 +281,7 @@ jobs:
           sed -i 's/^          //' backend/_version.py
 
           sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
+          sed -i "s/^version: .*/version: $NEW_VERSION/" CITATION.cff
           sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" frontend/package.json
           NEW_VERSION="$NEW_VERSION" python - <<'PY'
           import json, os

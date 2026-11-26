@@ -7,7 +7,7 @@ name = "pymizan"
 version = "3.3.0"
 description = "Agentic Personal AI - Quranic Cognitive Architecture for human-like reasoning"
 readme = "README.md"
-license = "Apache-2.0"
+license = "AGPL-3.0-only"
 requires-python = ">=3.11"
 authors = [
     { name = "MIZAN Contributors" },
@@ -20,7 +20,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",

@@ -63,7 +63,7 @@ REQUIRED_FILES = (
 SIZE_BUDGET_BYTES = 250 * 1024 * 1024
 
 #: License requirement for the artifact (weights + inventory). Must stay
-#: compatible with the repo's Apache-2.0 license; the dataset itself
+#: compatible with the repo's AGPL-3.0-only license (Apache-2.0 is); the dataset itself
 #: (Q-CSMP v2, Zenodo 10.5281/zenodo.23024527) keeps its own license and
 #: is NOT redistributed — only derived weights + sense inventory ship.
 REQUIRED_LICENSE = "Apache-2.0"

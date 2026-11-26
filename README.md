@@ -10,7 +10,8 @@
 [![PyPI](https://img.shields.io/pypi/v/pymizan.svg)](https://pypi.org/project/pymizan/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Status: Beta](https://img.shields.io/badge/status-beta-orange.svg)](pyproject.toml)
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
+[![REUSE](https://img.shields.io/badge/REUSE-compliant-green.svg)](REUSE.toml)
 
 [Architecture](#architecture) · [Quickstart](#quickstart) · [Features](#features) · [Reviewer quick view](#reviewer-quick-view) · [API](#api-surface) · [Docs](#documentation) · [Contributing](#contributing)
 
@@ -462,4 +463,6 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md). A change that alters behaviour updates
 
 ## License
 
-[Apache License 2.0](LICENSE). Diagrams are drawn with [Archify](https://github.com/tt-a1i/archify) (Apache-2.0) and the [diagram-design](https://github.com/cathrynlavery/diagram-design) method (MIT).
+MIZAN is free software under the [GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`), Copyright (C) 2026 Juber Shaikh (Hostlelo). If you run a modified MIZAN as a network service, the AGPL asks you to offer its users the source of your version. Versions released before November 2026 were under the Apache License 2.0.
+
+Some parts keep another licence: the Bayan tokenizer package (`packages/bayan/`, MIT), the shadcn/ui components (MIT), the sense-model artifacts (Apache-2.0), the Amiri font (OFL-1.1) and the licensed datasets, each with its own `LICENSES.md`. [`NOTICE`](NOTICE) lists them, [`REUSE.toml`](REUSE.toml) gives every file's licence (`reuse lint` checks it), and [`LICENSES/`](LICENSES) holds the texts. Diagrams are drawn with [Archify](https://github.com/tt-a1i/archify) (Apache-2.0) and the [diagram-design](https://github.com/cathrynlavery/diagram-design) method (MIT).

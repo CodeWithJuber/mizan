@@ -19,9 +19,9 @@ tag exists on origin. CI now fails when the vendored copy drifts from
   with import name `bayan` (`pip install bayan-tokenizer` → `import bayan`).
   Alternatives if the user wants the bare name: `ruh-bayan`, or contact the
   `bayan` owner for a transfer (low odds — no contact listed).
-- [ ] **License:** the monorepo is Apache-2.0; the Bayan package ships
-  **MIT** per the product decision ("Bayan tokenizer, free + MIT"). Confirm
-  the user is fine with the package being MIT while the repo stays Apache-2.0.
+- [x] **License:** the monorepo is AGPL-3.0-only (since November 2026); the
+  Bayan package ships **MIT** per the product decision ("Bayan tokenizer, free
+  + MIT"), which the owner kept when relicensing (`REUSE.toml`, `NOTICE`).
 - [ ] **Version:** first release is `0.1.0`. Semver after that:
   `0.x.y` while in beta (breaking API changes bump `x`), `1.0.0` when the
   public API is frozen.

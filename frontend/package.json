@@ -1,7 +1,9 @@
 {
   "name": "mizan-frontend",
   "version": "3.3.0",
+  "private": true,
   "description": "MIZAN - Agentic Personal AI Frontend",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",

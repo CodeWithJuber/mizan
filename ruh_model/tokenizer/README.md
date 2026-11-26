@@ -126,14 +126,12 @@ ruff format --check ruh_model/tokenizer/public_api.py \
 
 ## License
 
-Bayan ships **free** under the repository's license: **Apache-2.0**
-(see repo-root `LICENSE`). That is permissive — commercial use,
-modification and distribution are allowed, with attribution and a license
-notice. The use-case study (#7) asked for MIT: that is the standalone
-package `bayan-tokenizer` in `packages/bayan/` (import name `bayan`, MIT,
-0.1.0 on PyPI: `pip install bayan-tokenizer`; release steps in
-[`docs/BAYAN_RELEASE.md`](../../docs/BAYAN_RELEASE.md)). This directory
-itself stays under the repository's Apache-2.0.
+This directory is under the repository's license, **AGPL-3.0-only** (see
+repo-root `LICENSE`). The use-case study (#7) asked for MIT: that is the
+standalone package `bayan-tokenizer` in `packages/bayan/` (import name
+`bayan`, MIT, 0.1.0 on PyPI: `pip install bayan-tokenizer`; release steps in
+[`docs/BAYAN_RELEASE.md`](../../docs/BAYAN_RELEASE.md)), the same code
+published under a permissive license so other software can embed it.
 
 ## Honest limitations
 

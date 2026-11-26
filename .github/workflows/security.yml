@@ -1,7 +1,8 @@
 name: Security
 
-# Dependency review on pull requests, and a secret scan of the new commits on pull requests and
-# pushes to main (docs/ci-artifacts.md). Read-only: nothing here comments, uploads or pushes.
+# Dependency review on pull requests; a secret scan of the new commits and a licensing check
+# (reuse lint) on pull requests and pushes to main (docs/ci-artifacts.md). Read-only: nothing here
+# comments, uploads or pushes.
 
 on:
   pull_request:
@@ -46,3 +47,13 @@ jobs:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITLEAKS_ENABLE_COMMENTS: "false"
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  reuse:
+    name: Licensing (REUSE)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Every file has a copyright and a licence (REUSE.toml), and every licence its text (LICENSES/).
+      - uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
