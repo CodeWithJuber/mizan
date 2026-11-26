@@ -4,7 +4,7 @@
 
 ## Why
 
-A memory enters `memories`, and so Tadhkir's FSRS loop, only when a person asks: "remember this", Daftar, or the memory API. Production's review log was therefore empty (`docs/handoff.md`). People do not remember that way. An experience is encoded as it happens, and the hippocampus encodes what is new more strongly than what was already known (prediction error). Sleep then replays it and keeps it or lets it go (complementary learning systems: McClelland, McNaughton & O'Reilly 1995).
+A memory enters `memories`, and so Tadhkir's FSRS loop, only when a person asks: "remember this", Daftar, or the memory API. Production's review log was therefore empty. People do not remember that way. An experience is encoded as it happens, and the hippocampus encodes what is new more strongly than what was already known (prediction error). Sleep then replays it and keeps it or lets it go (complementary learning systems: McClelland, McNaughton & O'Reilly 1995).
 
 MIZAN has the second half: Nawm and FSRS strength in `memory/tadhkir.py`. This adds the first half, in `memory/episodic.py`.
 

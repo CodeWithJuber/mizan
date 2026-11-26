@@ -17,8 +17,8 @@ main still has that SHA; the host checks that its backend image ID equals the lo
 SHA. A newer main/backend requires a reviewed retarget, not bypassing the check.
 The baseline runtime includes the pinned plotting dependencies. A different
 runtime still requires its corresponding tested image. Production activation and
-live Python, PNG and interactive HTML verification are recorded in
-[the production validation report](production-validation-2026-10-25.md).
+live Python, PNG and interactive HTML verification were recorded in a
+production validation report that is not published.
 
 ## Changes and boundaries
 

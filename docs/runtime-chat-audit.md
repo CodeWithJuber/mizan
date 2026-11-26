@@ -3,8 +3,8 @@
 > Dated record (October 2026, PR #101). It describes the code as it was then; the current architecture is in [architecture.md](architecture.md) and its [diagrams](diagrams/README.md).
 
 This is the historical PR #101 baseline. The runner and research import gaps
-below were subsequently addressed; current evidence and remaining limitations
-are in [production validation](production-validation-2026-10-25.md).
+below were subsequently addressed; the production evidence was recorded in a
+validation report that is not published.
 
 The October 25 chat exports and authenticated production UI showed a working
 web deployment with incomplete runtime integration. A passing health probe

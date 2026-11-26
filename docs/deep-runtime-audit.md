@@ -3,7 +3,7 @@
 > Dated record (October 2026). It describes the code as it was then; the current architecture is in [architecture.md](architecture.md) and its [diagrams](diagrams/README.md).
 
 Post-deployment results, including the active isolated runner and full research
-import, are recorded in [production validation](production-validation-2026-10-25.md).
+import, were recorded in a production validation report that is not published.
 
 This audit separates historical transcripts, repository coverage, executable
 paths, and observed production state. A historical greeting is not evidence of

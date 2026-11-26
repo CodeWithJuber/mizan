@@ -454,7 +454,7 @@ In SQLite and files under `$MIZAN_DATA_DIR`, per user where it concerns them. Ma
 | Evaluation | [imtihan](docs/imtihan.md), [debug mode](docs/debug-mode.md), [chat limits and metrics](docs/chat-limits-and-metrics.md) |
 | Operating | [runbook](docs/runbook.md), [deployment](docs/deployment.md), [runner setup](docs/runner-setup.md), [admin settings](docs/admin-settings.md), [API reference](docs/api-reference.md), [API testing](docs/api-testing.md) |
 | Own models | [Ruh training](docs/TRAINING.md), [own architecture integration](docs/OWN_ARCHITECTURE_INTEGRATION.md), [Bayan release](docs/BAYAN_RELEASE.md) |
-| Dated records | [25 Oct 2026 review](docs/review-2026-10-25.md), [runtime diagram (25 Oct)](docs/architecture-2026-10-25.md), [data contracts](docs/data-contracts-2026-10-25.md), [production validation](docs/production-validation-2026-10-25.md) |
+| Dated records | [25 Oct 2026 review](docs/review-2026-10-25.md), [runtime diagram (25 Oct)](docs/architecture-2026-10-25.md), [data contracts](docs/data-contracts-2026-10-25.md) |
 
 ## Contributing
 

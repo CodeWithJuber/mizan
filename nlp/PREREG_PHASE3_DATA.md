@@ -124,7 +124,7 @@ Weak confidences (< 0.5) disclosed, not rounded up.
 | M9 | merge مُبِين:manifest → clear | **merge** | 0.95 |
 | S1 | vocative pseudo-senses (أَيّ:mankind, you who believe): drop vs merge-to-`vocative` vs keep | **merge_vocative** | 0.80 |
 | S2 | mining strategy (composite) | **reject** | 0.25 — too weak to be action-guiding; re-asked as three narrow questions |
-| S2a | mine 24 gloss-verified interrogative أَيّ items → `so which` (train-only, base-only, real citations) | **reject** | 0.46 — weak; no reason given. Proceeding per the preregistered evidence-based plan (DIAGNOSIS.md explicitly prescribes interrogative-أَيّ mining for the starvation case); the weak reject is disclosed here and in TRACK2_REPORT.md |
+| S2a | mine 24 gloss-verified interrogative أَيّ items → `so which` (train-only, base-only, real citations) | **reject** | 0.46 — weak; no reason given. Proceeding per the preregistered evidence-based plan (DIAGNOSIS.md explicitly prescribes interrogative-أَيّ mining for the starvation case); the weak reject is disclosed here and in the Track-2 report (not published) |
 | S2b | نَذِير plural نُذُر mining: 0 real occurrences outside test surah 54 → skip | **skip** | 0.81 |
 | S2c | نِساء possessive mining: 0 new real occurrences (all 12 already in dataset) → skip, report honestly | **skip / report honestly** | 0.38 — weak, but the decision is forced by the verified zero count, not by JEV |
 

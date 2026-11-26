@@ -11,9 +11,9 @@ This is a bounded first import of the already verified consolidated research arc
 
 The older approximately 77 MB archive with a similar filename and SHA prefix `d3d9` is a different version and is not accepted here.
 
-The production first import completed on October 25, 2026. See the
-[validation report](production-validation-2026-10-25.md) for the exact receipt and
-workflow. This procedure does not replace or reimport that active collection.
+The production first import completed on October 25, 2026; its receipt is kept
+with the deployment records, not in this repository. This procedure does not
+replace or reimport that active collection.
 
 ## Sequence and authority
 

@@ -37,8 +37,7 @@ make release-patch  # Bump + changelog + tag + push (also -minor/-major/-beta/-r
 
 ## Key Files
 
-- `docs/handoff.md` — **read first in a new session**: where the own-learning work stands (1 Nov 2026), what is half done (phase 2b, with resume commands), what is next in order, and the owner's standing rules for training data
-- `research/reports/` + `research/notes/` — the research reports written for the owner in October 2026 (rivals, self-learning architecture, own model and living memory, Hinglish status reports) and the cited notes behind them; `research/reports/README.md` lists them. Where they and the code disagree, the code and `docs/` are current
+- `research/notes/` — cited research notes from October 2026 (rivals, self-learning architecture, own model and living memory). The reports written from them are not in the repository. Where the notes and the code disagree, the code and `docs/` are current
 - `docs/architecture.md` + `docs/diagrams/` — the current architecture and its diagrams: interactive Archify HTML (`docs/diagrams/*.html`, typed sources in `docs/diagrams/src/*.json` citing source lines at a pinned commit, rendered and checked with `archify finalize --repo-root .`) and static diagram-design SVGs for the README (`docs/diagrams/design/build_static.py`, light + `-dark`); when the architecture changes, update the sources and re-render (`docs/diagrams/README.md`); `docs/runbook.md` is what to do when production misbehaves (health checks, rollback from `/var/lib/mizan-deploy/rollback.yml`, stuck runs, held actions, receipts, escalation)
 - `backend/api/main.py` — FastAPI app: most of the 308 routes (listed in `docs/api-reference.md`) + WebSocket (single large module, ~7.9k lines)
 - `backend/api/commands.py` — Slash/command handlers used by chat

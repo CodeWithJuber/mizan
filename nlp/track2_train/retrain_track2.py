@@ -13,7 +13,7 @@ Merge map (frozen: nlp/SENSE_MERGES_PHASE3.json, Amendment A1):
   9 merges, and the harness fail-closes on any other label space
   (load_merges validates the map against the shipped 115-sense inventory;
   bundle labels must lie within the frozen 106). Logged honestly in
-  TRACK2_REPORT.md as superseded-by-frozen-ontology.
+  the Track-2 report (not published) as superseded-by-frozen-ontology.
 Merges apply to train+dev+test records for the INVENTORY; training uses
 train-split base records only (frozen Track-1 recipe, verified 627/627).
 The test split is never used for training and never relabeled on disk.
