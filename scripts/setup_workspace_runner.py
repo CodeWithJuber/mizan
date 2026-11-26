@@ -64,7 +64,10 @@ IMAGE_TAG = re.compile(
 )
 UPGRADE_SECONDS = 900
 RESTORE_SECONDS = 600
-# Exit codes of --upgrade, chosen apart from sshpass's own 1-7.
+# The site's public origin, checked after a change. It comes from MIZAN_PUBLIC_URL, which the
+# deploy script and the operation workflows pass: no production domain is written here.
+PUBLIC_URL = re.compile(r"https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?")
+# Exit codes of --upgrade, chosen apart from the shell's and ssh's own (1-2, 255).
 NOT_UPGRADED = 75
 NOT_VERIFIED = 76
 
@@ -98,6 +101,15 @@ def report(message: str, *, error: bool = False) -> None:
 def validate_target(sha: str, repository: str) -> None:
     require(bool(re.fullmatch(r"[a-f0-9]{40}", sha)), "Expected a full lowercase commit SHA")
     require(repository == REPOSITORY, "This installer is scoped to codewithjuber/mizan")
+
+
+def public_url() -> str:
+    value = os.environ.get("MIZAN_PUBLIC_URL", "").rstrip("/")
+    require(
+        PUBLIC_URL.fullmatch(value) is not None,
+        "Set MIZAN_PUBLIC_URL to the site's https:// origin (docs/runner-setup.md)",
+    )
+    return value
 
 
 def validate_research_option(directory: str | None) -> None:
@@ -1617,7 +1629,7 @@ class Installer:
                 "30",
                 "--retry",
                 "2",
-                "https://mizan.example.com/api/health",
+                f"{public_url()}/api/health",
             ],
             stage="Check public health after setup",
             timeout=100,
@@ -1634,7 +1646,7 @@ class Installer:
                 "/dev/null",
                 "--write-out",
                 "%{http_code}",
-                "https://mizan.example.com/api/status",
+                f"{public_url()}/api/status",
             ],
             stage="Check public anonymous-auth denial",
         )
@@ -2672,6 +2684,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         validate_target(args.sha, args.repository)
+        if not args.needed_images:
+            public_url()  # before any change: every other mode checks the public site
         images_dir = Path(args.images_dir) if args.images_dir else None
         os.umask(0o077)
         for signal_number in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):

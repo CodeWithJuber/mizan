@@ -625,9 +625,20 @@ def test_upgrade_exit_codes(monkeypatch, raised, code):
     monkeypatch.setattr(setup.os, "umask", lambda _: 0)
     # No credential: nothing is read from stdin any more.
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    monkeypatch.setenv("MIZAN_PUBLIC_URL", "https://mizan.example.com/")
     argv = ["--upgrade", "--sha", NEW_SHA, "--inherited-lock-fd", "9", "--images-dir", RELEASE]
     assert setup.main(argv) == code
     assert seen == {"images": RELEASE, "fd": 9}
+
+
+def test_an_upgrade_without_the_public_url_stops_before_the_lock(monkeypatch):
+    # The public check's origin comes from configuration, never a hard-coded domain.
+    monkeypatch.delenv("MIZAN_PUBLIC_URL", raising=False)
+    monkeypatch.setattr(setup, "deployment_lock", lambda _: pytest.fail("lock taken"))
+    argv = ["--upgrade", "--sha", NEW_SHA, "--inherited-lock-fd", "9", "--images-dir", RELEASE]
+    assert setup.main(argv) == 76
+    monkeypatch.setenv("MIZAN_PUBLIC_URL", "https://mizan.example.com")
+    assert setup.public_url() == "https://mizan.example.com"
 
 
 # ── Upgrades on the fake host ─────────────────────────────────────────────

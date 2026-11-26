@@ -85,6 +85,7 @@ def deploy_fixture(
     managed_runner=False,
     runner_status=0,
     missing_images=False,
+    public_url="https://mizan.example.com",
 ):
     root = tmp_path / "existing-project"
     root.mkdir()
@@ -156,6 +157,7 @@ def deploy_fixture(
             "MIZAN_DEPLOY_STATE_DIR": str(deployment_dir),
             "MIZAN_DEPLOY_HEALTH_ATTEMPTS": "1",
             "FAIL_PUBLIC": "1" if fail_public else "0",
+            "MIZAN_PUBLIC_URL": public_url,
             "FAKE_SETUP_RECORD": str(tmp_path / "runner-setup.json"),
             "FAKE_SETUP_STATUS": str(runner_status),
         },
@@ -279,6 +281,16 @@ def test_the_deploy_checks_the_loaded_images_and_pulls_nothing(tmp_path):
         ]
     ]
     assert not any(args[0] in ("login", "pull") or "pull" in args for args in state["commands"])
+
+
+@pytest.mark.parametrize("url", ["", "http://mizan.example.com", "https://x.example/'; id"])
+def test_the_public_url_comes_from_configuration_and_is_checked_first(tmp_path, url):
+    # No production domain is written in the script: the workflow passes it.
+    result, state, directory = deploy_fixture(tmp_path, False, public_url=url)
+    assert result.returncode == 1
+    assert "MIZAN_PUBLIC_URL" in result.stderr
+    assert not state["commands"] and not state["updates"]
+    assert (directory / "current.yml").read_text() == '{"preserve":"previous current override"}'
 
 
 def test_invalid_running_grace_refuses_before_stop(tmp_path):

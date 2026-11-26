@@ -13,6 +13,11 @@ from pathlib import Path
 DOCKER = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock"]
 ROOT = Path("/opt/mizan")
 STATE = Path("/var/lib/mizan-deploy/workspace-runner")
+# The site's public origin comes from the workflow (MIZAN_PUBLIC_URL); without it the public
+# check is reported as not configured.
+PUBLIC_URL = os.environ.get("MIZAN_PUBLIC_URL", "").rstrip("/")
+if not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?", PUBLIC_URL):
+    PUBLIC_URL = ""
 
 
 def run(args, timeout=30, stdin=None):
@@ -146,9 +151,12 @@ def main():
             "/dev/null",
             "--write-out",
             "%{http_code}",
-            "https://mizan.example.com/api/health",
+            f"{PUBLIC_URL}/api/health",
         ],
     }.items():
+        if label == "public_health_http" and not PUBLIC_URL:
+            report[label] = {"exit": None, "http_status": "MIZAN_PUBLIC_URL not set"}
+            continue
         code, output, _ = run(command)
         report[label] = {
             "exit": code,

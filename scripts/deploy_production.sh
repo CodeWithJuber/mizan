@@ -29,6 +29,14 @@ health_attempts=${MIZAN_DEPLOY_HEALTH_ATTEMPTS:-45}
   echo 'Health attempts must be decimal integers from 1 to 45.' >&2; exit 1;
 }
 command -v timeout >/dev/null || { echo 'Bounded health checks require timeout.' >&2; exit 1; }
+# The site's public origin, checked after the deploy. The workflow passes it (the
+# DEPLOY_PUBLIC_URL secret); no production domain is written here.
+public_url=${MIZAN_PUBLIC_URL:-}
+public_url=${public_url%/}
+[[ "$public_url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || {
+  echo "Set MIZAN_PUBLIC_URL to the site's https:// origin (docs/deployment.md)." >&2; exit 1;
+}
+export MIZAN_PUBLIC_URL=$public_url
 
 state_dir=${MIZAN_DEPLOY_STATE_DIR:-/var/lib/mizan-deploy}
 mkdir -p "$state_dir"
@@ -159,7 +167,6 @@ for ((attempt = 1; attempt <= health_attempts; attempt++)); do
 done
 if [[ "$healthy" != true ]]; then rollback; exit 1; fi
 if ! refresh_proxy; then rollback; exit 1; fi
-public_url=${MIZAN_PUBLIC_URL:-https://mizan.example.com}
 if ! curl --fail --silent --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 2 "$public_url/api/health" >/dev/null ||
    [[ $(curl --silent --connect-timeout 15 --max-time 30 --output /dev/null --write-out '%{http_code}' "$public_url/api/status") != 401 ]]; then
   rollback
