@@ -98,8 +98,8 @@ def test_attempt_deadline_is_fixed_and_all_workspace_ci_paths_use_helper():
     assert "limit=3m\n" in script and '[[ "$1" == workspace-browser ]] && limit=10m' in script
     ci = (ROOT / ".github/workflows/ci.yml").read_text()
     coding = (ROOT / ".github/workflows/coding-workspace.yml").read_text()
-    # The Docker build job builds two, the production images three (CI starts no browser).
-    assert ci.count("bash scripts/build_workspace_image.sh") == 5
+    # Only the production images build them: three, which Deploy Production sends.
+    assert ci.count("bash scripts/build_workspace_image.sh") == 3
     assert coding.count("bash scripts/build_workspace_image.sh") == 2
     # One paths list: the isolation runs on main after the merge, not on pull requests.
     assert coding.count("- 'scripts/build_workspace_image.sh'") == 1

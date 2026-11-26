@@ -101,5 +101,5 @@ The older in-process browser tools of the web agent (Mubashir) now:
 - `backend/tadbir/engine.py` (`_browse`) and `fahm.py` (`browse`, family
   `page` with `web_read`).
 - `docker/Dockerfile.workspace-browser`, `.github/workflows/ci.yml` (job
-  `browser`).
+  `production-images` builds the image Deploy Production sends).
 - Tests: `tests/test_shahid.py`.

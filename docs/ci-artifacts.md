@@ -27,27 +27,28 @@ It is GitHub's own runner image (Ubuntu 24.04, `python3` 3.12, Docker CLI with b
 
 ## What a run checks
 
-Each change gets its heavy jobs once, on `main` after the merge. Agents push a pull request many times, so its runs stay quick. `scripts/ci/plan.py`, in the first job of `ci.yml`, decides what a run checks (`tests/test_ci_plan.py` pins its rules).
+Agents push a pull request many times, so its runs stay quick. `scripts/ci/plan.py`, in the first job of `ci.yml`, decides what a run checks (`tests/test_ci_plan.py` pins its rules).
 
 | | Pull request (every push to it) | Push to `main` (a merge) | Weekly, and **Run workflow** |
 | --- | --- | --- | --- |
 | Typecheck (`mypy`, frontend `tsc`) | yes | yes | yes |
-| Unit tests | the ones its change reaches | all | all, on Python 3.11 to 3.14 |
-| Heavy jobs | no | the ones the merge reaches | all |
+| Unit tests (pytest, `ruh`, `bayan`, own-research, Vitest, `test:utils`) | the ones its change reaches | all | all, pytest on Python 3.11 to 3.14 |
+| Provenance preflight | no | yes | yes |
+| Production images | no | yes, after every check passes | no |
 
 - **Unit tests a pull request runs.** Python: the test files it changes, the test files whose imports reach a changed module (transitively, read from the source), and the test files that name a changed file. `ruh`, `bayan` and the own-research invariants run when the change reaches their tests. Vitest runs `--changed` against `main`, and every spec when the frontend's package or build configuration changes; `npm run test:utils` runs when the frontend changes. Every Python test runs when the change touches shared code (`tests/conftest.py` and what it imports, `backend/core/`, the settings, the providers, `api/main.py`, `agents/base.py`), data under `backend/`, configuration, dependencies or a workflow, deletes a module, or changes a module no test reaches. Most backend modules are imported by what `conftest.py` imports, so a backend change usually runs them all.
-- **Heavy jobs** are the Docker build, the package build, the frontend build with its size budget, and `coding-workspace.yml`. On `main` the plan compares the merge with the last commit a full run of `ci.yml` passed on `main` (so a heavy job that failed on one merge runs again on the next, before Deploy Production can follow a passing run) and runs the ones whose inputs changed: the images' `COPY` lines and build contexts, the wheel's packages, `frontend/`. A change to `ci.yml` or `scripts/ci/`, a path outside every known place, or a push with no passed commit to compare with runs them all. They wait for the quick jobs, so a cheap failure stops them. The frontend's heavy steps run after that job's own checks, which spares a second `npm ci`.
-- **Production images** are built on every push to `main`, as before: Deploy Production sends them. The provenance preflight runs with them.
+- **Production images** are built on every push to `main`, as before: Deploy Production sends them (the backend, the frontend and the workspace runtime, runner and browser images). They are the only images and builds CI makes. The job waits for every check of the run, so a failed check holds the deploy back, and it checks the backend image's runtime dependencies (CPU-only torch, pinned pip and setuptools, the owned learning cycle) before keeping it. The frontend image runs `npm run build` itself. The provenance preflight runs with them.
+- **`coding-workspace.yml`** (two images and real sandboxes, the coding workspace's security boundary) runs on `main` after a merge that changed its paths, and by hand; never on a pull request.
 - **The same files.** The first job also asks [`skip-duplicate-actions`](https://github.com/fkirc/skip-duplicate-actions) (open source, pinned to a commit) whether an earlier run of this workflow has passed with the files of this run, as one Git tree. The plan trusts that pass only from a full run: a push to `main`, the weekly run or a run by hand. A pull request's run checks only part, so its pass never counts. When one does count, the checking jobs are skipped and the push goes straight to `production-images`. If the action fails, everything runs: a missing answer is not a pass. Only the latest 100 runs of CI are looked at.
 - **To check a branch in full before merging:** `gh workflow run ci.yml --ref <branch>`, which also lets the merge skip to the production images when the branch was up to date with `main`. Start it by hand before a release too: it tests all four Pythons.
 - **No second pull request workflow.** `pr-check.yml` ran lint, the tests and the frontend build that `ci.yml` already ran. On a pull request `ci.yml`'s jobs carry its names (`Test`, `Frontend Build`) for a branch protection rule; a job the plan skips counts as passed. There is no `Lint` job any more (Not in CI); this repository's plan cannot require checks anyway (branch protection answers HTTP 403).
-- **A new job** reads its line from the plan: a quick check gets `if: needs.billing.outputs.verified != 'true'` (or its own plan output), a heavy one `needs:` the quick jobs and `if: ${{ !cancelled() && !failure() && needs.billing.outputs.<job> == 'true' }}`, with its inputs added to `HEAVY` in `scripts/ci/plan.py`.
+- **A new job** reads its line from the plan: a check gets `if: needs.billing.outputs.verified != 'true'` (or its own plan output) and goes into `production-images`' `needs:`. Keep it light (Not in CI).
 
-What this gives up: the heavy jobs' failures show up on `main` after the merge, not on the pull request, and a failure there holds the deploy back until a fix is merged; a test the import graph misses (an import by a computed name) is caught on `main`; coverage is uploaded only from runs of the whole suite; a break that only an older or newer Python shows is found by the weekly run; and a pass is about the files, so a dependency that changed after it is also found by the weekly run.
+What this gives up: a failure on `main` holds the deploy back until a fix is merged; a test the import graph misses (an import by a computed name) is caught on `main`; coverage is uploaded only from runs of the whole suite; a break that only an older or newer Python shows is found by the weekly run; and a pass is about the files, so a dependency that changed after it is also found by the weekly run.
 
 ## Not in CI
 
-CI runs on a small server (4 shared vCPU, 8 GB) with one runner for this repository, so since 26 November 2026 no workflow lints or starts a browser. The test files and configs stay; run them yourself before a change that needs them:
+CI runs on a small server (4 shared vCPU, 8 GB) with one runner for this repository, so since 26 November 2026 no workflow lints, starts a browser or builds anything a deploy does not ship. The test files and configs stay; run them yourself before a change that needs them:
 
 - **Python lint:** `ruff check backend/ nlp/ tests/` and `ruff format --check backend/ nlp/ tests/`, with ruff from pyproject's `[dev]` range. The pre-commit hooks (`make setup` installs them) run ruff on each commit; `make check` runs `make lint`.
 - **Frontend lint:** `cd frontend && npm run lint` (oxlint with its warning cap, then the colour ratchet).
@@ -62,7 +63,11 @@ CI runs on a small server (4 shared vCPU, 8 GB) with one runner for this reposit
     mizan-workspace-browser:v1 python3 -I /browse_selftest.py
   ```
 
-CI still builds the browser sandbox's image on every push to `main` (`production-images`): Deploy Production sends it to the workspace runner. Nothing starts a browser in it before it ships, and a lint finding reaches `main` unless someone runs the commands above. `tests/test_ci_plan.py` fails when a workflow runs ruff, oxlint, Playwright or `browse_selftest.py` again.
+- **Frontend build and size budget:** `cd frontend && npm run build && npm run size` (`.size-limit.json`). The production frontend image builds the bundle but does not check its size.
+- **Python package:** `python -m build` (`build>=1.6.1,<2`). `release.yml` builds and checks it at each release tag.
+- **Images outside a deploy:** `docker build -f docker/Dockerfile.backend.prod .` and `docker build -f docker/Dockerfile.frontend.prod ./frontend`; `production-images` builds the same files on every push to `main`.
+
+CI still builds the browser sandbox's image on every push to `main` (`production-images`): Deploy Production sends it to the workspace runner. Nothing starts a browser in it before it ships, a lint finding reaches `main` unless someone runs the commands above, a bundle over its size budget is not caught, and a package that no longer builds is found at the next release. `tests/test_ci_plan.py` fails when a workflow runs ruff, oxlint, Playwright or `browse_selftest.py` again, or when a CI job other than `production-images` builds an image, the package or the frontend bundle.
 
 ## Where the output is
 
@@ -76,7 +81,6 @@ on the server's disk, private to this repository and pruned after 14 days. The j
 
 | NAME | Written by | When |
 | --- | --- | --- |
-| `dist` | `ci.yml`, Build package | a push to `main` that changed the package, the weekly run and a run by hand (see What a run checks): the wheel and sdist |
 | `research-import-public-key`, `research-import-receipt` | the research-import operations | when they run |
 
 Two jobs of one run hand files over through `$CI_RESULTS_DIR/<run id>-<attempt>/handoff/<name>`; none does so today. The production images are not files: CI builds them into the runner's Docker and Deploy Production sends them to the server ([deployment.md](deployment.md)).

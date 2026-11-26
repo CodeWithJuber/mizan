@@ -2,14 +2,14 @@
 # reports stay on the runner in $CI_RESULTS_DIR, caches on its disk, images in its Docker
 # (docs/ci-artifacts.md). The first job checks that, and every other job waits for it.
 #
-# Each change gets its heavy jobs once, on main after the merge (docs/ci-artifacts.md, What a run
-# checks), and scripts/ci/plan.py, in the first job, says what this run checks:
-# - a pull request: typecheck and the unit tests its change reaches. No heavy job.
-# - a push to main: typecheck, every unit test, and the heavy jobs whose inputs changed since the
-#   last commit this workflow passed on main (all of them when it cannot place the change).
-# - the weekly run and a run by hand: everything, on every supported Python.
-# No run lints or starts a browser: the runner is a small server (4 shared vCPU, 8 GB). Lint and the
-# browser tests run by hand (docs/ci-artifacts.md, Not in CI).
+# scripts/ci/plan.py, in the first job, says what this run checks (docs/ci-artifacts.md, What a run
+# checks):
+# - a pull request: typecheck and the unit tests its change reaches.
+# - a push to main: typecheck and every unit test, then the production images Deploy Production
+#   sends.
+# - the weekly run and a run by hand: typecheck and every unit test, on every supported Python.
+# The runner is a small server (4 shared vCPU, 8 GB), so no run lints, starts a browser or builds
+# anything a deploy does not ship. Those run by hand (docs/ci-artifacts.md, Not in CI).
 # A push to main goes straight to the production images when an earlier full run (never a pull
 # request's) passed with the same files.
 name: CI
@@ -46,9 +46,6 @@ jobs:
       vitest: ${{ steps.plan.outputs.vitest }}
       utils: ${{ steps.plan.outputs.utils }}
       provenance: ${{ steps.plan.outputs.provenance }}
-      build: ${{ steps.plan.outputs.build }}
-      docker: ${{ steps.plan.outputs.docker }}
-      frontend_build: ${{ steps.plan.outputs.frontend_build }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -70,33 +67,11 @@ jobs:
           # does not see (it goes by the branch's last commit), so a pull request always runs its
           # checks, as do the weekly run and a run started by hand.
           do_not_skip: '["pull_request", "workflow_dispatch", "schedule", "merge_group"]'
-      # A push to main is compared with the last commit a full run of this workflow passed on main
-      # (GitHub's record of its runs), not only with main before the push: when a merge's heavy job
-      # fails, the next push checks that merge's change again, so a passing run, which Deploy
-      # Production follows, never ships code a failed run did not clear. Without that commit (the
-      # lookup failed, none of the last 100 runs passed, it cannot be fetched), the plan cannot
-      # place the change and runs every heavy job.
-      - name: Fetch the last commit main passed
-        id: green
-        if: github.event_name == 'push'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUNS: ${{ github.api_url }}/repos/${{ github.repository }}/actions/workflows/ci.yml/runs
-          BRANCH: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          sha=$(curl -fsS --retry 2 --get -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" --data-urlencode "branch=$BRANCH" \
-              -d status=success -d exclude_pull_requests=true -d per_page=100 "$RUNS" \
-            | python3 scripts/ci/plan.py --last-passed)
-          git fetch --no-tags --depth=1 origin "$sha"
-          echo "base=$sha" >> "$GITHUB_OUTPUT"
-          echo "Compared with $sha, the last commit this workflow passed on $BRANCH."
       - name: What does this run check?
         id: plan
         env:
-          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || steps.green.outputs.base }}
+          # Only a pull request's plan reads a diff; every other run checks everything.
+          BASE: ${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}
           SHOULD_SKIP: ${{ steps.duplicate.outputs.should_skip }}
           SKIPPED_BY: ${{ steps.duplicate.outputs.skipped_by }}
         run: python3 scripts/ci/plan.py
@@ -171,28 +146,6 @@ jobs:
       - run: pip install -e ".[dev]" jsonschema "numpy>=2.5.3,<3"
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
       - run: pytest tests/test_mizan_owned*.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_cycle.py tests/test_owned_learning_service.py research/own_model/tests -q
-
-  # The heavy jobs (this one and docker) run on main when the merge changed what they build,
-  # weekly and by hand, after the quick jobs pass. A quick job the plan skipped does not
-  # hold them back; a failed one does.
-  build:
-    name: Build package
-    permissions:
-      contents: read
-    runs-on: [self-hosted, linux, x64, mizan]
-    needs: [billing, test, typecheck, ruh, bayan, frontend, own-research, provenance]
-    if: ${{ !cancelled() && !failure() && needs.billing.outputs.build == 'true' }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - run: pip install "build>=1.6.1,<2"
-      - run: python -m build
-      - name: Keep the package on the runner
-        run: bash scripts/ci/keep-results.sh dist dist
 
   # Typecheck runs on every run, pull requests included.
   typecheck:
@@ -269,12 +222,6 @@ jobs:
         if: needs.billing.outputs.vitest == 'changed'
       - run: npm run test:utils
         if: needs.billing.outputs.utils == 'true'
-      # The build and its size budget are heavy: on main when the merge changed the frontend, weekly
-      # and by hand, after this job's own checks pass.
-      - run: npm run build
-        if: needs.billing.outputs.frontend_build == 'true'
-      - run: npm run size
-        if: needs.billing.outputs.frontend_build == 'true'
 
   provenance:
     name: Docker provenance preflight
@@ -296,18 +243,26 @@ jobs:
           BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}
         run: python3 scripts/verify_build_provenance.py
 
-  docker:
-    name: Docker build
+  # Deploy Production sends these images from this runner's Docker to the server over SSH
+  # (docs/deployment.md): no registry, no GitHub Packages. They keep the ghcr.io/... names the
+  # server's deploy state and workspace-runner installer already record, but are never pushed.
+  production-images:
+    name: Keep production images on the runner
+    # Every push to main, as before: Deploy Production sends this commit's images. They are the
+    # only images CI builds. It waits for every check of this run; one the plan skipped (files
+    # that passed a full run before) does not hold it back, and one that failed does.
+    if: ${{ !cancelled() && !failure() && github.event_name == 'push' }}
     runs-on: [self-hosted, linux, x64, mizan]
     needs: [billing, test, typecheck, ruh, bayan, frontend, own-research, provenance]
-    if: ${{ !cancelled() && !failure() && needs.billing.outputs.docker == 'true' }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
-      - name: Build backend image
-        run: docker build -f docker/Dockerfile.backend.prod -t mizan-backend .
+      - name: Production backend
+        run: docker build -f docker/Dockerfile.backend.prod -t "ghcr.io/${GITHUB_REPOSITORY,,}/backend:$GITHUB_SHA" .
       - name: Verify production runtime dependencies
         run: >-
-          docker run --rm --entrypoint python mizan-backend
+          docker run --rm --entrypoint python "ghcr.io/${GITHUB_REPOSITORY,,}/backend:$GITHUB_SHA"
           -c "import torch, fastapi, openai, anthropic, PIL;
           from ruh_model.tokenizer.bayan import BayanTokenizer;
           from mizan_owned.learning_cycle import _implementation;
@@ -319,44 +274,6 @@ jobs:
           assert len(_implementation()) == 12;
           assert worker_environment()['PYTHONPATH'] == '/app';
           assert BayanTokenizer().encode('knowledge')"
-      - name: Build frontend image
-        run: docker build -f docker/Dockerfile.frontend.prod -t mizan-frontend ./frontend
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      - name: Build isolated coding images
-        run: |
-          bash scripts/build_workspace_image.sh workspace-runtime mizan-workspace-runtime:v1 --load
-          bash scripts/build_workspace_image.sh workspace-runner mizan-workspace-runner:v1 --load
-      - name: Verify the isolated runner and actual code execution
-        env:
-          MIZAN_DATA_DIR: ${{ runner.temp }}/isolated-coding-tests
-          DB_PATH: ${{ runner.temp }}/isolated-coding-tests/memory.db
-        run: |
-          python -m pip install -e '.[dev,nlp]'
-          mkdir -p "$MIZAN_DATA_DIR"
-          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 /bin/sh -c 'docker --version && python -c "from workspace.runner import app; assert app.docs_url is None"'
-          pytest tests/test_coding_workspace.py tests/test_artifacts.py -q
-
-  # Deploy Production sends these images from this runner's Docker to the server over SSH
-  # (docs/deployment.md): no registry, no GitHub Packages. They keep the ghcr.io/... names the
-  # server's deploy state and workspace-runner installer already record, but are never pushed.
-  production-images:
-    name: Keep production images on the runner
-    # Every push to main, as before: Deploy Production sends this commit's images. It waits for
-    # every check of this run; one the plan skipped (files that passed a full run before, or a
-    # heavy job the merge did not reach) does not hold it back, and one that failed does.
-    if: ${{ !cancelled() && !failure() && github.event_name == 'push' }}
-    runs-on: [self-hosted, linux, x64, mizan]
-    needs: [billing, test, typecheck, ruh, bayan, frontend, own-research, provenance, build, docker]
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - name: Production backend
-        run: docker build -f docker/Dockerfile.backend.prod -t "ghcr.io/${GITHUB_REPOSITORY,,}/backend:$GITHUB_SHA" .
       - name: Production frontend
         run: docker build -f docker/Dockerfile.frontend.prod -t "ghcr.io/${GITHUB_REPOSITORY,,}/frontend:$GITHUB_SHA" ./frontend
       - name: Isolated workspace runtime

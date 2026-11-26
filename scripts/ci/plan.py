@@ -3,24 +3,21 @@
 
     python3 scripts/ci/plan.py
 
-Standard library only. It reads GITHUB_EVENT_NAME; BASE, the commit the change is compared with
-(a pull request: its merge commit's first parent, main as it is; a push to main: the last commit a
-full run of this workflow passed on main, which `--last-passed` picks from GitHub's list of its
-successful runs); and SHOULD_SKIP and SKIPPED_BY, skip-duplicate-actions' answer for
-this run's files. It prints key=value lines and appends them to $GITHUB_OUTPUT.
+Standard library only. It reads GITHUB_EVENT_NAME; BASE, the commit a pull request's change is
+compared with (its merge commit's first parent, main as it is); and SHOULD_SKIP and SKIPPED_BY,
+skip-duplicate-actions' answer for this run's files. It prints key=value lines and appends them to
+$GITHUB_OUTPUT.
 
-Each change gets its heavy jobs once, on main after the merge:
-- A pull request gets typecheck and the unit tests its change reaches. No heavy job: agents push a
-  pull request many times.
-- A push to main gets typecheck and every unit test, and the heavy jobs whose inputs changed since
-  the last commit main passed, so a heavy job that failed on one merge runs again on the next.
-  A path the plan cannot place, or a push with no passed commit to compare with, runs them all.
-- The weekly run and a run by hand check everything.
+- A pull request gets typecheck and the unit tests its change reaches: agents push a pull request
+  many times.
+- A push to main gets typecheck and every unit test, the provenance preflight, then the production
+  images Deploy Production sends.
+- The weekly run and a run by hand get typecheck and every unit test.
 - A push to main goes straight to the production images only when an earlier full run (a push,
   the weekly run or a run by hand) passed with the same files. A pull request's run checks only
   part, so its pass never counts.
-- No run lints or starts a browser: the runner is a small server. Lint and the browser tests run by
-  hand (docs/ci-artifacts.md, Not in CI).
+- The runner is a small server, so no run lints, starts a browser or builds anything a deploy does
+  not ship. Those run by hand (docs/ci-artifacts.md, Not in CI).
 
 The unit tests a pull request runs: the test files it changes, the test files whose imports reach
 a changed module (transitively, read from the source), and the test files that name a changed
@@ -87,67 +84,6 @@ FRONTEND_CONFIG = (
     "frontend/tsconfig*.json",
     ".github/workflows/ci.yml",
     "scripts/ci/",
-)
-
-# --- Heavy jobs, on main after the merge --------------------------------------------------------
-# What each builds or runs: the images' COPY lines and build contexts, the wheel's packages.
-HEAVY = {
-    "docker": (
-        "backend/",
-        "nlp/",
-        "ruh_model/",
-        "mizan_reply/",
-        "mizan_research/",
-        "research/registry/runtime_sources.json",
-        "docker/",
-        ".dockerignore",
-        "frontend/",
-        "pyproject.toml",
-        "scripts/build_workspace_image.sh",
-        "tests/conftest.py",
-        "tests/test_coding_workspace.py",
-        "tests/test_artifacts.py",
-    ),
-    "build": (
-        "pyproject.toml",
-        "README.md",
-        "LICENSE",
-        "backend/",
-        "nlp/",
-        "ruh_model/",
-        "mizan_reply/",
-        "mizan_research/",
-        "research/registry/runtime_sources.json",
-    ),
-    "frontend_build": ("frontend/",),
-}
-EVERY_HEAVY = (".github/workflows/ci.yml", "scripts/ci/")
-# Places no heavy job reads. A path outside these and every job's inputs is one the plan cannot
-# place, and runs every heavy job.
-NO_HEAVY = (
-    ".agents/",
-    ".claude/",
-    ".codex/",
-    ".github/",
-    "data/",
-    "deploy/",
-    "docs/",
-    "notebooks/",
-    "packages/",
-    "plugins/",
-    "research/",
-    "scripts/",
-    "tests/",
-    "*.md",
-    "*.sh",
-    "*.ps1",
-    "docker-compose*.yml",
-    ".env.example",
-    ".gitignore",
-    ".pre-commit-config.yaml",
-    "Makefile",
-    "VERSION",
-    "masalik_network.json",
 )
 
 IMPORT = re.compile(r"^[ \t]*import[ \t]+([\w. \t,]+)", re.M)
@@ -300,26 +236,11 @@ def unit_tests(changed: list[str] | None, root: Path = ROOT) -> str | list[str]:
     return sorted(selected)
 
 
-def heavy_jobs(changed: list[str] | None) -> set[str]:
-    """The heavy jobs whose inputs the change touches; all of them when it cannot be placed."""
-    if changed is None:
-        return set(HEAVY)
-    jobs = set()
-    for path in changed:
-        if matches(path, EVERY_HEAVY):
-            return set(HEAVY)
-        reached = {job for job, inputs in HEAVY.items() if matches(path, inputs)}
-        if not reached and not matches(path, NO_HEAVY):
-            return set(HEAVY)  # a place the plan does not know
-        jobs |= reached
-    return jobs
-
-
 def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: str | None = None):
     """What this run checks, as the strings ci.yml's conditions read."""
     flag = {True: "true", False: "false"}
     result = {"verified": "false", "pytest": "none", "vitest": "none"}
-    result |= {name: "false" for name in ("ruh", "own", "bayan", "utils", "provenance", *HEAVY)}
+    result |= {name: "false" for name in ("ruh", "own", "bayan", "utils", "provenance")}
 
     if event == "pull_request":
         tests = unit_tests(changed, root)
@@ -348,32 +269,11 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
     if event == "push" and passed_by in FULL_RUNS:
         return result | {"verified": "true"}
 
-    reached = heavy_jobs(changed) if event == "push" else set(HEAVY)
     result |= {"pytest": "all", "vitest": "all", "provenance": "true"}
-    result |= {name: "true" for name in ("ruh", "own", "bayan", "utils")}
-    return result | {job: flag[job in reached] for job in HEAVY}
-
-
-def last_passed(answer: dict) -> str | None:
-    """The newest commit a full run passed, from GitHub's list of this workflow's runs, newest first."""
-    for run in answer.get("workflow_runs") or []:
-        if (
-            run.get("event") in FULL_RUNS
-            and run.get("conclusion") == "success"
-            and run.get("head_sha")
-        ):
-            return run["head_sha"]
-    return None
+    return result | {name: "true" for name in ("ruh", "own", "bayan", "utils")}
 
 
 def main() -> int:
-    if sys.argv[1:] == ["--last-passed"]:
-        sha = last_passed(json.load(sys.stdin))
-        if sha is None:
-            print("No full run of this workflow passed on this branch", file=sys.stderr)
-            return 1
-        print(sha)
-        return 0
     event = os.environ.get("GITHUB_EVENT_NAME", "")
     base = os.environ.get("BASE", "")
     passed_by = None
@@ -382,7 +282,7 @@ def main() -> int:
             passed_by = json.loads(os.environ.get("SKIPPED_BY") or "{}").get("event")
         except (ValueError, AttributeError) as error:
             print(f"Unreadable skip-duplicate-actions answer, checking: {error}", file=sys.stderr)
-    changed = changed_files(base) if event in ("pull_request", "push") else None
+    changed = changed_files(base) if event == "pull_request" else None
     if changed is not None:
         print(f"{len(changed)} file(s) changed since {base}")
     lines = [f"{key}={value}" for key, value in plan(event, changed, ROOT, passed_by).items()]
