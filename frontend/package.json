@@ -57,7 +57,7 @@
     "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "1.63.0",
     "@size-limit/file": "^14.3.0",
-    "@tailwindcss/vite": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.5",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
