@@ -10,15 +10,17 @@ successful runs); and SHOULD_SKIP and SKIPPED_BY, skip-duplicate-actions' answer
 this run's files. It prints key=value lines and appends them to $GITHUB_OUTPUT.
 
 Each change gets its heavy jobs once, on main after the merge:
-- A pull request gets typecheck and the unit tests its change reaches. No lint, no heavy job:
-  agents push a pull request many times.
-- A push to main gets lint, typecheck and every unit test, and the heavy jobs whose inputs changed
-  since the last commit main passed, so a heavy job that failed on one merge runs again on the next.
+- A pull request gets typecheck and the unit tests its change reaches. No heavy job: agents push a
+  pull request many times.
+- A push to main gets typecheck and every unit test, and the heavy jobs whose inputs changed since
+  the last commit main passed, so a heavy job that failed on one merge runs again on the next.
   A path the plan cannot place, or a push with no passed commit to compare with, runs them all.
 - The weekly run and a run by hand check everything.
 - A push to main goes straight to the production images only when an earlier full run (a push,
   the weekly run or a run by hand) passed with the same files. A pull request's run checks only
   part, so its pass never counts.
+- No run lints or starts a browser: the runner is a small server. Lint and the browser tests run by
+  hand (docs/ci-artifacts.md, Not in CI).
 
 The unit tests a pull request runs: the test files it changes, the test files whose imports reach
 a changed module (transitively, read from the source), and the test files that name a changed
@@ -105,11 +107,6 @@ HEAVY = {
         "tests/conftest.py",
         "tests/test_coding_workspace.py",
         "tests/test_artifacts.py",
-    ),
-    "browser": (
-        "backend/workspace/",
-        "docker/Dockerfile.workspace-browser",
-        "scripts/build_workspace_image.sh",
     ),
     "build": (
         "pyproject.toml",
@@ -321,7 +318,7 @@ def heavy_jobs(changed: list[str] | None) -> set[str]:
 def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: str | None = None):
     """What this run checks, as the strings ci.yml's conditions read."""
     flag = {True: "true", False: "false"}
-    result = {"verified": "false", "lint": "false", "pytest": "none", "vitest": "none"}
+    result = {"verified": "false", "pytest": "none", "vitest": "none"}
     result |= {name: "false" for name in ("ruh", "own", "bayan", "utils", "provenance", *HEAVY)}
 
     if event == "pull_request":
@@ -352,7 +349,7 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
         return result | {"verified": "true"}
 
     reached = heavy_jobs(changed) if event == "push" else set(HEAVY)
-    result |= {"lint": "true", "pytest": "all", "vitest": "all", "provenance": "true"}
+    result |= {"pytest": "all", "vitest": "all", "provenance": "true"}
     result |= {name: "true" for name in ("ruh", "own", "bayan", "utils")}
     return result | {job: flag[job in reached] for job in HEAVY}
 

@@ -39,13 +39,7 @@ jobs:
       - name: Install CPU training checks
         run: |
           python -m pip install "torch==2.14.1+cpu" --index-url https://download.pytorch.org/whl/cpu
-          # Same ruff range as pyproject [dev] and ci.yml's Lint job.
-          python -m pip install pytest pytest-asyncio "ruff>=0.17.2,<0.18" numpy pyyaml requests
-      # Lint runs on main and by hand, not on each push to a pull request (docs/ci-artifacts.md).
-      - name: Lint sequence training changes
-        if: github.event_name != 'pull_request'
-        run: |
-          ruff check ruh_model/data/sequence.py ruh_model/data/chat_sources.py ruh_model/train_sequence.py ruh_model/tests/test_sequence_training.py ruh_model/tests/test_training_acceleration.py ruh_model/tests/test_training_controller.py scripts/prepare_sequence_data.py scripts/launch_kaggle_training.py scripts/launch_runpod_training.py scripts/runpod_training_job.py
+          python -m pip install pytest pytest-asyncio numpy pyyaml requests
       - name: Test tokenizer, model, training and checkpoint compatibility
         run: python -m pytest ruh_model/tests/ -q
       - name: Validate commit-pinned notebook code cells

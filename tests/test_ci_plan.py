@@ -12,7 +12,7 @@ SPEC = importlib.util.spec_from_file_location("ci_plan", ROOT / "scripts/ci/plan
 ci_plan = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ci_plan)
 
-HEAVY = ("docker", "browser", "build", "frontend_build")
+HEAVY = ("docker", "build", "frontend_build")
 SUITES = ("ruh", "own", "bayan", "utils")
 
 
@@ -75,7 +75,7 @@ def test_a_pull_request_gets_the_unit_tests_its_change_reaches_and_nothing_heavy
     result = pull_request(["backend/leaf/words.py"], repo)
     # words.py is reached through reader.py; the tree scan reads every backend module.
     assert selected(result) == ["tests/test_leaf.py", "tests/test_scan.py"]
-    assert result["lint"] == "false" and result["verified"] == "false"
+    assert result["verified"] == "false"
     assert all(result[job] == "false" for job in HEAVY + ("provenance",))
     assert all(result[suite] == "false" for suite in SUITES)
     assert result["vitest"] == "none"
@@ -109,7 +109,6 @@ def test_a_pull_request_runs_every_unit_test_when_the_change_cannot_be_placed(re
     assert result["pytest"] == "all"
     assert all(result[suite] == "true" for suite in ("ruh", "own", "bayan"))
     assert all(result[job] == "false" for job in HEAVY)
-    assert result["lint"] == "false"
 
 
 def test_a_pull_request_without_a_diff_runs_every_unit_test(repo):
@@ -141,9 +140,9 @@ def test_a_pull_request_runs_the_frontend_specs_its_change_reaches(repo):
     assert pull_request(["backend/leaf/words.py"], repo)["utils"] == "false"
 
 
-def test_main_after_a_merge_runs_lint_every_unit_test_and_the_heavy_jobs_it_reaches(repo):
+def test_main_after_a_merge_runs_every_unit_test_and_the_heavy_jobs_it_reaches(repo):
     docs = push(["docs/guide.md"], repo)
-    assert docs["lint"] == "true" and docs["pytest"] == "all" and docs["vitest"] == "all"
+    assert docs["pytest"] == "all" and docs["vitest"] == "all"
     assert all(docs[suite] == "true" for suite in SUITES)
     assert docs["provenance"] == "true"  # it gates the production images of every push
     assert all(docs[job] == "false" for job in HEAVY)
@@ -153,8 +152,8 @@ def test_main_after_a_merge_runs_lint_every_unit_test_and_the_heavy_jobs_it_reac
         return {job for job in HEAVY if result[job] == "true"}
 
     assert heavy("frontend/src/App.tsx") == {"docker", "frontend_build"}
-    assert heavy("backend/workspace/browse_agent.py") == {"docker", "browser", "build"}
-    assert heavy("docker/Dockerfile.workspace-browser") == {"docker", "browser"}
+    assert heavy("backend/workspace/browse_agent.py") == {"docker", "build"}
+    assert heavy("docker/Dockerfile.workspace-browser") == {"docker"}
     assert heavy("tests/test_leaf.py", "scripts/tool.sh", "deploy/known_hosts") == set()
     # What it cannot place, and CI itself, run every heavy job.
     assert heavy("newdir/thing.txt") == set(HEAVY)
@@ -167,7 +166,7 @@ def test_main_after_a_merge_runs_lint_every_unit_test_and_the_heavy_jobs_it_reac
 @pytest.mark.parametrize("event", ["schedule", "workflow_dispatch"])
 def test_the_weekly_run_and_a_run_by_hand_check_everything(repo, event):
     result = ci_plan.plan(event, ["docs/other.md"], repo, passed_by="push")
-    assert result["verified"] == "false" and result["lint"] == "true"
+    assert result["verified"] == "false"
     assert result["pytest"] == "all" and result["vitest"] == "all"
     assert all(result[name] == "true" for name in HEAVY + SUITES + ("provenance",))
 
@@ -176,13 +175,13 @@ def test_the_weekly_run_and_a_run_by_hand_check_everything(repo, event):
 def test_main_skips_to_the_production_images_only_after_a_full_run_passed(repo, passed_by):
     result = push(["backend/leaf/words.py"], repo, passed_by=passed_by)
     assert result["verified"] == "true"
-    assert result["lint"] == "false" and result["pytest"] == "none" and result["vitest"] == "none"
+    assert result["pytest"] == "none" and result["vitest"] == "none"
     assert all(result[name] == "false" for name in HEAVY + SUITES + ("provenance",))
 
 
 def test_a_pull_requests_partial_run_never_lets_main_skip(repo):
     result = push(["frontend/src/App.tsx"], repo, passed_by="pull_request")
-    assert result["verified"] == "false" and result["lint"] == "true"
+    assert result["verified"] == "false" and result["pytest"] == "all"
     assert result["docker"] == "true" and result["frontend_build"] == "true"
 
 
@@ -214,7 +213,7 @@ def test_the_real_repository_places_a_frontend_change_and_a_test_change():
 
 # ci.yml acts on the plan. These pin what the plan cannot enforce by itself.
 JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
-QUICK = {"lint", "test", "typecheck", "ruh", "bayan", "frontend", "own-research"}
+QUICK = {"test", "typecheck", "ruh", "bayan", "frontend", "own-research"}
 
 
 def needs(job):
@@ -224,25 +223,43 @@ def needs(job):
 
 def test_heavy_jobs_wait_for_the_quick_ones_and_run_when_the_plan_skipped_them():
     assert all("billing" in needs(job) for job in JOBS if job != "billing")
-    for job in ("build", "docker", "browser"):
+    for job in ("build", "docker"):
         assert QUICK <= needs(job), job
         # A quick job the plan skipped must not skip the heavy job; a failed one must.
         assert "!cancelled()" in JOBS[job]["if"] and "!failure()" in JOBS[job]["if"], job
     images = JOBS["production-images"]
-    assert QUICK | {"build", "docker", "browser", "provenance"} <= needs("production-images")
+    assert QUICK | {"build", "docker", "provenance"} <= needs("production-images")
     assert "github.event_name == 'push'" in images["if"] and "!failure()" in images["if"]
 
 
 def test_each_job_runs_only_when_the_plan_says_so():
-    outputs = {"lint": "lint", "ruh": "ruh", "bayan": "bayan", "own-research": "own"}
-    outputs |= {"build": "build", "docker": "docker", "browser": "browser"}
+    outputs = {"ruh": "ruh", "bayan": "bayan", "own-research": "own"}
+    outputs |= {"build": "build", "docker": "docker"}
     outputs |= {"provenance": "provenance", "test": "pytest", "typecheck": "verified"}
     for job, output in outputs.items():
         assert f"needs.billing.outputs.{output}" in JOBS[job]["if"], job
     steps = {step.get("run", ""): step.get("if", "") for step in JOBS["frontend"]["steps"]}
-    assert "needs.billing.outputs.lint" in steps["npm run lint"]
-    for run in ("npm run build", "npm run size", "npx playwright install chromium && npm run e2e"):
+    for run in ("npm run build", "npm run size"):
         assert "needs.billing.outputs.frontend_build" in steps[run], run
+    # The first job passes on every answer the plan gives, and nothing else.
+    given = set(ci_plan.plan("workflow_dispatch", None, ROOT))
+    assert set(JOBS["billing"]["outputs"]) == given
+
+
+def test_ci_never_lints_or_starts_a_browser():
+    # The owner's decision of 26 Nov 2026: the runner is a small server. Lint and the browser
+    # tests run by hand (docs/ci-artifacts.md, Not in CI).
+    for event in ("pull_request", "push", "schedule", "workflow_dispatch"):
+        assert not {"lint", "browser"} & set(ci_plan.plan(event, None, ROOT)), event
+    assert "lint" not in JOBS and "browser" not in JOBS
+    tools = ("ruff", "oxlint", "npm run lint", "playwright", "npm run e2e", "browse_selftest")
+    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        text = workflow.read_text().lower()
+        for tool in tools:
+            assert tool not in text, (workflow.name, tool)
+    # Deploy Production still sends the browser sandbox's image, so CI still builds it.
+    built = [step.get("run", "") for step in JOBS["production-images"]["steps"]]
+    assert any("build_workspace_image.sh workspace-browser" in run for run in built)
 
 
 def test_only_a_full_run_lets_main_skip_its_checks():

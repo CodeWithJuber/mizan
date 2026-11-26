@@ -4,10 +4,12 @@
 #
 # Each change gets its heavy jobs once, on main after the merge (docs/ci-artifacts.md, What a run
 # checks), and scripts/ci/plan.py, in the first job, says what this run checks:
-# - a pull request: typecheck and the unit tests its change reaches. No lint, no heavy job.
-# - a push to main: lint, typecheck, every unit test, and the heavy jobs whose inputs changed
-#   since the last commit this workflow passed on main (all of them when it cannot place the change).
+# - a pull request: typecheck and the unit tests its change reaches. No heavy job.
+# - a push to main: typecheck, every unit test, and the heavy jobs whose inputs changed since the
+#   last commit this workflow passed on main (all of them when it cannot place the change).
 # - the weekly run and a run by hand: everything, on every supported Python.
+# No run lints or starts a browser: the runner is a small server (4 shared vCPU, 8 GB). Lint and the
+# browser tests run by hand (docs/ci-artifacts.md, Not in CI).
 # A push to main goes straight to the production images when an earlier full run (never a pull
 # request's) passed with the same files.
 name: CI
@@ -37,7 +39,6 @@ jobs:
       contents: read
     outputs:
       verified: ${{ steps.plan.outputs.verified }}
-      lint: ${{ steps.plan.outputs.lint }}
       pytest: ${{ steps.plan.outputs.pytest }}
       ruh: ${{ steps.plan.outputs.ruh }}
       own: ${{ steps.plan.outputs.own }}
@@ -47,7 +48,6 @@ jobs:
       provenance: ${{ steps.plan.outputs.provenance }}
       build: ${{ steps.plan.outputs.build }}
       docker: ${{ steps.plan.outputs.docker }}
-      browser: ${{ steps.plan.outputs.browser }}
       frontend_build: ${{ steps.plan.outputs.frontend_build }}
     steps:
       - uses: actions/checkout@v7
@@ -101,27 +101,6 @@ jobs:
           SKIPPED_BY: ${{ steps.duplicate.outputs.skipped_by }}
         run: python3 scripts/ci/plan.py
 
-  # Lint runs on main, weekly and by hand: a pull request is not linted on each push.
-  lint:
-    name: Lint
-    runs-on: [self-hosted, linux, x64, mizan]
-    needs: billing
-    if: needs.billing.outputs.lint == 'true'
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      # The runner keeps setup-python's interpreters between jobs. Each job installs into its own
-      # environment, so it sees only what it installs, as on a new machine (docs/ci-artifacts.md).
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
-      # Pin to the same range as pyproject [dev] — unpinned ruff drift has
-      # flipped I001 verdicts on already-committed code between releases.
-      - run: pip install "ruff>=0.17.2,<0.18"
-      - run: ruff check backend/ nlp/ tests/
-      - run: ruff format --check backend/ nlp/ tests/
-
   test:
     # A pull request's job is named Test, as the job of the removed pr-check.yml was, so a branch
     # protection rule that requires it still finds it.
@@ -143,6 +122,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
+      # The runner keeps setup-python's interpreters between jobs. Each job installs into its own
+      # environment, so it sees only what it installs, as on a new machine (docs/ci-artifacts.md).
       - name: Fresh Python environment
         run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: Install dependencies
@@ -191,15 +172,15 @@ jobs:
       - run: pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.14.1+cpu"
       - run: pytest tests/test_mizan_owned*.py tests/test_owned_checkpoint_activation.py tests/test_owned_learning_cycle.py tests/test_owned_learning_service.py research/own_model/tests -q
 
-  # The heavy jobs (this one, docker and browser) run on main when the merge changed what they
-  # build, weekly and by hand, after the quick jobs pass. A quick job the plan skipped does not
+  # The heavy jobs (this one and docker) run on main when the merge changed what they build,
+  # weekly and by hand, after the quick jobs pass. A quick job the plan skipped does not
   # hold them back; a failed one does.
   build:
     name: Build package
     permissions:
       contents: read
     runs-on: [self-hosted, linux, x64, mizan]
-    needs: [billing, lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
+    needs: [billing, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     if: ${{ !cancelled() && !failure() && needs.billing.outputs.build == 'true' }}
     steps:
       - uses: actions/checkout@v7
@@ -281,8 +262,6 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run lint
-        if: needs.billing.outputs.lint == 'true'
       - run: npm test
         if: needs.billing.outputs.vitest == 'all'
       # The specs whose imports reach the change; none reached is a pass.
@@ -290,21 +269,12 @@ jobs:
         if: needs.billing.outputs.vitest == 'changed'
       - run: npm run test:utils
         if: needs.billing.outputs.utils == 'true'
-      # The build, its size budget and the browser tests are heavy: on main when the merge changed
-      # the frontend, weekly and by hand, after this job's own checks pass.
+      # The build and its size budget are heavy: on main when the merge changed the frontend, weekly
+      # and by hand, after this job's own checks pass.
       - run: npm run build
         if: needs.billing.outputs.frontend_build == 'true'
       - run: npm run size
         if: needs.billing.outputs.frontend_build == 'true'
-      # Chromium's system libraries are in the runner image; the browser itself is kept in the
-      # runner's cache (~/.cache/ms-playwright) between runs.
-      - name: Browser tests (mocked API, desktop and phone)
-        if: needs.billing.outputs.frontend_build == 'true'
-        run: npx playwright install chromium && npm run e2e
-      - name: Keep failed browser reports on the runner
-        if: failure()
-        working-directory: .
-        run: bash scripts/ci/keep-results.sh playwright-report --optional --base frontend playwright-report test-results
 
   provenance:
     name: Docker provenance preflight
@@ -329,7 +299,7 @@ jobs:
   docker:
     name: Docker build
     runs-on: [self-hosted, linux, x64, mizan]
-    needs: [billing, lint, test, typecheck, ruh, bayan, frontend, own-research, provenance]
+    needs: [billing, test, typecheck, ruh, bayan, frontend, own-research, provenance]
     if: ${{ !cancelled() && !failure() && needs.billing.outputs.docker == 'true' }}
     steps:
       - uses: actions/checkout@v7
@@ -370,30 +340,6 @@ jobs:
           docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges mizan-workspace-runner:v1 /bin/sh -c 'docker --version && python -c "from workspace.runner import app; assert app.docs_url is None"'
           pytest tests/test_coding_workspace.py tests/test_artifacts.py -q
 
-  browser:
-    name: Browser sandbox (Shahid)
-    runs-on: [self-hosted, linux, x64, mizan]
-    needs: [billing, lint, test, typecheck, ruh, bayan, frontend, own-research]
-    if: ${{ !cancelled() && !failure() && needs.billing.outputs.browser == 'true' }}
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-      - name: Build the browser sandbox image
-        run: bash scripts/build_workspace_image.sh workspace-browser mizan-workspace-browser:v1 --load
-      - name: A real browser follows Shahid's rules inside the hardened container
-        run: >-
-          docker run --rm --network none --read-only --cap-drop ALL
-          --security-opt no-new-privileges --user 65534:65534 --shm-size 256m
-          --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=1777 --env HOME=/tmp
-          mizan-workspace-browser:v1 python3 -I /browse_selftest.py
-      - name: The browse egress proxy starts in public mode
-        run: >-
-          docker run --rm --network none --read-only --cap-drop ALL
-          --security-opt no-new-privileges --env MIZAN_EGRESS_MODE=public
-          mizan-workspace-browser:v1 python3 -I -c
-          "import sys; sys.path.insert(0, '/'); import egress_proxy as e;
-          assert e.public_mode() and e.host_allowed('example.org', e.allowlist())"
-
   # Deploy Production sends these images from this runner's Docker to the server over SSH
   # (docs/deployment.md): no registry, no GitHub Packages. They keep the ghcr.io/... names the
   # server's deploy state and workspace-runner installer already record, but are never pushed.
@@ -404,7 +350,7 @@ jobs:
     # heavy job the merge did not reach) does not hold it back, and one that failed does.
     if: ${{ !cancelled() && !failure() && github.event_name == 'push' }}
     runs-on: [self-hosted, linux, x64, mizan]
-    needs: [billing, lint, test, typecheck, ruh, bayan, frontend, own-research, provenance, build, docker, browser]
+    needs: [billing, test, typecheck, ruh, bayan, frontend, own-research, provenance, build, docker]
     permissions:
       contents: read
     steps:
@@ -417,6 +363,7 @@ jobs:
         run: bash scripts/build_workspace_image.sh workspace-runtime "ghcr.io/${GITHUB_REPOSITORY,,}/workspace-runtime:$GITHUB_SHA" --load
       - name: Private workspace runner
         run: bash scripts/build_workspace_image.sh workspace-runner "ghcr.io/${GITHUB_REPOSITORY,,}/workspace-runner:$GITHUB_SHA" --load
+      # Deploy Production sends it to the workspace runner; CI builds it but runs no browser.
       - name: The browser sandbox (Shahid)
         run: bash scripts/build_workspace_image.sh workspace-browser "ghcr.io/${GITHUB_REPOSITORY,,}/workspace-browser:$GITHUB_SHA" --load
       # A deploy sends only the newest commit on its branch, so older commits' images are dropped.

@@ -88,7 +88,8 @@ The older in-process browser tools of the web agent (Mubashir) now:
 
 - `backend/workspace/browse_agent.py`: the job inside the container: the
   request guard `decide`, the steps, the witness hashes.
-- `backend/workspace/browse_selftest.py`: the real-browser self-test, run in CI.
+- `backend/workspace/browse_selftest.py`: the real-browser self-test, run by hand
+  in the image (the command is in [ci-artifacts.md](ci-artifacts.md), Not in CI).
 - `backend/workspace/browse.py` and `runner.py` (`POST /browse`): the container
   and its network on the runner.
 - `backend/workspace/egress_proxy.py`: `MIZAN_EGRESS_MODE=public` for the browse
