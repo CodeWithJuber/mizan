@@ -1,5 +1,10 @@
 name: Inspect Workspace Runner Recovery
 
+# A completed, read-only production operation, kept as a record. It runs only when dispatched on
+# its exact branch, on a GitHub-hosted runner in the `production` environment (a required reviewer
+# approves it), over SSH with a key. Its report stays on the server: this repository's job logs
+# are public.
+
 on:
   # Completed operation: branch synchronization must not rerun it.
   workflow_dispatch:
@@ -14,28 +19,38 @@ concurrency:
 jobs:
   inspect:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/workspace-runner-diagnostics-20261025'
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
+    environment: production
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate read-only diagnostics
         run: python3 -m py_compile scripts/workspace_runner_diagnostics.py
-      - name: Install SSH client
-        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Inspect recovery state without modifying the server
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
         run: |
           set -euo pipefail
-          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
-          test -s deploy/known_hosts
-          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
-          remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-diagnostics.XXXXXXXX')
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          [[ "$PUBLIC_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]] || PUBLIC_URL=''
+          keys="$RUNNER_TEMP/deploy-ssh"
+          install -d -m 700 "$keys"
+          trap 'rm -rf "$keys"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$keys/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$keys/known_hosts"
+          chmod 600 "$keys/key" "$keys/known_hosts"
+          ssh_options=(-i "$keys/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$keys/known_hosts" -o ConnectTimeout=15)
+          remote_dir=$(ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-diagnostics.XXXXXXXX')
           [[ "$remote_dir" =~ ^/var/lib/mizan-deploy/workspace-diagnostics\.[A-Za-z0-9]{8}$ ]]
-          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -f '\''$remote_dir/workspace_runner_diagnostics.py'\'' '\''$remote_dir/setup_workspace_runner.py'\'' && rmdir '\''$remote_dir'\''" || true' EXIT
-          sshpass -e scp "${ssh_options[@]}" scripts/workspace_runner_diagnostics.py scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "flock -w 120 /var/lib/mizan-deploy/deploy.lock python3 '$remote_dir/workspace_runner_diagnostics.py'"
+          trap 'ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -f '\''$remote_dir/workspace_runner_diagnostics.py'\'' '\''$remote_dir/setup_workspace_runner.py'\'' && rmdir '\''$remote_dir'\''" || true; rm -rf "$keys"' EXIT
+          scp "${ssh_options[@]}" scripts/workspace_runner_diagnostics.py scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
+          # The report is kept on the server, root-only; the log shows where and its SHA-256.
+          report="/var/lib/mizan-deploy/reports/workspace-runner-diagnostics-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
+          ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && mkdir -p /var/lib/mizan-deploy/reports && status=0 && { MIZAN_PUBLIC_URL='${PUBLIC_URL%/}' flock -w 120 /var/lib/mizan-deploy/deploy.lock python3 '$remote_dir/workspace_runner_diagnostics.py' > '$report' || status=\$?; } && sha256sum '$report' && exit \$status"

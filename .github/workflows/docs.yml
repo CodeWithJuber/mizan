@@ -1,8 +1,7 @@
 name: Docs
 
-# Checks the documentation on the self-hosted runner. It no longer deploys to GitHub Pages:
-# Pages on a private repository needs a paid plan, and its upload uses artifact storage
-# (docs/ci-artifacts.md). docs/ is read in the repository itself.
+# Checks the documentation. It does not deploy to GitHub Pages: docs/ is read in the repository
+# itself (docs/ci-artifacts.md).
 
 on:
   push:
@@ -20,11 +19,11 @@ permissions:
 jobs:
   build:
     name: Build docs
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Validate documentation files
         run: |

@@ -1,30 +1,48 @@
 name: Workspace Runner Preflight
+
+# A completed, read-only production operation, kept as a record. It runs only on a push to its exact
+# branch, on a GitHub-hosted runner in the `production` environment (a required reviewer approves
+# it), over SSH with a key. Its inventory stays on the server: this repository's job logs are
+# public.
+
 on:
   push:
     branches: [ops/workspace-runner-preflight-20261026]
+
 permissions:
   contents: read
+
 concurrency:
   group: mizan-workspace-preflight
   cancel-in-progress: false
+
 jobs:
   inventory:
     if: github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/workspace-runner-preflight-20261026'
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
+    environment: production
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install SSH client
-        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Read isolated-runner prerequisites
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
-          test -s deploy/known_hosts
-          sshpass -e ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" 'bash -s' < scripts/workspace_runner_preflight.sh
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          keys="$RUNNER_TEMP/deploy-ssh"
+          install -d -m 700 "$keys"
+          trap 'rm -rf "$keys"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$keys/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$keys/known_hosts"
+          chmod 600 "$keys/key" "$keys/known_hosts"
+          # The inventory is kept on the server, root-only; the log shows where and its SHA-256.
+          report="/var/lib/mizan-deploy/reports/workspace-runner-preflight-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.json"
+          ssh -i "$keys/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$keys/known_hosts" -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" \
+            "umask 077 && mkdir -p /var/lib/mizan-deploy/reports && status=0 && { bash -s > '$report' || status=\$?; } && sha256sum '$report' && exit \$status" < scripts/workspace_runner_preflight.sh

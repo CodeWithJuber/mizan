@@ -172,7 +172,7 @@ def test_the_real_probe_gates_premerge_and_the_production_images():
     source = (ROOT / ".github/workflows/ci.yml").read_text()
     parts = re.split(r"(?m)^  ([a-z][a-z-]*):\n", source)
     jobs = dict(zip(parts[1::2], parts[2::2], strict=True))
-    dependencies = re.search(r"needs: \[([^\]]+)\]", jobs["production-images"])
+    dependencies = re.search(r"needs: \[([^\]]+)\]", jobs["images"])
     assert "provenance" in dependencies[1].replace(" ", "").split(",")
     job = jobs["provenance"]
     pin = "docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069"
@@ -182,9 +182,9 @@ def test_the_real_probe_gates_premerge_and_the_production_images():
     for step in job.split("      - "):
         if check in step:
             assert "BUILDX_BUILDER: ${{ steps.buildx.outputs.name }}" in step
-    # The production images stay in the runner's own Docker: Deploy Production sends them to
-    # the server over SSH. Nothing logs in to or pushes to a registry (docs/deployment.md).
-    images = jobs["production-images"]
+    # CI's images are a check; Deploy Production builds the commit's own and sends them to the
+    # server over SSH. Nothing logs in to or pushes to a registry (docs/deployment.md).
+    images = jobs["images"]
     assert images.count("--load") == 3 and images.count("docker build -f docker/") == 2
     for job in jobs.values():
         assert "--push" not in job and "login-action" not in job and "build-push-action" not in job

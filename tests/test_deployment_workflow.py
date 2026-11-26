@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import yaml
 
 SHA = "a" * 40
 SCRIPT = Path(__file__).parents[1] / "scripts" / "deploy_production.sh"
@@ -345,8 +346,24 @@ def test_absent_chat_tuning_does_not_override_installed_compose_settings(tmp_pat
 
 
 def test_workflow_reserves_time_for_lock_drain_health_and_rollback():
+    # The hosted runner builds the images too, before the lock, drain, health and rollback.
     workflow = SCRIPT.parents[1] / ".github/workflows/deploy.yml"
-    assert "timeout-minutes: 45" in workflow.read_text()
+    assert "timeout-minutes: 90" in workflow.read_text()
+
+
+def test_workflow_deploys_with_a_pinned_key_and_never_for_a_pull_request():
+    text = (SCRIPT.parents[1] / ".github/workflows/deploy.yml").read_text()
+    workflow = yaml.safe_load(text)
+    assert set(workflow[True]) == {"workflow_run", "workflow_dispatch"}
+    job = workflow["jobs"]["deploy"]
+    assert job["environment"] == "production" and job["runs-on"] == "ubuntu-24.04"
+    # A key and a pinned host key from the environment's secrets; never a password.
+    for secret in ("DEPLOY_HOST", "DEPLOY_USER", "DEPLOY_SSH_KEY", "DEPLOY_KNOWN_HOSTS"):
+        assert f"secrets.{secret}" in text, secret
+    assert "sshpass" not in text and "PASSWORD" not in text
+    assert "StrictHostKeyChecking=yes" in text and "BatchMode=yes" in text
+    # The public URL comes from a secret, and the deploy script gets it on the server.
+    assert "secrets.DEPLOY_PUBLIC_URL" in text and "MIZAN_PUBLIC_URL='$public_url'" in text
 
 
 def test_workflow_uploads_both_scripts_privately_and_reports_the_runner():
@@ -358,7 +375,6 @@ def test_workflow_uploads_both_scripts_privately_and_reports_the_runner():
         "scripts/deploy_production.sh scripts/setup_workspace_runner.py "
         '"$SSH_USER@$SSH_HOST:$remote_dir/"' in workflow
     )
-    assert "      - scripts/setup_workspace_runner.py\n" in workflow
     for status, output in (("75", "runner=kept"), ("76", "runner=unverified")):
         assert f"            {status})\n" in workflow and output in workflow
     # The site stays recorded as deployed; a last step turns the run red.

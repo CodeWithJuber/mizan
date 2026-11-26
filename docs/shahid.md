@@ -88,8 +88,9 @@ The older in-process browser tools of the web agent (Mubashir) now:
 
 - `backend/workspace/browse_agent.py`: the job inside the container: the
   request guard `decide`, the steps, the witness hashes.
-- `backend/workspace/browse_selftest.py`: the real-browser self-test, run by hand
-  in the image (the command is in [ci-artifacts.md](ci-artifacts.md), Not in CI).
+- `backend/workspace/browse_selftest.py`: the real-browser self-test, run in the
+  image with production's hardening by CI's `images` job on main, weekly and by hand
+  ([ci-artifacts.md](ci-artifacts.md)).
 - `backend/workspace/browse.py` and `runner.py` (`POST /browse`): the container
   and its network on the runner.
 - `backend/workspace/egress_proxy.py`: `MIZAN_EGRESS_MODE=public` for the browse
@@ -101,5 +102,6 @@ The older in-process browser tools of the web agent (Mubashir) now:
 - `backend/tadbir/engine.py` (`_browse`) and `fahm.py` (`browse`, family
   `page` with `web_read`).
 - `docker/Dockerfile.workspace-browser`, `.github/workflows/ci.yml` (job
-  `production-images` builds the image Deploy Production sends).
+  `images` builds and tests it) and `deploy.yml` (builds and sends it when the runner
+  needs it).
 - Tests: `tests/test_shahid.py`.

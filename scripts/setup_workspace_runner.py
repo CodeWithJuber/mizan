@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Provision only Mizan's dedicated rootless workspace worker on its known host.
 
-No registry is used: the workflow sends each workspace image from the CI runner as a
+No registry is used: the workflow builds each workspace image and sends it as a
 `docker save` archive into the private directory it gives as --images-dir, and the image
 is loaded into the daemon that runs it. All subprocess output is private; only stage
 names and verified, non-secret receipts are printed. Run as root over

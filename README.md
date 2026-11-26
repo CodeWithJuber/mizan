@@ -162,7 +162,7 @@ This section separates what the repository demonstrates from what it does not.
 
 ### Test and build proof
 
-- CI runs the type check and the tests a change reaches on every pull request, and every test and then the production images on main after the merge; lint, the browser tests and the package and frontend builds run locally ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`docs/ci-artifacts.md`](docs/ci-artifacts.md)). The workflow badge is the current signal.
+- CI runs on GitHub-hosted runners: the type check and the tests a change reaches on every pull request; lint, every test, the frontend build and browser tests, and the Docker images with the browser sandbox's self-test on main after the merge; and the model and training tests weekly ([`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`docs/ci-artifacts.md`](docs/ci-artifacts.md)). The workflow badge is the current signal.
 - At commit `5cc11dc` (28 October 2026), `pytest --collect-only` collects **2,721** backend tests; the frontend has 41 test files (`npm test`). Counts are a dated snapshot.
 
 ### Not included
@@ -362,7 +362,7 @@ make test           # pytest tests/
 make lint           # ruff check backend/ tests/
 make format         # ruff format + safe fixes
 make typecheck      # mypy backend/
-make check          # billing guard + lint + typecheck + test
+make check          # workflow guard + lint + typecheck + test
 make build          # build the Python package
 ```
 

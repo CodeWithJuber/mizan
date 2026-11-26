@@ -10,15 +10,14 @@ $GITHUB_OUTPUT.
 
 - A pull request gets typecheck and the unit tests its change reaches: agents push a pull request
   many times.
-- A push to main gets typecheck and every unit test, the provenance preflight, then the production
-  images Deploy Production sends.
-- The weekly run and a run by hand get typecheck and every unit test.
-- A push to main goes straight to the production images only when an earlier full run (a push,
-  the weekly run or a run by hand) passed with the same files. A pull request's run checks only
-  part, so its pass never counts.
-- The runner is a small server, so no run lints, starts a browser, runs the model and training
-  tests (NOT_IN_CI) or builds anything a deploy does not ship. Those run by hand
-  (docs/ci-artifacts.md, Not in CI).
+- A push to main gets lint, typecheck and every unit test, the provenance preflight, the frontend
+  build and browser tests, and the Docker images with the browser sandbox's self-test. Deploy
+  Production follows a run that passed.
+- The weekly run and a run by hand get all of that, and the model and training tests
+  (TRAINING_TESTS), which install CPU torch.
+- A push to main skips its checks only when an earlier full run (a push, the weekly run or a run
+  by hand) passed with the same files. A pull request's run checks only part, so its pass never
+  counts.
 
 The unit tests a pull request runs: the test files it changes, the test files whose imports reach
 a changed module (transitively, read from the source), and the test files that name a changed
@@ -43,6 +42,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 # The runs that check everything their files need. A pull request's run checks only part.
 FULL_RUNS = ("push", "schedule", "workflow_dispatch")
+# What only a full run checks: lint, the provenance preflight, the frontend build and browser tests,
+# and the Docker images with the browser sandbox's self-test.
+FULL_ONLY = ("lint", "provenance", "browser", "images")
 
 # --- Unit tests -------------------------------------------------------------------------------
 TEST_ROOTS = ("tests/", "ruh_model/tests/", "packages/bayan/tests/", "research/own_model/tests/")
@@ -66,10 +68,11 @@ EVERY_TEST = (
 )
 # A test that reads every backend module (test_container_imports.py, test_runtime_settings.py).
 TREE_SCAN = 'rglob("*.py")'
-# Model and training tests CI never runs: they install torch or run the owned model's training
-# stages (docs/ci-artifacts.md, Not in CI). They still count as tests, so a change that reaches
-# only them runs none of them rather than every test. ci.yml's test job ignores the same files.
-NOT_IN_CI = (
+# Model and training tests: they install CPU torch or run the owned model's training stages, so
+# only the weekly run and a run by hand run them (ci.yml's ruh and own-research jobs). A pull
+# request never selects them; they still count as tests, so a change that reaches only them runs
+# none of them rather than every test. ci.yml's test job ignores the learning-cycle files.
+TRAINING_TESTS = (
     "ruh_model/tests/",
     "research/own_model/tests/",
     "tests/test_owned_learning_cycle.py",
@@ -243,7 +246,7 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
     """What this run checks, as the strings ci.yml's conditions read."""
     flag = {True: "true", False: "false"}
     result = {"verified": "false", "pytest": "none", "vitest": "none"}
-    result |= {name: "false" for name in ("bayan", "utils", "provenance")}
+    result |= {name: "false" for name in FULL_ONLY + ("bayan", "utils", "training")}
 
     if event == "pull_request":
         tests = unit_tests(changed, root)
@@ -254,7 +257,7 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
             vitest = "changed"  # vitest run --changed: the specs whose imports reach the change
         else:
             vitest = "none"
-        run = [t for t in tests if t.startswith("tests/") and not matches(t, NOT_IN_CI)]
+        run = [t for t in tests if t.startswith("tests/") and not matches(t, TRAINING_TESTS)]
         python = "all" if every else " ".join(run)
         result |= {
             "pytest": python or "none",
@@ -271,8 +274,10 @@ def plan(event: str, changed: list[str] | None, root: Path = ROOT, passed_by: st
     if event == "push" and passed_by in FULL_RUNS:
         return result | {"verified": "true"}
 
-    result |= {"pytest": "all", "vitest": "all", "provenance": "true"}
-    return result | {name: "true" for name in ("bayan", "utils")}
+    result |= {"pytest": "all", "vitest": "all"}
+    result |= {name: "true" for name in FULL_ONLY + ("bayan", "utils")}
+    # CPU torch and the training stages: weekly and by hand, not on every merge.
+    return result | {"training": flag[event in ("schedule", "workflow_dispatch")]}
 
 
 def main() -> int:

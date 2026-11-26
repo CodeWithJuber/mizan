@@ -1,5 +1,11 @@
 name: Enable Isolated Workspace Runner
 
+# A completed production operation, kept as a record (docs/runner-setup.md). It runs only on a
+# push to its exact branch, on a GitHub-hosted runner in the `production` environment (a required
+# reviewer approves it), over SSH with a key. It builds the workspace images of the expected
+# commit itself and sends them as docker save archives; no registry. The installer prints only
+# stage names and receipts.
+
 on:
   push:
     branches: [ops/enable-workspace-runner-20261026]
@@ -14,53 +20,77 @@ concurrency:
 jobs:
   setup:
     if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/enable-workspace-runner-20261026'
-    runs-on: [self-hosted, linux, x64, mizan]
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 75
+    env:
+      # Retarget only after the final main CI and deployment.
+      EXPECTED_BACKEND_SHA: 0176a873e266d942918de47f8888071568eeeeb2
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate installer syntax and SSH settings
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
         run: |
           set -euo pipefail
           python3 -m py_compile scripts/setup_workspace_runner.py
-          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
-          test -s deploy/known_hosts
-      - name: Install SSH client
-        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
-      - name: Provision and verify the dedicated rootless runner
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          [[ "$PUBLIC_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]] || { echo '::error::DEPLOY_PUBLIC_URL must be an https:// origin'; exit 1; }
+      - name: Main still has the expected commit
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
           GH_TOKEN: ${{ github.token }}
-          # Retarget only after the final main CI (its production-images job) and deployment.
-          EXPECTED_BACKEND_SHA: 0176a873e266d942918de47f8888071568eeeeb2
+        run: |
+          current=$(gh api repos/CodeWithJuber/mizan/commits/main --jq .sha)
+          test "$current" = "$EXPECTED_BACKEND_SHA" || { echo '::error::Main changed; review and retarget this setup before execution.'; exit 1; }
+      - name: Check out the expected commit to build its images
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.EXPECTED_BACKEND_SHA }}
+          path: expected
+          persist-credentials: false
+      - name: Build the workspace images of that commit
+        working-directory: expected
         run: |
           set -euo pipefail
-          # The runner has curl and jq but not GitHub's gh CLI. The token goes in on stdin.
-          current=$(curl -fsS --retry 3 -H 'Accept: application/vnd.github+json' -H @- \
-            "$GITHUB_API_URL/repos/CodeWithJuber/mizan/commits/main" \
-            <<< "Authorization: Bearer $GH_TOKEN" | jq -r .sha)
-          test "$current" = "$EXPECTED_BACKEND_SHA" || { echo '::error::Main changed; review and retarget this setup before execution.'; exit 1; }
-          # The workspace images come from this runner's Docker, where CI built them; no registry.
           images="ghcr.io/codewithjuber/mizan"
-          docker image inspect "$images/workspace-runtime:$EXPECTED_BACKEND_SHA" "$images/workspace-runner:$EXPECTED_BACKEND_SHA" >/dev/null 2>&1 ||
-            { echo '::error::This runner has no workspace images of that commit; re-run its CI first.'; exit 1; }
-          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
-          remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-setup.XXXXXXXX')
+          for role in runtime runner; do
+            bash scripts/build_workspace_image.sh "workspace-$role" "$images/workspace-$role:$EXPECTED_BACKEND_SHA" --load
+          done
+          # The browser image (Shahid) is optional: without it setup continues without a browser.
+          bash scripts/build_workspace_image.sh workspace-browser "$images/workspace-browser:$EXPECTED_BACKEND_SHA" --load ||
+            echo '::warning::The browser image did not build; setup continues without it.'
+      - name: Provision and verify the dedicated rootless runner
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          keys="$RUNNER_TEMP/deploy-ssh"
+          install -d -m 700 "$keys"
+          trap 'rm -rf "$keys"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$keys/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$keys/known_hosts"
+          chmod 600 "$keys/key" "$keys/known_hosts"
+          ssh_options=(-i "$keys/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$keys/known_hosts" -o ConnectTimeout=15)
+          images="ghcr.io/codewithjuber/mizan"
+          remote_dir=$(ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077; test -d /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/workspace-setup.XXXXXXXX')
           [[ "$remote_dir" =~ ^/var/lib/mizan-deploy/workspace-setup\.[A-Za-z0-9]{8}$ ]]
-          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf '\''$remote_dir'\''" || true' EXIT
-          sshpass -e scp "${ssh_options[@]}" scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/setup.py"
-          # The browser image (Shahid) is optional, as it was in the registry.
+          trap 'ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf '\''$remote_dir'\''" || true; rm -rf "$keys"' EXIT
+          scp "${ssh_options[@]}" scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/setup.py"
           for role in runtime runner browser; do
             image="$images/workspace-$role:$EXPECTED_BACKEND_SHA"
             docker image inspect "$image" >/dev/null 2>&1 || continue
             docker save "$image" | gzip -1 |
-              sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && cat > '$remote_dir/workspace-$role.tar.gz'"
+              ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && cat > '$remote_dir/workspace-$role.tar.gz'"
           done
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote_dir/setup.py' --sha '$EXPECTED_BACKEND_SHA' --repository codewithjuber/mizan --research-dir /data/mizan/research --images-dir '$remote_dir'" </dev/null
+          ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "MIZAN_PUBLIC_URL='${PUBLIC_URL%/}' python3 '$remote_dir/setup.py' --sha '$EXPECTED_BACKEND_SHA' --repository codewithjuber/mizan --research-dir /data/mizan/research --images-dir '$remote_dir'" </dev/null

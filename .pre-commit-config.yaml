@@ -17,11 +17,12 @@ repos:
         args: [--maxkb=500]
       - id: detect-private-key
 
-  # The workflows run on the self-hosted runner and use nothing GitHub bills for (docs/ci-artifacts.md).
+  # The workflows keep to the public-repository rules: standard hosted runners, actions pinned to
+  # a commit, no pull request code with secrets (docs/ci-artifacts.md).
   - repo: local
     hooks:
-      - id: no-github-billing
-        name: no GitHub-billed workflow features
-        entry: bash scripts/ci/no-github-billing.sh
+      - id: public-repo-guard
+        name: workflows keep to the public-repository rules
+        entry: bash scripts/ci/public-repo-guard.sh
         language: system
         files: ^\.github/.*\.ya?ml$

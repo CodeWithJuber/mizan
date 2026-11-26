@@ -13,7 +13,7 @@ Code runs through the private `workspace-runner` service on the same host, which
 ## Access you need
 
 - **GitHub:** maintainer access to `CodeWithJuber/mizan`, to read Actions logs and run **Deploy Production** by hand.
-- **Shell on the production host.** Its credentials live only in the repository's Actions secrets; never paste them into issues, logs or chat.
+- **Shell on the production host.** The deploy key lives only in the `production` environment's secrets ([deployment.md](deployment.md#what-the-repository-owner-sets-up)); never paste a key, password or host name into issues, logs or chat: this repository and its job logs are public.
 - **A MIZAN administrator account** for the admin routes below. Send its token as `Authorization: Bearer …`.
 
 ## First check: is it up?
@@ -38,9 +38,9 @@ An administrator can also call `GET /api/doctor` for environment diagnostics. On
 
 **What already happened.** The script restores the previous images itself when a health check or the anonymous-401 check fails. Production is therefore on the last good release.
 
-1. Read the failed job's log. "Deployment did not pass health/auth checks; restoring previous images" means the new images started but were unhealthy. "This runner has no images of <sha>" means the self-hosted runner's Docker lost them: re-run that commit's CI, then this deploy.
+1. Read the failed job's log. "Deployment did not pass health/auth checks; restoring previous images" means the new images started but were unhealthy. A failure before "Deploy the tested images" (missing secret, image build, runtime check) changed nothing on the server. "Set MIZAN_PUBLIC_URL" means the `DEPLOY_PUBLIC_URL` secret is missing or not an `https://` origin.
 2. Fix the cause on a branch and merge it. CI runs, and Deploy Production follows on its own.
-3. To redeploy the current `main` without a code change, for example after a transient SSH failure, start **Actions → Deploy Production → Run workflow** on `main`. It deploys only the commit that is still the head of the branch.
+3. To redeploy the current `main` without a code change, for example after a transient SSH failure, start **Actions → Deploy Production → Run workflow** on `main` and approve it. It deploys only the commit that is still the head of the branch.
 
 ## Workspace runner not upgraded by a deploy
 
@@ -56,7 +56,7 @@ The chat answers "The private runner on this server predates sandbox sessions" (
 
 ## A deployment passed but the release is bad
 
-**Preferred: revert through `main`.** Revert the commit (`git revert <sha>`), open a pull request and merge it. CI builds the images on the runner and Deploy Production sends them to the host, with the usual checks.
+**Preferred: revert through `main`.** Revert the commit (`git revert <sha>`), open a pull request and merge it. CI checks it, and Deploy Production builds the images and sends them to the host, with the usual checks.
 
 **Emergency: restore the previous images on the host.** Each deployment keeps the images it replaced in `/var/lib/mizan-deploy/rollback.yml`. This repeats the script's own `rollback()`:
 
@@ -137,4 +137,4 @@ A break in a chain is evidence of tampering or data loss. Keep the export and th
    - the failing check or the job URL.
 
    Never include tokens, passwords, `.env` contents or users' messages.
-3. **Credentials that may have leaked:** rotate them first (Actions secrets, provider keys, then administrator passwords, using `POST /api/auth/logout` with `everywhere`), then report.
+3. **Credentials that may have leaked:** rotate them first (the deploy key and the `production` environment's secrets, provider keys, then administrator passwords, using `POST /api/auth/logout` with `everywhere`), then report privately ([SECURITY.md](../SECURITY.md)), never in a public issue.

@@ -14,6 +14,8 @@ ci_plan = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ci_plan)
 
 SUITES = ("bayan", "utils")
+# Only a full run (a push to main, the weekly run, a run by hand) checks these.
+FULL_ONLY = ("lint", "provenance", "browser", "images")
 
 
 @pytest.fixture
@@ -75,8 +77,8 @@ def test_a_pull_request_gets_the_unit_tests_its_change_reaches(repo):
     result = pull_request(["backend/leaf/words.py"], repo)
     # words.py is reached through reader.py; the tree scan reads every backend module.
     assert selected(result) == ["tests/test_leaf.py", "tests/test_scan.py"]
-    assert result["verified"] == "false" and result["provenance"] == "false"
-    assert all(result[suite] == "false" for suite in SUITES)
+    assert result["verified"] == "false"
+    assert all(result[name] == "false" for name in SUITES + FULL_ONLY + ("training",))
     assert result["vitest"] == "none"
 
 
@@ -107,7 +109,7 @@ def test_a_pull_request_runs_every_unit_test_when_the_change_cannot_be_placed(re
     result = pull_request(["docs/other.md", path], repo)
     assert result["pytest"] == "all"
     assert result["bayan"] == "true"
-    assert result["provenance"] == "false"
+    assert all(result[name] == "false" for name in FULL_ONLY + ("training",))
 
 
 def test_a_pull_request_without_a_diff_runs_every_unit_test(repo):
@@ -116,7 +118,7 @@ def test_a_pull_request_without_a_diff_runs_every_unit_test(repo):
 
 
 def test_a_pull_request_never_selects_the_model_and_training_tests(repo):
-    # They install torch or run the owned model's training stages (docs/ci-artifacts.md, Not in CI).
+    # They install torch or run the owned model's training stages: weekly and by hand only.
     model = pull_request(["ruh_model/model.py"], repo)
     assert model["pytest"] == "none" and model["bayan"] == "false"
     owned = pull_request(["backend/mizan_owned/cycle.py"], repo)
@@ -149,8 +151,10 @@ def test_main_the_weekly_run_and_a_run_by_hand_run_every_unit_test(repo, event):
         result = ci_plan.plan(event, changed, repo)
         assert result["verified"] == "false"
         assert result["pytest"] == "all" and result["vitest"] == "all"
-        # Provenance gates the production images of every push to main.
-        assert all(result[name] == "true" for name in SUITES + ("provenance",))
+        # Lint, provenance, the frontend build and browser tests, and the images.
+        assert all(result[name] == "true" for name in SUITES + FULL_ONLY)
+        # CPU torch and the training stages: the weekly run and a run by hand, not every merge.
+        assert result["training"] == ("false" if event == "push" else "true")
     # The weekly run and a run by hand check even files that passed before.
     assert ci_plan.plan(event, None, repo, passed_by="push")["verified"] == (
         "true" if event == "push" else "false"
@@ -162,13 +166,13 @@ def test_main_skips_to_the_production_images_only_after_a_full_run_passed(repo, 
     result = push(["backend/leaf/words.py"], repo, passed_by=passed_by)
     assert result["verified"] == "true"
     assert result["pytest"] == "none" and result["vitest"] == "none"
-    assert all(result[name] == "false" for name in SUITES + ("provenance",))
+    assert all(result[name] == "false" for name in SUITES + FULL_ONLY + ("training",))
 
 
 def test_a_pull_requests_partial_run_never_lets_main_skip(repo):
     result = push(["frontend/src/App.tsx"], repo, passed_by="pull_request")
     assert result["verified"] == "false" and result["pytest"] == "all"
-    assert result["vitest"] == "all" and result["provenance"] == "true"
+    assert result["vitest"] == "all" and all(result[name] == "true" for name in FULL_ONLY)
 
 
 def test_changed_files_needs_a_commit_to_compare_with(tmp_path):
@@ -199,7 +203,7 @@ def test_the_real_repository_places_a_frontend_change_and_a_test_change():
 
 # ci.yml acts on the plan. These pin what the plan cannot enforce by itself.
 JOBS = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())["jobs"]
-QUICK = {"test", "typecheck", "bayan", "frontend"}
+QUICK = {"lint", "test", "typecheck", "bayan", "frontend"}
 
 
 def needs(job):
@@ -207,52 +211,67 @@ def needs(job):
     return {value} if isinstance(value, str) else set(value)
 
 
-def test_the_production_images_wait_for_every_check_and_not_for_a_skipped_one():
-    assert all("billing" in needs(job) for job in JOBS if job != "billing")
-    images = JOBS["production-images"]
-    assert QUICK | {"provenance"} <= needs("production-images")
+def runs(job):
+    return "\n".join(step.get("run", "") for step in JOBS[job]["steps"])
+
+
+def test_the_images_wait_for_every_check_and_not_for_a_skipped_one():
+    assert all("plan" in needs(job) for job in JOBS if job != "plan")
+    images = JOBS["images"]
+    assert QUICK | {"provenance"} <= needs("images")
     # A check the plan skipped must not hold the images back; a failed one must.
     assert "!cancelled()" in images["if"] and "!failure()" in images["if"]
-    assert "github.event_name == 'push'" in images["if"]
+    assert "needs.plan.outputs.images == 'true'" in images["if"]
 
 
 def test_each_job_runs_only_when_the_plan_says_so():
-    outputs = {"bayan": "bayan", "provenance": "provenance", "test": "pytest"}
-    outputs["typecheck"] = "verified"
+    outputs = {"bayan": "bayan", "provenance": "provenance", "test": "pytest", "lint": "lint"}
+    outputs |= {"typecheck": "verified", "ruh": "training", "own-research": "training"}
     for job, output in outputs.items():
-        assert f"needs.billing.outputs.{output}" in JOBS[job]["if"], job
+        assert f"needs.plan.outputs.{output}" in JOBS[job]["if"], job
     # The first job passes on every answer the plan gives, and nothing else.
     given = set(ci_plan.plan("workflow_dispatch", None, ROOT))
-    assert set(JOBS["billing"]["outputs"]) == given
+    assert set(JOBS["plan"]["outputs"]) == given
     # Only a pull request's plan reads a diff.
-    planned = next(step for step in JOBS["billing"]["steps"] if step.get("id") == "plan")
+    planned = next(step for step in JOBS["plan"]["steps"] if step.get("id") == "plan")
     assert planned["env"]["BASE"] == "${{ github.event_name == 'pull_request' && 'HEAD^1' || '' }}"
+    # The first job checks every workflow against the public-repository rules.
+    assert "bash scripts/ci/public-repo-guard.sh" in runs("plan")
 
 
-def test_ci_never_lints_or_starts_a_browser():
-    # The owner's decision of 26 Nov 2026: the runner is a small server. Lint and the browser
-    # tests run by hand (docs/ci-artifacts.md, Not in CI).
-    for event in ("pull_request", "push", "schedule", "workflow_dispatch"):
-        assert not {"lint", "browser"} & set(ci_plan.plan(event, None, ROOT)), event
-    assert "lint" not in JOBS and "browser" not in JOBS
-    tools = ("ruff", "oxlint", "npm run lint", "playwright", "npm run e2e", "browse_selftest")
-    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
-        text = workflow.read_text().lower()
-        for tool in tools:
-            assert tool not in text, (workflow.name, tool)
+def test_full_runs_lint_and_start_a_browser():
+    # Lint: ruff on the Python, oxlint and the colour ratchet (npm run lint) on the frontend.
+    assert "ruff check backend/ nlp/ tests/" in runs("lint")
+    assert "ruff format --check backend/ nlp/ tests/" in runs("lint")
+    frontend = {step.get("run"): step.get("if", "") for step in JOBS["frontend"]["steps"]}
+    assert "needs.plan.outputs.lint == 'true'" in frontend["npm run lint"]
+    # The frontend build, its size budget and the browser tests (Playwright, mocked API).
+    for command in ("npm run build", "npm run size"):
+        assert "needs.plan.outputs.browser == 'true'" in frontend[command], command
+    e2e = next(run for run in frontend if run and "npm run e2e" in run)
+    assert "playwright install --with-deps chromium" in e2e
+    assert "needs.plan.outputs.browser == 'true'" in frontend[e2e]
+    # Shahid's browser sandbox runs its self-test with production's hardening.
+    images = runs("images")
+    assert "python3 -I /browse_selftest.py" in images and "--cap-drop ALL" in images
 
 
-def test_ci_never_installs_torch_or_runs_the_model_and_training_tests():
-    # The owner's decision of 26 Nov 2026 (docs/ci-artifacts.md, Not in CI).
-    assert not (ROOT / ".github/workflows/ruh-training.yml").exists()
-    assert not {"ruh", "own-research"} & set(JOBS)
-    for event in ("pull_request", "push", "schedule", "workflow_dispatch"):
-        assert not {"ruh", "own"} & set(ci_plan.plan(event, None, ROOT)), event
-    learning = [path for path in ci_plan.NOT_IN_CI if path.startswith("tests/")]
+def test_torch_and_the_training_tests_run_only_weekly_or_by_hand():
+    for event in ("pull_request", "push"):
+        assert ci_plan.plan(event, None, ROOT)["training"] == "false", event
+    for event in ("schedule", "workflow_dispatch"):
+        assert ci_plan.plan(event, None, ROOT)["training"] == "true", event
+    learning = [path for path in ci_plan.TRAINING_TESTS if path.startswith("tests/")]
     assert len(learning) == 3
+    assert "pytest ruh_model/tests/" in runs("ruh")
+    assert all(path in runs("own-research") for path in learning)
+    assert "research/own_model/tests" in runs("own-research")
     for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
-        jobs = yaml.safe_load(workflow.read_text())["jobs"].values()
-        for run in (step.get("run", "") for job in jobs for step in job.get("steps", [])):
+        jobs = yaml.safe_load(workflow.read_text())["jobs"]
+        for name, job in jobs.items():
+            run = "\n".join(step.get("run", "") for step in job.get("steps", []))
+            if workflow.name == "ci.yml" and name in ("ruh", "own-research"):
+                continue
             for line in run.splitlines():
                 assert not ("pip install" in line and "torch" in line), (workflow.name, line)
             assert "ruh_model/tests" not in run and "own_model/tests" not in run, workflow.name
@@ -262,34 +281,35 @@ def test_ci_never_installs_torch_or_runs_the_model_and_training_tests():
                     assert path in run and "--ignore" in run, (workflow.name, path)
 
 
-def test_ci_builds_only_what_deploy_production_ships():
-    # The owner's decision of 26 Nov 2026: no build that repeats what production-images builds.
-    assert not {"docker", "build"} & set(JOBS)
-    runs = {job: "\n".join(step.get("run", "") for step in JOBS[job]["steps"]) for job in JOBS}
-    builds = ("docker build", "build_workspace_image.sh", "python -m build", "npm run build")
-    for job, run in runs.items():
-        if job != "production-images":
-            assert not [word for word in builds + ("npm run size",) if word in run], job
-    # Deploy Production sends the site's two images and the workspace runner's three.
+def test_deploy_production_builds_and_sends_what_ci_checks():
     deploy = (ROOT / ".github/workflows/deploy.yml").read_text()
+    images = runs("images")
+    # The same Dockerfiles: CI builds them as a check, the deploy builds the commit's to ship.
+    for dockerfile in ("docker/Dockerfile.backend.prod", "docker/Dockerfile.frontend.prod"):
+        assert dockerfile in images and dockerfile in deploy, dockerfile
+    for role in ("runtime", "runner", "browser"):
+        assert f"workspace-{role} mizan-workspace-{role}:ci --load" in images, role
+    assert 'bash scripts/build_workspace_image.sh "workspace-$role"' in deploy
+    # The site's two images, then the workspace runner's images the server says it needs.
     assert '"$images/backend:$DEPLOY_SHA" "$images/frontend:$DEPLOY_SHA"' in deploy
     assert "needed='runner runtime browser'" in deploy
-    images = runs["production-images"]
-    for role in ("runtime", "runner", "browser"):
-        assert f'/workspace-{role}:$GITHUB_SHA"' in images, role
-    assert '/backend:$GITHUB_SHA"' in images and '/frontend:$GITHUB_SHA"' in images
-    # The backend image that ships is checked for its runtime dependencies before it is kept.
+    # The backend image is checked for its runtime dependencies before it is used or sent.
     assert images.index("Dockerfile.backend.prod") < images.index("torch.version.cuda is None")
+    assert deploy.index("Dockerfile.backend.prod") < deploy.index("torch.version.cuda is None")
+    assert deploy.index("torch.version.cuda is None") < deploy.index('docker save "${site[@]}"')
+    # Nothing is pushed to or pulled from a registry.
+    for text in (deploy, images):
+        assert "--push" not in text and "docker push" not in text and "docker login" not in text
 
 
 def test_only_a_full_run_lets_main_skip_its_checks():
-    steps = JOBS["billing"]["steps"]
+    steps = JOBS["plan"]["steps"]
     duplicate = next(step for step in steps if "skip-duplicate-actions" in step.get("uses", ""))
     assert "pull_request" in duplicate["with"]["do_not_skip"]
     # The plan reads which run passed these files: a pull request's partial run never counts.
     planned = next(step for step in steps if step.get("id") == "plan")
     assert "skipped_by" in planned["env"]["SKIPPED_BY"]
-    assert JOBS["billing"]["outputs"]["verified"] == "${{ steps.plan.outputs.verified }}"
+    assert JOBS["plan"]["outputs"]["verified"] == "${{ steps.plan.outputs.verified }}"
 
 
 def test_the_coding_workspace_isolation_runs_once_on_main_after_the_merge():

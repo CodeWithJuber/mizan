@@ -1,22 +1,17 @@
 name: Deploy Production
 
-# Runs on the self-hosted runner labelled mizan (docs/ci-artifacts.md). CI built this commit's
-# images into the runner's Docker (ci.yml, production-images); this job sends them to the server
-# over its SSH connection. No registry and no GitHub Packages (docs/deployment.md).
+# Runs on a GitHub-hosted runner, in the `production` environment (a required reviewer approves
+# each run), after CI passed on a push to main, or by hand on main. It builds this commit's images,
+# sends them to the server over SSH (docker save | ssh docker load) and runs
+# scripts/deploy_production.sh there, which keeps the previous images for its rollback. No
+# registry: nothing is pushed or pulled (docs/deployment.md). Never on a pull request.
 
 on:
   workflow_run:
     workflows: [CI]
-    branches: [main, master]
+    branches: [main]
     types: [completed]
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/deploy.yml
-      - scripts/deploy_production.sh
-      - scripts/deployment_receipt.py
-      - scripts/setup_workspace_runner.py
-      - deploy/known_hosts
 
 permissions:
   contents: read
@@ -26,114 +21,136 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  connection-check:
-    if: github.event_name == 'pull_request'
-    runs-on: [self-hosted, linux, x64, mizan]
-    steps:
-      - name: Check the production SSH handshake without credentials
-        env:
-          SSH_HOST: ${{ vars.SSH_COMPUTING_HOST || '203.0.113.20' }}
-        run: |
-          set -euo pipefail
-          keys=$(ssh-keyscan -T 15 -t ed25519 "$SSH_HOST")
-          test -n "$keys"
-          while IFS= read -r key; do
-            echo "::notice title=Production SSH host key::$key"
-          done <<< "$keys"
-
   deploy:
     if: >-
-      (github.event_name == 'workflow_dispatch' ||
-       (github.event_name == 'workflow_run' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.conclusion == 'success'))
-    runs-on: [self-hosted, linux, x64, mizan]
-    # Workflow ceiling: sending the images, deploy lock 10, site deploy ~6, runner
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    environment: production
+    # Workflow ceiling: building the images, sending them, deploy lock 10, site deploy ~6, runner
     # upgrade 15 and its restore 10 minutes. Docker RPCs can still fail.
-    timeout-minutes: 45
+    timeout-minutes: 90
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
-      - name: Check deployment credentials
+      - name: Check deployment settings
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
         run: |
-          for name in SSH_HOST SSH_USER SSHPASS; do
+          for name in SSH_HOST SSH_USER SSH_KEY KNOWN_HOSTS PUBLIC_URL; do
             if [ -z "${!name}" ]; then
-              echo "::error::Missing GitHub deployment setting: $name (see docs/deployment.md)"
+              echo "::error::Missing production environment secret for $name (see docs/deployment.md)"
               exit 1
             fi
           done
-          test -s deploy/known_hosts || { echo '::error::Production SSH host key is not pinned'; exit 1; }
-      - name: Install SSH password client
-        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
-      - name: Deploy the tested images
-        id: production
+          [[ "$PUBLIC_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]] ||
+            { echo '::error::DEPLOY_PUBLIC_URL must be an https:// origin'; exit 1; }
+      - name: Is this commit still the head of its branch?
+        id: current
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
-          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           GH_TOKEN: ${{ github.token }}
-          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
         run: |
           set -euo pipefail
-          # The runner has curl and jq but not GitHub's gh CLI. The token goes in on stdin.
-          current=$(curl -fsS --retry 3 -H 'Accept: application/vnd.github+json' -H @- \
-            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/commits/$DEPLOY_BRANCH" \
-            <<< "Authorization: Bearer $GH_TOKEN" | jq -r .sha)
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEPLOY_BRANCH" --jq .sha)
           if [ "$current" != "$DEPLOY_SHA" ]; then
             echo "A newer commit is on $DEPLOY_BRANCH; its CI run will deploy it."
-            exit 0
+            echo 'obsolete=true' >> "$GITHUB_OUTPUT"
           fi
-          # CI built them into this runner's Docker (ci.yml, production-images). The names are
-          # the ones the server's deploy state records; nothing is pulled from a registry.
+      - name: Build the site's images
+        if: steps.current.outputs.obsolete != 'true'
+        run: |
+          set -euo pipefail
+          # The names the server's deploy state and runner installer record; never pushed.
+          images="ghcr.io/${GITHUB_REPOSITORY,,}"
+          docker build -f docker/Dockerfile.backend.prod -t "$images/backend:$DEPLOY_SHA" .
+          docker build -f docker/Dockerfile.frontend.prod -t "$images/frontend:$DEPLOY_SHA" ./frontend
+      - name: Verify production runtime dependencies
+        if: steps.current.outputs.obsolete != 'true'
+        run: >-
+          docker run --rm --entrypoint python "ghcr.io/${GITHUB_REPOSITORY,,}/backend:$DEPLOY_SHA"
+          -c "import torch, fastapi, openai, anthropic, PIL;
+          from ruh_model.tokenizer.bayan import BayanTokenizer;
+          from mizan_owned.learning_cycle import _implementation;
+          from mizan_owned.learning_service import worker_environment;
+          from importlib.metadata import version;
+          assert torch.version.cuda is None;
+          assert version('pip') == '26.2.1';
+          assert version('setuptools') == '84.0.0';
+          assert len(_implementation()) == 12;
+          assert worker_environment()['PYTHONPATH'] == '/app';
+          assert BayanTokenizer().encode('knowledge')"
+      - name: Deploy the tested images
+        id: production
+        if: steps.current.outputs.obsolete != 'true'
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          PUBLIC_URL: ${{ secrets.DEPLOY_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          # The key and the pinned host key live only in this job's private temporary directory.
+          keys="$RUNNER_TEMP/deploy-ssh"
+          install -d -m 700 "$keys"
+          trap 'rm -rf "$keys"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$keys/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$keys/known_hosts"
+          chmod 600 "$keys/key" "$keys/known_hosts"
+          public_url=${PUBLIC_URL%/}
           images="ghcr.io/${GITHUB_REPOSITORY,,}"
           site=("$images/backend:$DEPLOY_SHA" "$images/frontend:$DEPLOY_SHA")
-          if ! docker image inspect "${site[@]}" >/dev/null 2>&1; then
-            echo "::error::This runner has no images of $DEPLOY_SHA. Re-run that commit's CI, which builds them (docs/deployment.md)."
-            exit 1
-          fi
           # Keepalives: image loads in the runner upgrade can be silent for minutes.
-          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15
+          ssh_options=(-i "$keys/key" -o IdentitiesOnly=yes -o BatchMode=yes
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$keys/known_hosts" -o ConnectTimeout=15
             -o ServerAliveInterval=30 -o ServerAliveCountMax=6)
           # A private, unguessable directory for this release's scripts, removed afterwards.
-          remote_dir=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077 && mkdir -p /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/release.XXXXXXXX')
+          remote_dir=$(ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'umask 077 && mkdir -p /var/lib/mizan-deploy && mktemp -d /var/lib/mizan-deploy/release.XXXXXXXX')
           if [[ ! "$remote_dir" =~ ^/var/lib/mizan-deploy/release\.[A-Za-z0-9]{8}$ ]]; then
             echo '::error::Unexpected remote release directory'
             exit 1
           fi
-          trap 'sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf '\''$remote_dir'\''" || true' EXIT
-          sshpass -e scp "${ssh_options[@]}" scripts/deploy_production.sh scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
-          # The runner's images are rebuilt on every commit; send and load them only when what
-          # they are built from changed (docs/runner-setup.md, upgrades during deployment).
+          trap 'ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf '\''$remote_dir'\''" || true; rm -rf "$keys"' EXIT
+          scp "${ssh_options[@]}" scripts/deploy_production.sh scripts/setup_workspace_runner.py "$SSH_USER@$SSH_HOST:$remote_dir/"
+          # The runner's images are sent and loaded only when what they are built from changed
+          # (docs/runner-setup.md, upgrades during deployment).
           runner_inputs=$(git ls-files -s -- backend/workspace docker/Dockerfile.workspace-runtime \
             docker/Dockerfile.workspace-runner docker/Dockerfile.workspace-browser \
             docker/workspace-runtime-requirements.txt scripts/build_workspace_image.sh \
             scripts/setup_workspace_runner.py | sha256sum | cut -d ' ' -f 1)
           # The site's images go straight into the server's Docker, before the deploy uses them.
           docker save "${site[@]}" | gzip -1 |
-            sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'docker load --quiet'
-          # The workspace runner's images go only when the server's managed runner will move to
-          # them, as archives in the private release directory, which the trap removes.
-          # If the server cannot say, all go: the upgrade decides, and the site deploys either way.
-          needed=$(sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
+            ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'docker load --quiet'
+          # The workspace runner's images are built and sent only when the server's managed runner
+          # will move to them, as archives in the private release directory, which the trap
+          # removes. If the server cannot say, all go: the upgrade decides, and the site deploys
+          # either way.
+          needed=$(ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
             "python3 -I '$remote_dir/setup_workspace_runner.py' --needed-images --sha '$DEPLOY_SHA' --inputs-digest '$runner_inputs'" </dev/null) || {
             echo '::warning::The server did not say which workspace images its runner needs; sending all.'
             needed='runner runtime browser'
           }
           for role in $needed; do
             [[ "$role" =~ ^(runner|runtime|browser)$ ]] || { echo '::error::Unexpected workspace image'; exit 1; }
+            bash scripts/build_workspace_image.sh "workspace-$role" "$images/workspace-$role:$DEPLOY_SHA" --load
             docker save "$images/workspace-$role:$DEPLOY_SHA" | gzip -1 |
-              sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && cat > '$remote_dir/workspace-$role.tar.gz'"
+              ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && cat > '$remote_dir/workspace-$role.tar.gz'"
           done
           status=0
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
-            "bash '$remote_dir/deploy_production.sh' '$DEPLOY_SHA' '${GITHUB_REPOSITORY,,}' '$remote_dir/setup_workspace_runner.py' '$runner_inputs'" </dev/null || status=$?
+          ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
+            "MIZAN_PUBLIC_URL='$public_url' bash '$remote_dir/deploy_production.sh' '$DEPLOY_SHA' '${GITHUB_REPOSITORY,,}' '$remote_dir/setup_workspace_runner.py' '$runner_inputs'" </dev/null || status=$?
           case $status in
             0) ;;
             75)
@@ -144,7 +161,7 @@ jobs:
               echo 'runner=unverified' >> "$GITHUB_OUTPUT" ;;
             *) exit "$status" ;;
           esac
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
+          ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" \
             "python3 - write $GITHUB_REPOSITORY_ID $GITHUB_RUN_ID $GITHUB_RUN_ATTEMPT $DEPLOY_SHA" < scripts/deployment_receipt.py
           echo 'deployed=true' >> "$GITHUB_OUTPUT"
       - name: Workspace runner

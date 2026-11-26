@@ -1,5 +1,10 @@
 name: Import Verified Private Research Bundle
 
+# A completed production operation, kept as a record (docs/research-server-import.md). It runs only
+# when dispatched on its exact branch, on a GitHub-hosted runner in the `production` environment (a
+# required reviewer approves it), over SSH with a key. Its receipt stays on the server: this
+# repository's job logs are public.
+
 on:
   # Completed operation: branch synchronization must not rerun it.
   workflow_dispatch:
@@ -14,13 +19,14 @@ concurrency:
 jobs:
   import:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/research-import-20261025'
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
+    environment: production
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Validate reviewed scripts and encrypted envelope
@@ -35,28 +41,29 @@ jobs:
           assert value['schema'] == 'mizan-research-cms-v1'
           assert re.fullmatch('[0-9a-f]{32}', value['key_id'])
           PY
-      - name: Install SSH client
-        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Run pinned import without backend recreation
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
-          test -s deploy/known_hosts
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
           [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]] && [[ "$GITHUB_RUN_ATTEMPT" =~ ^[0-9]+$ ]]
+          keys="$RUNNER_TEMP/deploy-ssh"
+          install -d -m 700 "$keys"
+          trap 'rm -rf "$keys"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$keys/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$keys/known_hosts"
+          chmod 600 "$keys/key" "$keys/known_hosts"
+          ssh_options=(-i "$keys/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$keys/known_hosts" -o ConnectTimeout=15)
           remote="/run/mizan-research-import-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
-          cleanup() { sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf -- '$remote'" >/dev/null 2>&1 || true; }
+          cleanup() { ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "rm -rf -- '$remote'" >/dev/null 2>&1 || true; rm -rf "$keys"; }
           trap cleanup EXIT
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077; mkdir -- '$remote'"
-          sshpass -e scp "${ssh_options[@]}" scripts/research_transfer_key.py scripts/encrypt_research_url.py scripts/research_server_import.py scripts/research_backend_stage.py deploy/research-transfer.encrypted.json "$SSH_USER@$SSH_HOST:$remote/"
-          status=0
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "python3 '$remote/research_server_import.py' < '$remote/research-transfer.encrypted.json'" > research-import-receipt.jsonl || status=$?
-          cat research-import-receipt.jsonl
-          exit "$status"
-      - name: Keep the research report on the runner
-        if: always()
-        run: bash scripts/ci/keep-results.sh research-import-receipt --optional research-import-receipt.jsonl
+          ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077; mkdir -- '$remote'"
+          scp "${ssh_options[@]}" scripts/research_transfer_key.py scripts/encrypt_research_url.py scripts/research_server_import.py scripts/research_backend_stage.py deploy/research-transfer.encrypted.json "$SSH_USER@$SSH_HOST:$remote/"
+          # The receipt is kept on the server, root-only; the log shows where and its SHA-256.
+          report="/var/lib/mizan-deploy/reports/research-import-receipt-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.jsonl"
+          ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" "umask 077 && mkdir -p /var/lib/mizan-deploy/reports && status=0 && { python3 '$remote/research_server_import.py' < '$remote/research-transfer.encrypted.json' > '$report' || status=\$?; } && sha256sum '$report' && exit \$status"

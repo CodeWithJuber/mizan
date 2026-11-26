@@ -1,33 +1,30 @@
 name: Release
 
-# Runs on the self-hosted runner labelled mizan and uses nothing GitHub bills for
-# (docs/ci-artifacts.md). The release's Docker images are built as a check but not published:
-# GitHub Packages is billed, and production gets its images from Deploy Production instead.
-# GitHub releases and their assets are free.
+# Runs on GitHub-hosted runners (docs/ci-artifacts.md). The release's Docker images are built as a
+# check but not published: production gets its images from Deploy Production. PyPI publishing is
+# opt-in (repository variable ENABLE_PYPI_PUBLISH) and uses trusted publishing: no stored token.
 
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: write
-  # PyPI trusted publishing: GitHub's OIDC token is exchanged for a short-lived PyPI token.
-  id-token: write
+  contents: read
 
 jobs:
   # ──── Build & Test ────────────────────────────────────────────
   validate:
     name: Validate release
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install -e ".[dev,nlp]"
-      # The learning-cycle files run training stages: by hand (docs/ci-artifacts.md, Not in CI).
+      # The learning-cycle files run training stages: CI's weekly own-research job runs them.
       - run: >-
           pytest tests/ -v --tb=short --ignore=tests/test_owned_learning_cycle.py
           --ignore=tests/test_owned_checkpoint_activation.py --ignore=tests/test_owned_learning_service.py
@@ -35,41 +32,38 @@ jobs:
   # ──── PyPI ────────────────────────────────────────────────────
   publish-pypi:
     name: Publish to PyPI
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
     needs: validate
     if: vars.ENABLE_PYPI_PUBLISH == 'true' && github.event.repository.private == false
+    # PyPI's trusted publisher names this repository, this workflow (release.yml) and this
+    # environment (docs/deployment.md).
+    environment: pypi
+    permissions:
+      contents: read
+      # Trusted publishing: GitHub's OIDC token is exchanged for a short-lived PyPI token.
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - run: pip install "build>=1.6.1,<2" "twine>=6.1,<7"
       - run: python -m build
       - run: twine check dist/*
-      # pypa/gh-action-pypi-publish runs in a Docker container action, which cannot mount this
-      # runner's workspace. The same trusted publishing, done here: no stored PyPI token.
       - name: Publish to PyPI
-        run: |
-          set -euo pipefail
-          oidc=$(curl -fsS --retry 3 -H @- "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=pypi" \
-            <<< "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" | jq -r .value)
-          echo "::add-mask::$oidc"
-          token=$(jq -n --arg token "$oidc" '{token: $token}' |
-            curl -fsS --retry 3 -X POST -H 'Content-Type: application/json' --data @- \
-              https://pypi.org/_/oidc/mint-token | jq -r .token)
-          echo "::add-mask::$token"
-          TWINE_USERNAME=__token__ TWINE_PASSWORD="$token" twine upload --non-interactive dist/*
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   # ──── Docker ──────────────────────────────────────────────────
   docker:
     name: Build Docker images
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
     needs: validate
     steps:
-      - uses: actions/checkout@v7
-      # Untagged, so the runner's next image prune removes them; the build cache stays.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Backend image
         run: docker build -f docker/Dockerfile.backend.prod .
       - name: Frontend image
@@ -78,17 +72,18 @@ jobs:
   # ──── GitHub Release ──────────────────────────────────────────
   github-release:
     name: Create GitHub Release
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
     needs: [validate, docker]
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v7
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
-      - name: Fresh Python environment
-        run: python -m venv --clear "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
 
       - name: Extract version from tag
         id: version
@@ -96,9 +91,10 @@ jobs:
 
       - name: Extract changelog for this version
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           # Extract the changelog section for this version
-          VERSION="${{ steps.version.outputs.version }}"
           SECTION=$(sed -n "/^## \[v${VERSION}\]/,/^## \[v/p" CHANGELOG.md | sed '$d')
           if [ -z "$SECTION" ]; then
             SECTION="Release v${VERSION}"
@@ -112,7 +108,7 @@ jobs:
           python -m build
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           name: "MIZAN v${{ steps.version.outputs.version }}"
           body_path: ${{ runner.temp }}/release_notes.md

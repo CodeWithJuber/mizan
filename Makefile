@@ -1,4 +1,4 @@
-.PHONY: help install install-dev install-all setup serve dev test lint format clean docker build update no-github-billing check
+.PHONY: help install install-dev install-all setup serve dev test lint format clean docker build update public-repo-guard check
 
 # Default target
 help: ## Show this help message
@@ -63,10 +63,10 @@ format: ## Format code with ruff
 typecheck: ## Run type checking with mypy
 	mypy backend/ --ignore-missing-imports
 
-no-github-billing: ## Fail if a workflow uses something GitHub bills for
-	bash scripts/ci/no-github-billing.sh
+public-repo-guard: ## Fail if a workflow breaks the public-repository rules (docs/ci-artifacts.md)
+	bash scripts/ci/public-repo-guard.sh
 
-check: no-github-billing lint typecheck test ## Run all checks (billing guard + lint + typecheck + test)
+check: public-repo-guard lint typecheck test ## Run all checks (workflow guard + lint + typecheck + test)
 
 # ─── Docker ───────────────────────────────────────────────────
 

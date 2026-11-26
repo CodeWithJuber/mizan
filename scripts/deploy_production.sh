@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Run over an authenticated SSH connection. No registry: before this runs, the
-# workflow loads the commit's backend and frontend images into this server's
-# Docker (docker save from the CI runner, over the same SSH connection).
+# workflow builds the commit's backend and frontend images and loads them into
+# this server's Docker (docker save on its runner, over the same SSH connection).
+# MIZAN_PUBLIC_URL is the site's https:// origin, checked after the deploy.
 # Preserve the existing Compose project, .env, volumes and reverse proxy.
 # Optional: $3 = setup_workspace_runner.py, $4 = digest of the runner's inputs.
 # With them, a host that has the managed workspace runner also has it upgraded

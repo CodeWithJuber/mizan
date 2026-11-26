@@ -1,18 +1,19 @@
 # Dedicated workspace runner setup
 
 `scripts/setup_workspace_runner.py` is a host-specific provisioning script for the
-existing `mizan` Compose project in `/opt/mizan`. Its workflow is restricted to a
-reviewed push to `ops/enable-workspace-runner-20261026` in `CodeWithJuber/mizan`.
-It is not a pull-request workflow, general server installer, or Docker upgrade.
+existing `mizan` Compose project, which it expects in `/opt/mizan` (deployment
+state in `/var/lib/mizan-deploy`). Its workflow is restricted to a reviewed push
+to `ops/enable-workspace-runner-20261026` in `CodeWithJuber/mizan`, and runs in
+the `production` environment, so a required reviewer approves it. It is not a
+pull-request workflow, general server installer, or Docker upgrade.
 
 The verified production baseline is commit `0176a873e266d942918de47f8888071568eeeeb2`.
 Before enabling the operations branch, retarget `EXPECTED_BACKEND_SHA` to the
-final application's deployed, CI-tested commit. The workspace runtime and runner
-images of that exact commit must be in the self-hosted CI runner's Docker (CI's
-`production-images` job builds them); the workflow sends them to the host as
-`docker save` archives. The `workspace-browser` image (Shahid) is sent too when the
-runner has it; it is optional, and without it setup continues and MIZAN reads
-pages without a browser. The workflow checks
+final application's deployed, CI-tested commit. The workflow checks out that exact
+commit, builds its workspace runtime and runner images on the hosted runner, and
+sends them to the host as `docker save` archives. The `workspace-browser` image
+(Shahid) is built and sent too when it builds; it is optional, and without it setup
+continues and MIZAN reads pages without a browser. The workflow checks
 main still has that SHA; the host checks that its backend image ID equals the locally installed image for that
 SHA. A newer main/backend requires a reviewed retarget, not bypassing the check.
 The baseline runtime includes the pinned plotting dependencies. A different
@@ -57,14 +58,17 @@ Docker state. Setup requires at least 3 GiB available RAM and 4 GiB free disk.
 
 ## Credentials and configuration
 
-The existing pinned `deploy/known_hosts` and deployment SSH settings are reused.
+The deployment's SSH key and pinned host key (the `production` environment's
+`DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS`, [deployment.md](deployment.md#what-the-repository-owner-sets-up))
+are reused, and the site's public URL comes from `DEPLOY_PUBLIC_URL`: the installer
+reads it as `MIZAN_PUBLIC_URL` and refuses to start without an `https://` origin.
 No registry and no registry credential are used. The workflow writes each image
 as `workspace-<role>.tar.gz` (`docker save`, gzip) into its root-only directory
 under `/var/lib/mizan-deploy` and passes that directory as `--images-dir`; the
 installer refuses any other place, a symlink, or a file or directory others can
 write. Each archive is loaded into the daemon that runs it (the runner image into
 the production daemon, the runtime and browser images into the worker daemon),
-and must load exactly the commit's full tag (`ghcr.io/codewithjuber/mizan/workspace-<role>:<sha>`,
+and must load exactly the commit's full tag (`ghcr.io/<owner>/<repo>/workspace-<role>:<sha>`,
 a local name, never pulled) and nothing else. The installer records the loaded
 content IDs and uses them in the runner configuration. A retry will not silently
 accept a different image for an already recorded tag. The archives are removed
@@ -152,7 +156,8 @@ runner on the deployed commit: the workflow uploads `deploy_production.sh` and
 this script into a fresh root-only `/var/lib/mizan-deploy/release.XXXXXXXX`
 directory. It asks the host which workspace images an upgrade would load
 (`--needed-images --inputs-digest DIGEST`, read-only, under the deploy lock),
-sends only those as archives into the same directory, and once the new backend
+builds only those on the hosted runner and sends them as archives into the same
+directory, and once the new backend
 has passed its health and public checks the deploy script runs
 
 ```bash
@@ -253,7 +258,7 @@ connection and run it as the existing deployment user (root). No images are
 needed:
 
 ```bash
-python3 /path/to/reviewed/setup_workspace_runner.py \
+MIZAN_PUBLIC_URL=https://your-mizan-host python3 /path/to/reviewed/setup_workspace_runner.py \
   --sha THE_FULL_SHA_RECORDED_FOR_THIS_SETUP \
   --repository codewithjuber/mizan --rollback
 ```

@@ -1,5 +1,10 @@
 name: Prepare Private Research Import Key
 
+# A completed production operation, kept as a record (docs/research-server-import.md). It runs only
+# on a push to its exact branch, on a GitHub-hosted runner in the `production` environment (a
+# required reviewer approves it), over SSH with a key. Its report, with the one-hour public key,
+# stays on the server: this repository's job logs are public.
+
 on:
   push:
     branches: [ops/research-key-20261025]
@@ -14,33 +19,35 @@ concurrency:
 jobs:
   prepare:
     if: github.event_name == 'push' && github.repository == 'CodeWithJuber/mizan' && github.ref == 'refs/heads/ops/research-key-20261025'
-    runs-on: [self-hosted, linux, x64, mizan]
+    runs-on: ubuntu-24.04
+    environment: production
     timeout-minutes: 6
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Validate preparation syntax
         run: python3 -m py_compile scripts/research_transfer_key.py
-      - name: Install SSH client
-        run: command -v sshpass >/dev/null || (sudo apt-get update -qq && sudo apt-get install -y -qq sshpass)
       - name: Inspect persistent research target and create one-hour public key
         env:
-          SSH_HOST: ${{ secrets.SSH_COMPUTING_HOST || vars.SSH_COMPUTING_HOST }}
-          SSH_USER: ${{ secrets.SSH_COMPUTING_HOST_USER || vars.SSH_COMPUTING_HOST_USER }}
-          SSHPASS: ${{ secrets.SSH_COMPUTING_HOST_PASSWORD }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSHPASS"
-          test -s deploy/known_hosts
-          ssh_options=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile="$PWD/deploy/known_hosts" -o ConnectTimeout=15)
-          status=0
-          sshpass -e ssh "${ssh_options[@]}" "$SSH_USER@$SSH_HOST" 'python3 -' < scripts/research_transfer_key.py > research-import-public-key.jsonl || status=$?
-          cat research-import-public-key.jsonl
-          exit "$status"
-      - name: Keep the research report on the runner
-        if: always()
-        run: bash scripts/ci/keep-results.sh research-import-public-key --optional research-import-public-key.jsonl
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          keys="$RUNNER_TEMP/deploy-ssh"
+          install -d -m 700 "$keys"
+          trap 'rm -rf "$keys"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$keys/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$keys/known_hosts"
+          chmod 600 "$keys/key" "$keys/known_hosts"
+          # The report is kept on the server, root-only; the log shows where and its SHA-256.
+          report="/var/lib/mizan-deploy/reports/research-import-public-key-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.jsonl"
+          ssh -i "$keys/key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$keys/known_hosts" -o ConnectTimeout=15 "$SSH_USER@$SSH_HOST" \
+            "umask 077 && mkdir -p /var/lib/mizan-deploy/reports && status=0 && { python3 - > '$report' || status=\$?; } && sha256sum '$report' && exit \$status" < scripts/research_transfer_key.py

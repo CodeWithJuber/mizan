@@ -156,7 +156,7 @@ Learned state is the adaptive store, in the same SQLite file as the agent's memo
 | Telegram Bot API, IMAP/SMTP, WhatsApp Cloud API, Web Push services | Bab (`gateway/`) | Polling, a signed webhook, VAPID ([bab.md](bab.md)) |
 | MCP servers | Connectors (`connectors/`) | Per-user, encrypted secrets, pinned tool descriptions |
 | Chroma (`MIZAN_VECTOR_URL`) | Dhikr's vector recall | Optional |
-| GitHub Actions on the self-hosted runner `mizan` | CI, image builds, deployment (images go to the server over SSH; no registry) | [ci-artifacts.md](ci-artifacts.md), [deployment.md](deployment.md), [runbook.md](runbook.md) |
+| GitHub Actions on GitHub-hosted runners | CI, image builds, deployment (Deploy Production builds the images and sends them to the server over SSH; no registry) | [ci-artifacts.md](ci-artifacts.md), [deployment.md](deployment.md), [runbook.md](runbook.md) |
 
 ## The seven-layer QCA map
 
