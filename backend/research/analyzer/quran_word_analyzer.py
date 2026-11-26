@@ -20,11 +20,15 @@ word #77429 ٱلنَّاسِ at 114:6:3) and, per word, gives:
 
 Corpus outputs: entropy/perplexity, Zipf curves, top-roots chart, root network.
 
-DATA
+DATA  (not shipped with MIZAN: backend/research/datasets/LICENSES.md)
 ----
-* Morphology/roots : Quranic Arabic Corpus (QAC), Arabic-script mirror  -> data/qac_raw.txt
-* Word translit + word meaning : Quran.com word-by-word English (api.quran.com v4),
-                                 cached to data/wbw_en.json  (77,429 words, keyed s:a:word)
+* Morphology/roots : Quranic Arabic Corpus (QAC) morphology v0.4, Arabic-script mirror
+                     (mustafa0x/quran-morphology, the commit tadbir/sarf.py pins), downloaded
+                     on first use to ../datasets/raw/qac_raw.txt and checked by SHA-256.
+                     GPL; source: Quranic Arabic Corpus, https://corpus.quran.com
+* Word translit + word meaning : Quran.com word-by-word English (api.quran.com v4), optional,
+                                 read from ../datasets/raw/wbw_en.json if you create it
+                                 (77,429 words, keyed s:a:word)
 SHA-256 of the morphology file is stored in summary.json for reproducibility.
 
 EPISTEMIC LABELS  (keep these straight)
@@ -49,7 +53,7 @@ Usage
     flags: --start --end | --betweenness | --label {arabic,latin,english}
 """
 from __future__ import annotations
-import argparse, json, math, os, re, sys, hashlib, collections
+import argparse, json, math, os, re, sys, hashlib, collections, urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -58,9 +62,16 @@ import pandas as pd
 import networkx as nx
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "data")
+DATA = os.path.join(os.path.dirname(HERE), "datasets", "raw")
 OUT  = os.path.join(HERE, "output")
 QAC_FILE    = os.path.join(DATA, "qac_raw.txt")
+# The same pinned copy tadbir/sarf.py downloads; GPL, so it is fetched, never committed.
+QAC_URL     = ("https://raw.githubusercontent.com/mustafa0x/quran-morphology/"
+               "8f38b39016824284f9ed16ae15069ff9102c4acf/quran-morphology.txt")
+QAC_SHA256  = "742bfac59941b2cb09736d5b7aae694af50792261fb8450cbf6afafcc340645f"
+QAC_NOTICE  = ("Quranic Arabic Corpus (morphology, version 0.4), Copyright (C) 2011 Kais Dukes, "
+               "GNU General Public License. Source: the Quranic Arabic Corpus, "
+               "http://corpus.quran.com")
 WBW_FILE    = os.path.join(DATA, "wbw_en.json")     # word-by-word translit + meaning
 ARABIC_FONT = os.path.join(DATA, "arabic_font.ttf")
 os.makedirs(OUT, exist_ok=True)
@@ -124,7 +135,7 @@ def load_wbw() -> dict:
             return json.load(open(WBW_FILE, encoding="utf-8"))
         except Exception:
             pass
-    print("[i] data/wbw_en.json not found — English columns will be blank. "
+    print("[i] datasets/raw/wbw_en.json not found — English columns will be blank. "
           "Re-create it from api.quran.com v4 to enable transliteration + meaning.")
     return {}
 
@@ -146,9 +157,21 @@ def _feat(feats:str):
         else: flags.append(f)
     return root,lemma,flags
 
+def fetch_qac(path:str=QAC_FILE):
+    """Download the pinned QAC morphology once; refuse a copy whose SHA-256 differs."""
+    print(f"[i] downloading the Quranic Arabic Corpus morphology to {path}\n    {QAC_NOTICE}")
+    req=urllib.request.Request(QAC_URL,headers={"User-Agent":"mizan-research"})
+    with urllib.request.urlopen(req,timeout=120) as response: data=response.read()
+    if hashlib.sha256(data).hexdigest()!=QAC_SHA256:
+        sys.exit("[!] the downloaded corpus does not match its pinned SHA-256")
+    os.makedirs(os.path.dirname(path),exist_ok=True)
+    with open(path+".part","wb") as fh: fh.write(data)
+    os.replace(path+".part",path)
+
 def parse_qac(path:str=QAC_FILE):
     if not os.path.exists(path):
-        sys.exit(f"[!] corpus not found: {path}")
+        if path!=QAC_FILE: sys.exit(f"[!] corpus not found: {path}")
+        fetch_qac(path)
     seg=[]
     with open(path,encoding="utf-8") as fh:
         for line in fh:

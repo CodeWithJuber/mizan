@@ -31,6 +31,12 @@ QA,QB,QR=alpha(q),beta(q),rho(q); n=len(q)
 print(f"QURAN (forms, n={n}): Zipf α={QA:.3f}  Heaps β={QB:.3f}  brevity ρ={QR:.3f}\n")
 
 pools={"hadith":"hadith_tokens.txt","poetry":"poetry_tokens.txt","tabari":"tabari_tokens.txt"}
+# None of the pools is shipped (backend/research/datasets/LICENSES.md). partA2_sizematched.py
+# builds the hadith pool from fawazahmed0/hadith-api; the poetry and Tabari samples have no
+# documented source, so a run without them skips those registers.
+missing=[name for name,fn in pools.items() if not os.path.exists(os.path.join(DATA,fn))]
+for name in missing:
+    print(f"[i] {name}: {os.path.join(DATA,pools.pop(name))} not found, skipped")
 B=200; res={"quran":dict(alpha=QA,beta=QB,rho=QR,n=n),"baselines":{}}
 NULLS={}
 for name,fn in pools.items():

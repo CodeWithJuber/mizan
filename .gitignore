@@ -58,10 +58,19 @@ backend/.vault.key
 *.swp
 *.swo
 
-# Research pipeline scratch + derived artifacts (datasets/ + results/ ARE committed)
+# Research pipeline scratch + derived artifacts (results/ and the shipped datasets ARE committed)
 backend/research/output/
 backend/research/research.db
 # Archify delivery receipts hold local paths (docs/diagrams/README.md)
 docs/diagrams/*.delivery.json
 # Ibrah tasks from real chats stay local; the repository ships synthetic examples
 backend/imtihan/tasks/ibrah.jsonl
+# Research inputs fetched or built from their sources, never committed
+# (backend/research/datasets/LICENSES.md)
+backend/research/datasets/quran_words.csv
+backend/research/datasets/roots_summary.csv
+backend/research/datasets/raw/*
+!backend/research/datasets/raw/arabic_font.ttf
+backend/research/analyzer/output/
+backend/research/experiments/data/
+backend/research/experiments/output/

@@ -24,6 +24,10 @@ experiments:
 | Classical poetry | 800 000 |
 | Tafsīr (al-Ṭabarī sample) | 314 701 |
 
+None of these corpora is in the repository: the analyzer downloads the QAC morphology from its
+pinned source, the hadith pool is rebuilt from its source, and the poetry and Tafsīr samples,
+whose source was not recorded, were removed (`backend/research/datasets/LICENSES.md`).
+
 ## 1.2 Normalisation (applied to every corpus)
 
 Arabic orthography is folded to a stable consonantal skeleton before any counting:
