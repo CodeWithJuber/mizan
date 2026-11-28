@@ -604,6 +604,10 @@ def _erase_chat_rows(
     ) + _delete_in(db, "kg_relationships", "target_id", entities)
     removed["knowledge graph"] = _delete_in(db, "kg_entities", "id", entities)
     removed["learned from requests"] = _forget_learned(_adaptive(db), owner, asked, session_id)
+    # Lessons from corrections (Islah), earned skills (Itqan) and replay runs (Athar).
+    from tadbir import khatimah
+
+    removed.update(khatimah.forget_chat(owner, session_id))
     # What the live learning record and the instruction harness noted from this chat.
     from tadbir import sijill, tajdid
 

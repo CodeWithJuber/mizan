@@ -213,6 +213,30 @@ def test_skills_api_is_owner_scoped(data_dir):
     )
 
 
+def test_a_skill_mizan_earned_waits_for_trust_and_says_so(data_dir):
+    """Itqan saves an earned skill pending: held from use whatever its words, listed
+    as earned, usable once the person trusts it (docs/agent-skills.md)."""
+    from api import agent_skills as api
+
+    app = FastAPI()
+    app.include_router(api.router)
+    app.dependency_overrides[api.require_auth] = lambda: ALICE
+    alice = TestClient(app)
+    installer.write_skill(ALICE.user_id, "mizan-learned-sales", "Earned", "Keywords: sales")
+    loader.hold(ALICE.user_id, "mizan-learned-sales")
+    listed = {s["name"]: s for s in alice.get("/api/agent-skills").json()["skills"]}
+    assert listed["mizan-learned-sales"]["held"] and listed["mizan-learned-sales"]["earned"]
+    assert not listed["quran-hadith-sources"]["earned"]
+    assert "mizan-learned-sales" not in loader.available_skills(ALICE.user_id)
+    assert alice.post("/api/agent-skills/mizan-learned-sales/trust").json()["held"] is False
+    assert "mizan-learned-sales" in loader.available_skills(ALICE.user_id)
+    # Changing it afterwards holds it again.
+    installer.write_skill(
+        ALICE.user_id, "mizan-learned-sales", "Earned", "Other words", overwrite=True
+    )
+    assert "mizan-learned-sales" not in loader.available_skills(ALICE.user_id)
+
+
 def test_selected_project_binding_reaches_skill_tools(data_dir):
     store = WorkspaceStore(ALICE.user_id)
     project = store.create("App")["id"]

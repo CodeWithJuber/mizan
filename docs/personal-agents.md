@@ -108,6 +108,32 @@ in a run where Amanah found no injected instruction, is trusted for its user (pi
 content). Written after a finding, it is saved but held until the user trusts it in
 Library, like an uploaded one, so an injected page cannot leave a standing instruction.
 
+MIZAN also earns skills of its own from work it verified three times (Itqan,
+[automatic-learning.md](automatic-learning.md#itqan-skills-earned-from-verified-work)):
+built from keywords, tool names, files and receipt ids only, always held until the user
+trusts them, never re-proposed once removed.
+
+## Martaba: the trust stage an agent earned (report only)
+
+`tadbir/martaba.py`, ported from ForgeKit's `harness_policy.js`
+(`advanceHarnessTrust`). Each agent, and each person's private copy of it
+(which keeps its own record), starts at stage 1 of 7: Observe, Assist, Draft,
+Act, Reach, Trusted, Steward.
+
+- **Promoted** one stage after 20 consecutive verified runs, with at least 0.9
+  of the runs counted at its stage verified. The next stage is earned afresh.
+- **Demoted** one stage (never below 1) after 3 failures in a row, or at once on
+  a guard event: a credential-shaped secret in the answer (or a Satr cover hit,
+  when present), an injected instruction's payload the answer repeated, or a
+  claim Isnad marked mawdu'.
+- **Counted** only when MIZAN checked the run: verified, or failed. An answer in
+  words that nothing checked is no evidence either way.
+
+The owner chose report only. The stage and record appear on the agent's card
+and as `martaba` in `GET /api/agents` and `GET /api/agents/{id}`. **It never
+restricts anything**: no tool is hidden, and no permission mode, approval or
+step budget changes, whatever the stage (`tests/test_martaba.py` holds this).
+
 ## The default agent
 
 `PUT /api/agents/default` chooses the agent that answers:

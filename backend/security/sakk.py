@@ -205,12 +205,13 @@ class Sakk:
             )
         return {**body, "hash": found}
 
-    def record_tool(self, owner: str, tool: str, params: Any, result: Any) -> None:
-        """A receipt for one tool call; never raises into the call it records."""
+    def record_tool(self, owner: str, tool: str, params: Any, result: Any) -> dict | None:
+        """A receipt for one tool call (returned, or None when it could not be
+        written); never raises into the call it records."""
         try:
             owner = owner or "system"
             state = outcome(result)
-            self.append(
+            return self.append(
                 owner,
                 "tool",
                 {
@@ -223,6 +224,7 @@ class Sakk:
             )
         except Exception:  # noqa: BLE001 - a receipt failure must not undo an action
             logger.exception("[SAKK] receipt not written for %s", tool)
+            return None
 
     def record(self, owner: str, kind: str, fields: dict, display: str = "") -> None:
         try:
@@ -453,14 +455,14 @@ def store() -> Sakk:
     return _STORES[path]
 
 
-def record_tool(owner: str, tool: str, params: Any, result: Any) -> None:
-    """Write a tool receipt; an unwritable store is logged, never raised."""
+def record_tool(owner: str, tool: str, params: Any, result: Any) -> dict | None:
+    """Write a tool receipt and return it; an unwritable store is logged, never raised."""
     try:
         sakk = store()
     except Exception:  # noqa: BLE001 - e.g. a read-only data directory
         logger.warning("[SAKK] store unavailable; receipt for %s not written", tool)
-        return
-    sakk.record_tool(owner, tool, params, result)
+        return None
+    return sakk.record_tool(owner, tool, params, result)
 
 
 def record(owner: str, kind: str, fields: dict, display: str = "") -> None:

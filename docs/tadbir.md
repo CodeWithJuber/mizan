@@ -111,6 +111,33 @@ of a request:
 - **Learning.** Each verified or failed result updates that agent's posterior.
   An agent whose work keeps failing MIZAN's checks stops getting it.
 
+### Does sharing the work earn its place? (Sullam, report only)
+
+`sullam.py`. He et al. 2026 (arXiv 2611.32606) found that a multi-agent
+system's gains often vanish once a single agent gets the same token budget: a
+plain vote of independent single answers does as well. MIZAN keeps that check
+per kind of work (Fahm's intent), as ForgeKit's ladder does:
+
+- **Shapes.** `majlis` (today's: the parts of a request given to the agents
+  that fit, side by side), `vote` (independent single answers, majority) and
+  `forward` (workers get disjoint evidence slices, dealt by role with the
+  most-constrained role first, `sullam.deal`; the lead aggregates one
+  deduplicated facts packet, `sullam.facts_packet`).
+- **Evidence.** Pairs of outcomes on the same request, each verified or not by
+  rule. The AGI test already sends every task to the base model alone and to
+  MIZAN; when MIZAN's answer used more than one agent, the pair is recorded
+  (`ladder.db`, counts only), the lone answer counting as a vote of one and only
+  when it spent no more tokens (a vote within the same budget does at least as
+  well as one answer). Pairs where both arms agree carry no evidence.
+- **Decision.** `core.adaptive.paired_e_value` over the disagreeing pairs, safe
+  to read after every pair. A challenger becomes the default only when its
+  e-value reaches 1/α = 20 (seven straight wins). Until then Majlis stays the
+  default: no change without evidence.
+- **Report, don't block.** `GET /api/tadbir/learning` → `ladder` gives each
+  intent's level (`majlis (not enough evidence)`, `majlis`, `vote` or
+  `forward`) and the evidence; Agents → Majlis → Learning shows the intents
+  that have pairs. Nothing here changes a run by itself.
+
 ## Ta'allum: learning from verified work
 
 `taallum.py`. When Lisan maps wording that Fahm did not recognise, and MIZAN

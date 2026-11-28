@@ -54,6 +54,7 @@ from . import (
     hifz,
     hudud,
     isnad,
+    khatimah,
     majlis,
     project,
     qasd,
@@ -1026,6 +1027,7 @@ class Tadbir:
             part
             for part in (
                 tajriba.render(lessons),
+                khatimah.guidance(request),  # Islah: lessons from the person's corrections
                 hifz.render(hifz.cases(store, owner, task, language)),
             )
             if part

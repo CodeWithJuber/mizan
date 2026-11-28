@@ -42,6 +42,7 @@ def isolated_provider_mode(monkeypatch):
     monkeypatch.setenv("MIZAN_TADQIQ", "off")  # nor ask a scripted model an audit's question
     monkeypatch.setenv("MIZAN_TADRIB", "off")  # nor keep lessons for an own model to learn
     monkeypatch.setenv("MIZAN_EPISODIC", "off")  # nor keep episodes of what people said
+    monkeypatch.setenv("MIZAN_REPLAY", "off")  # nor answer from a replayed trace
 
 
 @pytest.fixture

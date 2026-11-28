@@ -5,8 +5,12 @@ groups (`backend/runtime_settings.py`) are:
 
 - Model: who directs the work (`MIZAN_ORCHESTRATION`, `hybrid` by default), the feature switches
   (debug mode, Ta'lim, Muhasaba, Truth Gate, Ahl al-Dhikr, Amanah, Muraqabah,
-  Tajdid, Tadqiq and its audit rate), spending limits, Lisan's models, provider and default model, chat
-  effort and output limits, owned-model-only mode, projects per user
+  Tajdid, Tadqiq and its audit rate, Athar's replay of verified runs), spending limits, Lisan's
+  models, provider and default model, chat effort and output limits, owned-model-only mode, projects
+  per user. `MIZAN_REPLAY` (`on` by default, `off` in tests) lets a request repeated in the same
+  form be answered by running the tool steps of earlier verified runs again, with no model call,
+  only when every argument has a known source and the evidence clears its bar; an irreversible
+  step is never replayed ([automatic-learning.md](automatic-learning.md#athar-replay-of-verified-runs))
 - Agents: the default permission mode of a chat that sends none
   (`MIZAN_DEFAULT_PERMISSION_MODE`, `auto`), tools that ask a person in every mode
   (`MIZAN_ALWAYS_ASK_TOOLS`, empty), tool calls per minute

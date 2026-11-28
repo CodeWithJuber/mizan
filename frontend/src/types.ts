@@ -84,6 +84,22 @@ export interface Agent {
   effective_tools?: string[];
   /** Why its provider or model may not answer (no key, unknown model). */
   provider_warning?: string | null;
+  /** Its trust stage from its own record (Martaba): shown, never a restriction. */
+  martaba?: AgentMartaba | null;
+}
+
+/** Martaba: the stage (1-7) an agent's checked runs earned. Report only. */
+export interface AgentMartaba {
+  stage: number;
+  name: string;
+  verified: number;
+  counted: number;
+  pass_rate: number | null;
+  consecutive: number;
+  failures: number;
+  to_next: number;
+  reason: string;
+  report_only: boolean;
 }
 
 export type AgentEffort = "low" | "medium" | "high" | "xhigh" | "max";

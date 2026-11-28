@@ -46,7 +46,10 @@ Sources, highest precedence first, for a name clash:
 carries instructions aimed at the AI is held: it is listed with what Amanah
 found but not offered to the agent until you trust it
 (`POST /{name}/trust`). Trust covers the body as it is then; a later change to
-the body holds it again. Bundled skills are trusted.
+the body holds it again. Bundled skills are trusted. A skill MIZAN earned from
+work it verified three times (Itqan, `mizan-learned-*`) is held the same way
+whatever its words (`loader.hold`), and the list marks it `earned`
+([automatic-learning.md](automatic-learning.md#itqan-skills-earned-from-verified-work)).
 
 ## How the agent uses them (progressive disclosure)
 
@@ -68,7 +71,7 @@ Open **Skills → Agent Skills (SKILL.md)**, or use the API:
 
 | Route (`/api/agent-skills`) | Purpose |
 |---|---|
-| `GET /` | all skills with scope, enabled and held flags, and diagnostics |
+| `GET /` | all skills with scope, enabled, held and earned flags, and diagnostics |
 | `GET /{name}`, `GET /{name}/file?path=` | read a skill or one of its files |
 | `POST /install` `{url}` | install from GitHub: a repo, or a `tree/<ref>/<path>` folder URL |
 | `POST /upload` | install from a `.zip` or `.tar.gz` |

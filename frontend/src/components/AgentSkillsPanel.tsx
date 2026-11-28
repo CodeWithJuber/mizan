@@ -24,6 +24,8 @@ interface AgentSkill {
   enabled: boolean;
   /** Amanah holds a skill whose instructions try to override the AI until you trust it. */
   held?: boolean;
+  /** MIZAN saved it from work it verified (Itqan): it waits for trust whatever its words. */
+  earned?: boolean;
   amanah?: string[];
 }
 
@@ -209,7 +211,12 @@ export default function AgentSkillsPanel({ api }: { api: ApiClient }) {
             {skill.diagnostics.length > 0 && <p className="text-xs text-amber-600">⚠ {skill.diagnostics.join("; ")}</p>}
             {skill.held && (
               <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2 text-xs text-amber-800 dark:text-amber-300">
-                <p>Amanah: this skill contains instructions aimed at overriding the AI, so the agent cannot use it until you check it. A later change holds it again.</p>
+                <p>
+                  {skill.earned
+                    ? "MIZAN earned this skill from work it verified at least three times. It is built from keywords, tool names and receipts only, and no agent uses it until you check it and trust it."
+                    : "Amanah: this skill contains instructions aimed at overriding the AI, so the agent cannot use it until you check it."}{" "}
+                  A later change holds it again.
+                </p>
                 {skill.amanah?.map((excerpt) => <p key={excerpt} className="mt-0.5 font-mono break-all">“{excerpt}”</p>)}
                 <button className="btn-secondary btn-sm mt-1" onClick={() => trust(skill)}>Trust as it is now</button>
               </div>

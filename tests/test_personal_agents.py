@@ -710,3 +710,22 @@ def test_a_chat_with_no_mode_gets_the_default_and_websocket_chats_can_be_asked(c
             pass
     # A WebSocket chat has an interactive approval context and an event sink now.
     assert agent.seen[-2:] == [("ask", True, True), ("plan", True, True)]
+
+
+# ── Martaba (report only) and the learning view ─────────────────────────
+
+
+def test_each_agent_shows_its_trust_stage_and_the_learning_view_its_ladder(api):
+    agent_id = make(api, api.alice).json()["id"]
+    seen = api.client.get(f"/api/agents/{agent_id}", headers=api.alice).json()
+    assert seen["martaba"]["stage"] == 1 and seen["martaba"]["name"] == "Observe"
+    assert seen["martaba"]["report_only"] is True and seen["martaba"]["to_next"] == 20
+    listed = api.client.get("/api/agents", headers=api.alice).json()["agents"]
+    assert next(a for a in listed if a["id"] == agent_id)["martaba"]["stage"] == 1
+    learning = api.client.get("/api/tadbir/learning", headers=api.alice)
+    assert learning.status_code == 200, learning.text
+    body = learning.json()
+    ladder = {row["intent"]: row for row in body["ladder"]}
+    assert ladder["web_search"]["default"] == "majlis" and ladder["web_search"]["report_only"]
+    assert body["lessons"]["lessons"] == 0 and body["earned_skills"]["threshold"] == 3
+    assert body["replay"]["thresholds"] == {"read": 0.804, "write": 0.9533}
