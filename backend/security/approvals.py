@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -35,6 +36,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+logger = logging.getLogger("mizan.approvals")
 
 MODES = ("auto", "auto_edits", "ask", "plan")
 APPROVAL_TIMEOUT_SECONDS = 600
@@ -370,7 +373,13 @@ def chat_context(owner_id: str, session_id: str, mode: str) -> ApprovalContext:
     """The approval context of a message in a web chat: a person is reading it, and
     what they allowed "always" in this chat before still holds."""
     context = ApprovalContext(owner_id, session_id, mode, interactive=True, persist_always=True)
-    context.always |= chat_always_store().keys(owner_id, session_id)
+    try:
+        context.always |= chat_always_store().keys(owner_id, session_id)
+    except (OSError, sqlite3.Error) as error:
+        # The store lives in MIZAN_DATA_DIR; when it cannot be opened the chat goes on with
+        # no remembered grants, so the person is asked again: never fewer questions, and
+        # never a refused message.
+        logger.warning("Earlier 'always' grants could not be read for this chat: %s", error)
     _live.add(context)
     return context
 

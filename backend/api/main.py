@@ -8626,13 +8626,15 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                         )
 
                     asked = data.get("permission_mode")
-                    ws_approvals = approvals_for_chat(
-                        user.user_id,
-                        session_id,
-                        asked if asked in PERMISSION_MODES else _permission_mode(agent),
-                    )
                     zone = data.get("timezone")
                     try:
+                        # Inside the try: a failure here is this message's error frame, not
+                        # a socket that goes quiet.
+                        ws_approvals = approvals_for_chat(
+                            user.user_id,
+                            session_id,
+                            asked if asked in PERMISSION_MODES else _permission_mode(agent),
+                        )
                         with (
                             bind_timezone(
                                 zone if isinstance(zone, str) and len(zone) <= 64 else None
@@ -8918,6 +8920,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
     except Exception as e:
         logger.error(f"WebSocket error for {client_id}: {e}")
         manager.disconnect(client_id)
+        # Close it so the client learns the socket is gone instead of waiting for a frame.
+        with contextlib.suppress(Exception):
+            await websocket.close(code=1011)
     finally:
         manager.disconnect(client_id)
         reset_principal(principal_binding)

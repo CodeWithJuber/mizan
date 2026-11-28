@@ -101,7 +101,9 @@ same way instead of failing.
   (`chat_always` in `held_actions.db`) and allows one action of an action tool
   (`workspace_git:commit`), not the whole tool. `GET /api/chat/{id}/always`
   lists what you allowed; `DELETE /api/chat/{id}/always/{key}` takes it back,
-  also for a run going on now. Erasing the chat erases them.
+  also for a run going on now. Erasing the chat erases them. When the store
+  cannot be opened (`MIZAN_DATA_DIR` not writable), the chat still runs with no
+  remembered grants, so you are asked again; it is never refused for this.
 - **The prompt shows the change.** For `workspace_edit` and `workspace_write`
   the request carries `preview {path, diff, truncated, new_file}`, the diff the
   change would make, worked out without writing anything.
