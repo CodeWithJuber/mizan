@@ -51,6 +51,7 @@ async def list_skills(
     workspace = _owned_workspace(user, workspace_id)
     active = loader.available_skills(user.user_id, workspace, include_disabled=True)
     disabled = loader.disabled_skills(user.user_id)
+    earned = loader.pending_skills(user.user_id)
     every = loader.all_skills(user.user_id, workspace)
     return {
         "skills": [
@@ -58,6 +59,8 @@ async def list_skills(
                 **skill.summary(),
                 "enabled": name not in disabled,
                 "held": loader.held(user.user_id, skill),
+                # MIZAN saved it from verified work (Itqan): it waits for trust.
+                "earned": skill.scope == "user" and name in earned,
             }
             for name, skill in active.items()
         ],

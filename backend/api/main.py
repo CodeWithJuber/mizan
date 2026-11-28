@@ -1527,6 +1527,10 @@ async def _agent_view(user: Any, agent, *, template=None, default_id: Any = _UNS
     data["is_default"] = bool(default_id and default_id == template.id)
     if not editable:
         data.pop("system_prompt", None)
+    from tadbir import martaba
+
+    # The trust stage its record earned (report only: it restricts nothing).
+    data["martaba"] = martaba.view(agent)
     return data
 
 
@@ -3764,6 +3768,10 @@ async def _decide_held(
         session = muraqabah_session(user.user_id)
     if decision == "deny":
         store.finish(held_id, {"declined": True})
+        # Islah: the person refused what the answer of that chat needed.
+        from tadbir import khatimah
+
+        khatimah.signal(user.user_id, "denied", chat=session)
         return {"held_id": held_id, "status": "denied"}
     template = _tadbir_coordinator()
     if template is None:
@@ -6409,7 +6417,7 @@ def _tadbir_coordinator():
 @app.get("/api/tadbir/learning")
 async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
     """What MIZAN learned from its own verified work: who does which work, and your wording."""
-    from tadbir import majlis, taallum, talaqqi
+    from tadbir import khatimah, majlis, sullam, taallum, talaqqi
 
     template = _tadbir_coordinator()
     if template is None:
@@ -6420,6 +6428,9 @@ async def tadbir_learning(user: TokenPayload = Depends(require_auth)):
         "routing": majlis.report(coordinator),
         "wording": taallum.summary(coordinator.adaptive, user.user_id),
         "answers": talaqqi.summary(coordinator.adaptive, user.user_id),
+        # Report only: Majlis stays the default until a vote beats it at equal budget.
+        "ladder": await asyncio.to_thread(sullam.report, sorted(majlis.ROLE_FOR)),
+        **await asyncio.to_thread(khatimah.summary, user.user_id),
     }
 
 

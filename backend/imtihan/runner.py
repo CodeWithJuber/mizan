@@ -146,6 +146,10 @@ async def run_task(agent: Any, task: dict, attempt: int, authentic: str | None) 
         graded = (compared.get("checks", {}).get("isnad") or {}).get(row["arm"]) or {}
         row["supported"] = graded.get("supported")
         row["fabricated"] = (graded.get("counts") or {}).get("mawdu", 0)
+    # Sullam: a multi-agent answer against the lone one at no more budget (counts only).
+    from tadbir import sullam
+
+    sullam.observe_compare(compared, rows)
     return {"rows": rows, "compare": muqabala._trimmed(compared)}
 
 

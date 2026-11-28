@@ -1,7 +1,7 @@
-import { Star, TriangleAlert } from "lucide-react";
+import { ShieldCheck, Star, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import type { Agent } from "../types";
+import type { Agent, AgentMartaba } from "../types";
 import { AGENT_AVATAR_MAX, agentSettingsFrom, agentTools, textLength } from "../utils/agentSettings.ts";
 
 export const NAFS_LEVELS: Record<
@@ -45,6 +45,15 @@ export function AgentAvatar({ agent, className }: { agent: Pick<Agent, "name" | 
   );
 }
 
+/** The record behind an agent's Martaba stage, in words (report only: it limits nothing). */
+export function martabaRecord(martaba: AgentMartaba): string {
+  const counted = martaba.counted
+    ? `${martaba.verified} of ${martaba.counted} checked runs verified`
+    : "No checked runs yet";
+  const next = martaba.stage < 7 ? `; ${martaba.to_next} more in a row for stage ${martaba.stage + 1}` : "";
+  return `${counted}${next}. Shown only: it never limits what the agent may do.`;
+}
+
 interface AgentCardProps {
   agent: Agent;
   selected: boolean;
@@ -81,7 +90,7 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
           <div className="text-xs text-muted-foreground font-mono uppercase tracking-wide">
             {agent.role}
           </div>
-          {(agent.is_default || agent.shared !== undefined) && (
+          {(agent.is_default || agent.shared !== undefined || agent.martaba) && (
             <div className="mt-1 flex flex-wrap gap-1">
               {agent.is_default && (
                 <Badge>
@@ -91,6 +100,11 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
               {agent.shared !== undefined && (
                 <Badge variant="outline" title={agent.shared ? "Everyone on this server can chat with it" : "Only you can see it"}>
                   {agent.shared ? "Shared" : "Private"}
+                </Badge>
+              )}
+              {agent.martaba && (
+                <Badge variant="secondary" title={martabaRecord(agent.martaba)} data-testid="martaba-stage">
+                  <ShieldCheck /> Stage {agent.martaba.stage}/7 · {agent.martaba.name}
                 </Badge>
               )}
             </div>
@@ -208,6 +222,12 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
             {agent.model}
           </span>
         </div>
+      )}
+
+      {agent.martaba && (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="martaba-record">
+          {martabaRecord(agent.martaba)}
+        </p>
       )}
 
       {agent.provider_warning && (

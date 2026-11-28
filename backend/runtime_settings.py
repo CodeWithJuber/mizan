@@ -202,6 +202,15 @@ SETTINGS: tuple[Setting, ...] = (
             "instructions, tries the new version on part of the work, and keeps it only when "
             "MIZAN's own checks show it is better.",
             "on", ("on", "off")),
+    Setting("MIZAN_REPLAY", "Model", "Replay of verified runs (Athar)", "choice",
+            "on: a request repeated in the same form (a watcher's task, the same question "
+            "with other numbers) is answered by running the tool steps of the earlier "
+            "verified runs again, with no model call, but only when every argument has a "
+            "known source and an anytime-valid bound on how often the steps were right "
+            "clears the cost-derived bar; a step that sends, pays, deletes or uses a "
+            "connector tool that is not read-only is never replayed. off always asks the "
+            "model (docs/automatic-learning.md).",
+            "on", ("on", "off")),
     Setting("MIZAN_TADQIQ", "Model", "Audit of MIZAN's own answers (Tadqiq)", "choice",
             "on: a random sample of the answers MIZAN gave with no model call is asked of the "
             "model afterwards, in the background, without showing it MIZAN's answer, and the "
