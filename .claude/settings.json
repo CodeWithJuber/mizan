@@ -9,15 +9,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/dev/forgekit-session.sh\"",
-            "timeout": 150
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run claude SessionStart",
             "timeout": 60
           }

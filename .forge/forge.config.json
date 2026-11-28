@@ -1,7 +1,14 @@
 {
   "tools": "all",
   "hooks": {
-    "project": true
+    "project": true,
+    "hosts": [
+      "claude",
+      "codex",
+      "gemini",
+      "cursor",
+      "copilot"
+    ]
   },
   "verify": {
     "exclude": [

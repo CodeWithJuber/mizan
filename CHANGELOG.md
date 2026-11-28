@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- ForgeKit for every coding agent working on MIZAN: shared `AGENTS.md` rules, project hooks for Claude Code, Codex, Gemini CLI, Cursor, Copilot and OpenCode (dep-gate, secret redaction, protected paths, completion gate, session memory), the `forge-cortex` MCP server, and a session-start script that keeps the CLI at npm's latest release (`docs/forgekit.md`).
+- ForgeKit for every coding agent working on MIZAN: shared `AGENTS.md` rules, project hooks for Claude Code, Codex, Gemini CLI, Cursor, Copilot and OpenCode (dep-gate, secret redaction, protected paths, completion gate, session memory), and the `forge-cortex` MCP server. Hooks call only the installed CLI, never a script from the checked-out branch, and CI's `agent-config-guard` fails a pull request that changes agent hook or MCP files unless the owner wrote it or a maintainer labelled it `agent-config-reviewed` (`docs/forgekit.md`).
 - Owned inference provider, authenticated review/retraction ledger, and separate OpenRouter support drafts.
 - Corrected causal byte reply model and finite/existential context reasoning from the preserved research archive.
 - Pinned full research importer, local source search, provenance inventory and research invariant checks (CI's weekly own-research job).
