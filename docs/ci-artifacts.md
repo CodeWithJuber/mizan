@@ -4,7 +4,7 @@ Every job of every workflow in `.github/workflows/` runs on a standard GitHub-ho
 
 ## The rules for a public repository
 
-`scripts/ci/public-repo-guard.sh` fails on each of these and prints `FILE:LINE: why`. It is the first step of `ci.yml` (every other job waits for it), the first step of `make check` (`make public-repo-guard` alone), and a pre-commit hook on `.github/*.yml`. `tests/test_public_repo_guard.py` pins it.
+`scripts/ci/public-repo-guard.sh` fails on each of these and prints `FILE:LINE: why`. It is the first step of `ci.yml` (every other job waits for it), the first step of `make check` (`make public-repo-guard` alone), and a pre-commit hook on `.github/*.yml`. `tests/test_public_repo_guard.py` pins it. The step after it, `scripts/ci/agent-config-guard.sh`, fails a pull request that changes a coding agent's hook or MCP files unless the repository owner wrote it or it carries the label `agent-config-reviewed` (`docs/forgekit.md`); the workflow also runs on `labeled` for that reason.
 
 - **A standard GitHub-hosted runner only.** A self-hosted runner would run any fork's pull request on the machine it lives on. A larger runner is billed, and a label list, a runner group, an expression or a variable could pick either.
 - **No pull request code with secrets.** A workflow started by `pull_request_target` runs with this repository's token and secrets, so it never checks out code and never names the pull request's head. `cla.yml` is the one that uses it, and it only reads the pull request's commits and comments.

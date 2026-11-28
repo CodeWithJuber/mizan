@@ -44,16 +44,23 @@ ruh_model/checkpoints/
 .DS_Store
 Thumbs.db
 
-# Claude Code
-.claude/
+# Claude Code: local config stays private; the shared hooks and skills are committed
+.claude/*
+!.claude/settings.json
+!.claude/skills/
 .claude.local.md
 
-# Secrets / local config
+# Secrets / local config (.mcp.json holds only ForgeKit's forge-cortex server, no secrets)
 backend/.vault.key
-.mcp.json
+
+# ForgeKit runtime state (the code atlas is rebuilt locally; verify events and config backups are per machine)
+.forge/atlas.json
+.forge/verify-events.jsonl
+.forge/*.forge-bak-*
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/mcp.json
 .idea/
 *.swp
 *.swo

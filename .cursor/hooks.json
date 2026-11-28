@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor sessionStart",
+        "timeout": 60
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor beforeSubmitPrompt",
+        "timeout": 30
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor beforeShellExecution",
+        "timeout": 30
+      }
+    ],
+    "beforeMCPExecution": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor beforeMCPExecution",
+        "timeout": 30,
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor preToolUse",
+        "timeout": 30
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor postToolUse",
+        "timeout": 30
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor postToolUseFailure",
+        "timeout": 30
+      }
+    ],
+    "stop": [
+      {
+        "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run cursor stop",
+        "timeout": 60
+      }
+    ]
+  }
+}

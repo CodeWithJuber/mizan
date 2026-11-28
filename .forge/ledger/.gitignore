@@ -1,0 +1,2 @@
+# derived read cache — rebuilt from the claim files whenever they change (forge)
+.state-cache.json
