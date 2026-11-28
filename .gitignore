@@ -61,6 +61,8 @@ backend/.vault.key
 # .forge/lessons/ and .forge/decisions.md (portableMemory) is what a new checkout rebuilds them from
 .forge/ledger/*
 !.forge/ledger/.gitignore
+.forge/brain/*
+!.forge/brain/facts/
 
 # IDE
 .vscode/*
