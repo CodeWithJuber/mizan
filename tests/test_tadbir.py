@@ -1700,17 +1700,28 @@ async def test_the_projects_own_tests_run_through_forgekit_and_must_pass(agent, 
     assert problem == ""
     checks, _ = await check()
     assert (TESTS_LABEL, None, "the project's files changed while its tests ran") in checks
-    for _no_tests_or_old_image in range(2):  # NOT_CONFIGURED, then an image without ForgeKit
-        checks, problem = await check()
-        assert [label for label, _, _ in checks] == ["`src/sum.js` has valid syntax (sandbox)"]
+    checks, problem = await check()  # NOT_CONFIGURED: ForgeKit found no test command
+    assert [label for label, _, _ in checks] == ["`src/sum.js` has valid syntax (sandbox)"]
+    # An image without ForgeKit cannot say the tests pass: not checked, so not verified.
+    checks, problem = await check()
+    assert ("the project's tests pass (ForgeKit: forge verify)", None,
+            "ForgeKit is not installed in this sandbox image") in checks  # fmt: skip
+    assert problem == ""
     checks, _ = await check()  # declined: the tests did not run, so it is not verified
     assert ("the project's tests pass (ForgeKit: forge verify)", None,
             "The person declined this action") in checks  # fmt: skip
     asked = [name for name, _ in fake.calls].count("workspace_verify")
     # No manifest ForgeKit could plan tests from, or nothing changed: it is not asked.
-    await check(everything=["src/sum.js", "index.html"])
+    checks, _ = await check(everything=["src/sum.js", "index.html"])
+    assert [label for label, _, _ in checks] == ["`src/sum.js` has valid syntax (sandbox)"]
     await Tadbir(agent)._check_edit({}, {}, project_files)
     assert [name for name, _ in fake.calls].count("workspace_verify") == asked
+    # A chat without workspace_verify cannot run the tests a manifest promises.
+    names.remove("workspace_verify")
+    checks, problem = await check()
+    assert ("the project's tests pass (ForgeKit: forge verify)", None,
+            "workspace_verify is not available in this chat") in checks  # fmt: skip
+    assert problem == "" and [name for name, _ in fake.calls].count("workspace_verify") == asked
 
 
 def test_edit_blocks_are_read_and_applied_exactly():
@@ -2053,13 +2064,18 @@ def test_a_question_about_building_or_a_plain_page_is_not_a_handoff():
     assert not project.recipe_sized(many)
 
 
-async def test_a_node_project_is_edited_by_the_model_with_one_repair_turn(agent, handoff):
+async def test_a_node_project_is_edited_by_the_model_with_one_repair_turn(
+    agent, handoff, monkeypatch
+):
     from workspace.context import bind_workspace, reset_workspace
 
     store = handoff.store
     workspace = store.create("Shop")["id"]
     store.write(workspace, "package.json", '{"name": "shop"}\n')
     store.write(workspace, "src/total.js", "export const total = 1;\n")
+    # No test script: ForgeKit finds no test command, so the file checks decide.
+    no_tests = {"verdict": "NOT_CONFIGURED", "bound": True, "commands": []}
+    _with_project_tests(agent, handoff, monkeypatch, [dict(no_tests), dict(no_tests)])
     handoff.runs += [
         {"stdout": "", "stderr": "SyntaxError: Unexpected token '}'", "exit_code": 1},
         {"stdout": "", "stderr": "", "exit_code": 0},
@@ -2137,6 +2153,36 @@ async def test_a_handoff_is_verified_only_when_the_projects_tests_pass(agent, ha
     assert [name for name, _ in handoff.calls].count("workspace_verify") == 2
     assert f"- ✓ {TESTS_LABEL}" in result["result"]
     assert result["completion_status"] == "verified_by_mizan"
+
+
+async def test_a_handoff_cannot_be_verified_on_syntax_when_its_tests_cannot_run(
+    agent, handoff, monkeypatch
+):
+    from workspace.context import bind_workspace, reset_workspace
+
+    store = handoff.store
+    workspace = store.create("Shop")["id"]
+    store.write(workspace, "package.json", '{"scripts": {"test": "node --test"}}\n')
+    store.write(workspace, "src/total.js", "export const total = 1;\n")
+    missing = {
+        "error": "ForgeKit is not installed in this sandbox image",
+        "code": "forgekit_missing",
+    }
+    _with_project_tests(agent, handoff, monkeypatch, [missing])
+    agent.ai_client = ScriptedProvider(
+        [
+            tool_use("workspace_write", path="src/total.js", content="export const total = 2;\n"),
+            "I changed the total.",
+        ]
+    )  # fmt: skip
+    selected = bind_workspace(workspace)
+    try:
+        result = await agent.execute("Update the total in total.js to show 2")
+    finally:
+        reset_workspace(selected)
+    assert "- ✓ `src/total.js` has valid syntax (sandbox)" in result["result"]
+    assert "- – the project's tests pass (ForgeKit: forge verify)" in result["result"]
+    assert result["completion_status"] != "verified_by_mizan"
 
 
 async def test_a_handoff_whose_tests_still_fail_is_not_verified(agent, handoff, monkeypatch):

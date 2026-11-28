@@ -58,8 +58,8 @@ FORGEKIT_READS = frozenset({"workspace_impact", "workspace_docs_check"})
 VERIFY_TIMEOUT = 600
 # What a verification keeps with the files it tested (never their output).
 VERIFICATION_KEPT = (
-    "tree", "verdict", "passed", "commands", "counts", "test_integrity", "baseline", "forge",
-    "checked_at", "sandbox",
+    "tree", "tree_after", "verdict", "passed", "commands", "counts", "test_integrity", "baseline",
+    "forge", "checked_at", "sandbox",
 )  # fmt: skip
 
 
@@ -411,7 +411,7 @@ class CodingWorkspaceSkill(SkillBase):
         tested (their tree digest): a later edit makes a new tree, so the verdict is stale."""
         store = self.store(edit=True)
         project = selected_workspace(workspace_id)
-        _tree, tested = store.content_tree(project)
+        before, tested = store.content_tree(project)
         try:
             data, baseline, run = await self._forgekit(
                 store, project, ["verify"], git="snapshot", timeout=int(timeout_s)
@@ -419,7 +419,7 @@ class CodingWorkspaceSkill(SkillBase):
             found = forgekit.verification(data)
         except forgekit.ForgeKitError as exc:
             return cast(dict, exc.result())
-        tree, now = store.content_tree(project)
+        after, now = store.content_tree(project)
         moved = {path for path in tested.keys() | now.keys() if tested.get(path) != now.get(path)}
         # Bound when ForgeKit saw no change to the code while the tests ran and every file
         # that changed in the store is one the run itself wrote (its outputs), not an edit.
@@ -427,7 +427,11 @@ class CodingWorkspaceSkill(SkillBase):
         result = {
             **found,
             "baseline": baseline,
-            "tree": tree,
+            # Kept under the tree that was tested; files the run wrote (its outputs) make
+            # ``tree_after``, which no test ran against, so the record is current only while
+            # the project's files are the tested ones.
+            "tree": before,
+            "tree_after": after,
             "bound": bound,
             "checked_at": datetime.now(UTC).isoformat(timespec="microseconds"),
             "sandbox": str(run.get("sandbox") or ""),

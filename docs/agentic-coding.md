@@ -29,8 +29,8 @@ When a chat is bound to a project (`workspace_id`), the agent gets these tools:
 | `workspace_git` | `status`, `diff`, `log`, `init` or a local `commit`; no remote operations. The three reads lock nothing and write nothing back. |
 | `workspace_artifact` | Publish a project file (code, HTML, Markdown or a raster image) as a saved artifact in the chat. |
 | `workspace_verify` | Run the project's own tests with ForgeKit (`forge verify`) in its sandbox: the verdict (`PASS`, `FAIL`, `INCOMPLETE`, `NOT_CONFIGURED`, `SUSPECT`), each test command with pass/fail counts, and the digest of the files it tested; the verdict is kept with those files and goes stale on the next edit (see `coding-workspaces.md`). Asks like `workspace_run`: it runs the project's code. |
-| `workspace_impact` | The files an edit to a `symbol` or `path` will probably touch, from ForgeKit's code graph (`forge impact`). A read. |
-| `workspace_docs_check` | The docs the uncommitted changes made stale (`forge docs sync` against the project's git `HEAD`). A read; needs the project's git history. |
+| `workspace_impact` | The files an edit to a `symbol` or `path` will probably touch, from ForgeKit's code graph (`forge impact`). A read: it runs none of the project's code, and git never reads the project's config (see `coding-workspaces.md`). |
+| `workspace_docs_check` | The docs the uncommitted changes made stale (`forge docs sync` against the project's git `HEAD`). A read, like impact; needs the project's git history. |
 | `workspace_list`, `workspace_tree`, `workspace_create` | List projects, show a project's files, create one. `workspace_hardware` (administrators) reports the backend's CPU, memory and disk. |
 | `todo_write` | Keep a short plan. It is saved per chat and shown live in the UI. |
 | `web_search`, `web_browse` | Search the web and read a page. Fetches resolve DNS and refuse private, loopback and metadata addresses on every redirect. |
@@ -125,9 +125,8 @@ schedules and triggers the first administrator) through that owner's own
 gates. Every action that needs a person is **held** instead of run:
 
 - What goes ahead: reading, private project edits, and programs in MIZAN's
-  isolated sandbox (`workspace_run`). ForgeKit's `workspace_verify` is held for
-  now: it is not listed with `workspace_run` among the sandboxed programs
-  (`approvals.SANDBOXED_TOOLS`).
+  isolated sandbox (`workspace_run`, and ForgeKit's `workspace_verify`, which
+  runs the project's tests there).
 - What is held: host commands, outside writes, connector actions, anything
   Izn asks about, and anything Amanah marked tainted.
 - Each held action is stored with its exact parameters and their SHA-256
@@ -238,9 +237,11 @@ the project's tools only (Tadbir `_workspace_agent`):
    something changed (a deleted file too), it also runs the project's own
    tests with `workspace_verify`: `PASS` is a passed check, `FAIL` and
    `SUSPECT` (the change weakened the tests) are failures the repair turn gets,
-   and `INCOMPLETE` or a verdict not bound to the files is "not checked".
-   `NOT_CONFIGURED` and an image without ForgeKit add no check. MIZAN's own
-   edit recipe runs the same check. When a check fails, the model gets one
+   and anything else is "not checked": `INCOMPLETE`, a verdict not bound to
+   the files, a declined run, a chat without `workspace_verify`, or a sandbox
+   image without ForgeKit. A project ForgeKit could test is therefore never
+   verified on the file checks alone. Only `NOT_CONFIGURED` (no test command)
+   adds no check. MIZAN's own edit recipe runs the same check. When a check fails, the model gets one
    turn to repair it, with the failure fenced as data.
 6. **The answer says what was checked.** The model's words, then MIZAN's check
    section: the files changed or removed and each check. It is verified only

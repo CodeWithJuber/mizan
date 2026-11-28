@@ -96,7 +96,7 @@ def default_mode() -> str:
 
 # Runs inside MIZAN's isolated sandbox (no host access, egress allowlist):
 # unattended runs may use it without a person present.
-SANDBOXED_TOOLS = frozenset({"workspace_run"})
+SANDBOXED_TOOLS = frozenset({"workspace_run", "workspace_verify"})
 
 # Tools with an ``action`` parameter whose some actions only observe. The
 # action, not the tool, decides; a missing action is the tool's default, status.

@@ -2267,22 +2267,25 @@ class Tadbir:
 
     async def _project_tests(self) -> tuple[tuple[str, bool | None, str], str] | None:
         """The project's own tests through ForgeKit (``workspace_verify``, which keeps the
-        verdict with the files it tested): (check, problem). None leaves MIZAN's other
-        checks to decide: the tool is not here, ForgeKit found no test command, or the
-        sandbox image predates ForgeKit."""
+        verdict with the files it tested), for a project with a manifest ForgeKit tests:
+        (check, problem). Only ``PASS`` is a passed check. When the tests could not run
+        (no tool in this chat, an image without ForgeKit, a declined or unfinished run, a
+        verdict not bound to the files) the check is "not checked", so the syntax checks
+        alone never verify the answer. None only when ForgeKit found no test command."""
+        unchecked = phrase("check_project_tests", "en", commands="forge verify")
         if not self._allowed("workspace_verify"):
-            return None
+            return (unchecked, None, "workspace_verify is not available in this chat"), ""
         result = await self._tool("workspace_verify", {})
         verdict = str(result.get("verdict") or "")
-        if result.get("code") == "forgekit_missing" or verdict == "NOT_CONFIGURED":
-            trace.event("verify", "forgekit", skipped=result.get("code") or "no test command")
+        if verdict == "NOT_CONFIGURED":
+            trace.event("verify", "forgekit", skipped="no test command")
             return None
         names = ", ".join(
             str(item["command"])
             for item in result.get("commands") or []
             if isinstance(item, dict) and item.get("command")
         )
-        label = phrase("check_project_tests", "en", commands=names or "forge verify")
+        label = phrase("check_project_tests", "en", commands=names) if names else unchecked
         if result.get("error") or not verdict:
             return (label, None, str(result.get("error") or "ForgeKit gave no verdict")[:200]), ""
         if not result.get("bound"):

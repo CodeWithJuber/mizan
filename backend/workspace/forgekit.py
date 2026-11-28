@@ -14,10 +14,16 @@ What the command guarantees:
 - ForgeKit's own state (``.forge/``: its atlas cache, provenance stamp, verifier events) is
   put back exactly as it was afterwards, so a check changes none of the project's files; a
   project that keeps a ``.forge`` of its own (ForgeKit's config) keeps it byte for byte.
-- ``forge verify`` binds its verdict to a git state. A project without git is verified
-  against a throwaway snapshot commit kept under ``.cache/`` (never synced): its tests run
-  and the verdict is bound, but ForgeKit's test-integrity check has no earlier state to
-  compare with. ``docs sync`` needs the project's own history and says so without it.
+- Git never reads the project's ``.git/config``, hooks or ``info/attributes`` (where a
+  planted ``core.fsmonitor``, ``diff.external`` or filter driver would run a program):
+  ForgeKit works through a git directory of MIZAN's own under ``.cache/`` (never synced)
+  that borrows only the project's objects, HEAD, index and ignore patterns, with no
+  system or global configuration (``_git_dir``, ``_GIT_ENV``). Apart from git,
+  ``impact`` and ``docs sync`` start nothing; ``verify`` runs the project's tests.
+- ``forge verify`` binds its verdict to a git state. A project without git history is
+  verified against a throwaway snapshot commit in that directory: its tests run and the
+  verdict is bound, but ForgeKit's test-integrity check has no earlier state to compare
+  with. ``docs sync`` needs the project's own history and says so without it.
 - ForgeKit runs under ``timeout`` shorter than the run's own limit, so ``.forge`` is put
   back even when the tests hang.
 - The answer is a marker line with a fresh random mark, then ForgeKit's JSON trimmed inside
@@ -46,6 +52,19 @@ PYTHON = "/usr/local/bin/python3"
 # node_modules/.bin first, and these two write what MIZAN reads.
 TIMEOUT = "/usr/bin/timeout"
 GIT = "/usr/bin/git"
+# Git takes no system or global configuration, and these settings win over any file it
+# reads (command-line configuration). diff.external cannot be set empty (git then fails
+# to run ""), so the project's config, which could name it, is never read (``_git_dir``).
+_GIT_ENV = (
+    "GIT_CONFIG_NOSYSTEM=1",
+    "GIT_CONFIG_GLOBAL=/dev/null",
+    "GIT_CONFIG_COUNT=5",
+    "GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false",
+    "GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=/dev/null",
+    "GIT_CONFIG_KEY_2=core.pager GIT_CONFIG_VALUE_2=cat",
+    "GIT_CONFIG_KEY_3=core.attributesFile GIT_CONFIG_VALUE_3=/dev/null",
+    "GIT_CONFIG_KEY_4=core.excludesFile GIT_CONFIG_VALUE_4=/dev/null",
+)
 MISSING = "ForgeKit is not installed in this sandbox image; the runner needs upgrading"
 NO_GIT = (
     "This project has no git history to compare the changes with: run workspace_git "
@@ -113,9 +132,11 @@ def needs_tests(paths: list[str] | set[str]) -> bool:
 def command(args: list[str], mark: str, *, git: str = "any", limit: int = 110) -> str:
     """The shell script that runs ``forge <args> --json`` in the project directory.
 
-    ``git``: ``snapshot`` makes a throwaway baseline commit when the project has no git,
-    ``require`` refuses (``nogit``) without one, ``any`` runs either way. ``limit`` is
-    ForgeKit's own time limit in seconds, below the run's, so the cleanup always runs.
+    ``git``: ``snapshot`` makes a throwaway baseline commit when the project has no git
+    history, ``require`` refuses (``nogit``) without one, ``any`` runs either way. ``limit``
+    is ForgeKit's own time limit in seconds, below the run's, so the cleanup always runs.
+    Git never reads the project's ``.git/config``, hooks or ``info/attributes``: ForgeKit
+    works through a git directory of MIZAN's own (see ``_git_dir``).
     """
     if git not in GIT_MODES:
         raise ValueError(f"git must be one of {GIT_MODES}")
@@ -126,34 +147,39 @@ def command(args: list[str], mark: str, *, git: str = "any", limit: int = 110) -
     marker = shlex.quote(f"@@mizan-forge-{mark}")
     state = shlex.quote(f".cache/mizan-forge/{mark}")
     forge = " ".join(shlex.quote(arg) for arg in args)
-    ignored = " ".join(shlex.quote(f"{name}/") for name in sorted(HEAVY | {".forge"}))
     lines = [
         f"M={marker}",
         f'if [ ! -x {FORGE} ] || [ ! -x {NODE} ]; then echo "$M missing"; exit 0; fi',
+        f"export {' '.join(_GIT_ENV)}",
+        "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_EXTERNAL_DIFF",
+        # The project's HEAD and object format, read without its config doing anything:
+        # rev-parse runs no filter, diff driver or hook, and fsmonitor is off above.
+        "H=; O=",
+        "if [ -d .git ] && [ ! -L .git ]; then",
+        f'  H=$(GIT_DIR="$PWD/.git" {GIT} rev-parse --verify -q HEAD 2>/dev/null)',
+        f'  O=$(GIT_DIR="$PWD/.git" {GIT} rev-parse --show-object-format 2>/dev/null)',
+        "fi",
+        '[ -n "$O" ] || O=sha1',
     ]
     if git == "require":
-        lines.append('if [ ! -e .git ]; then echo "$M nogit"; exit 0; fi')
+        lines.append('if [ -z "$H" ]; then echo "$M nogit"; exit 0; fi')
     lines += [
         f"S={state}",
         'mkdir -p "$S" || exit 1',
         # ForgeKit writes its state into .forge: keep a copy to put back afterwards.
         'if [ -e .forge ] || [ -L .forge ]; then cp -a .forge "$S/kept" || exit 1; fi',
-        "B=project",
+        *_git_dir(),
     ]
     if git == "snapshot":
-        lines += [
-            "if [ ! -e .git ]; then",
-            "  B=snapshot",
-            '  GIT_DIR="$PWD/$S/git"; GIT_WORK_TREE="$PWD"; export GIT_DIR GIT_WORK_TREE',
-            f'  {{ {GIT} init -q && mkdir -p "$GIT_DIR/info" &&'
-            f" printf '%s\\n' {ignored} > \"$GIT_DIR/info/exclude\" && {GIT} add -A &&"
-            f" {GIT} -c user.name=MIZAN -c user.email=verify@mizan.invalid commit -q --no-verify"
-            " --allow-empty -m 'MIZAN snapshot'; } >/dev/null 2>&1 || B=none",
-            "fi",
-        ]
+        lines.append(
+            f'if [ "$B" = none ]; then {{ {GIT} add -A && {GIT} -c user.name=MIZAN'
+            " -c user.email=verify@mizan.invalid commit -q --no-verify --allow-empty"
+            " -m 'MIZAN snapshot'; } >/dev/null 2>&1 && B=snapshot; fi"
+        )
     lines += [
         f"FORGE_HOOKS=0 FORGE_LLM=0 {TIMEOUT} -k 5 {max(10, int(limit))} {NODE} {FORGE} {forge}"
         ' --json > "$S/out.json" 2> "$S/err.txt"; C=$?',
+        "unset GIT_DIR GIT_WORK_TREE",
         "rm -rf .forge",
         'if [ -e "$S/kept" ] || [ -L "$S/kept" ]; then mv "$S/kept" .forge; fi',
         'echo "$M exit $C baseline $B"',
@@ -166,6 +192,37 @@ def command(args: list[str], mark: str, *, git: str = "any", limit: int = 110) -
         "exit 0",
     ]
     return "\n".join(lines)
+
+
+def _git_dir() -> list[str]:
+    """Lines that make ``$G``, the git directory ForgeKit works through, and export it.
+
+    With the project's history (``$H``), ``$G`` borrows its objects (an alternate, read
+    only), its HEAD (detached at ``$H``), its index, shallow list and ignore patterns:
+    data git reads. Nothing that names a program comes along: not ``.git/config`` (core.
+    fsmonitor, diff.external, filter and textconv drivers), hooks, or ``info/attributes``,
+    so the project's ``.gitattributes`` name drivers that are defined nowhere. Without
+    history ``$G`` starts empty (``B=none``). MIZAN's own state under ``.cache/`` and the
+    folders a session never syncs are ignored, so ForgeKit never counts them as changes.
+    """
+    ignored = " ".join(shlex.quote(f"{name}/") for name in sorted(HEAVY | {".forge"}))
+    return [
+        'G="$PWD/$S/git"',
+        # GIT_DIR makes $G itself the git directory (``git init $G`` would make $G/.git).
+        f'GIT_DIR="$G" {GIT} init -q --object-format="$O" >/dev/null 2>&1 || exit 1',
+        'mkdir -p "$G/info" "$G/objects/info" || exit 1',
+        f"printf '%s\\n' {ignored} >> \"$G/info/exclude\"",
+        "B=none",
+        'if [ -n "$H" ]; then',
+        '  printf \'%s\\n\' "$PWD/.git/objects" > "$G/objects/info/alternates"',
+        '  printf \'%s\\n\' "$H" > "$G/HEAD"',
+        '  { [ ! -f .git/index ] || cp .git/index "$G/index"; } &&'
+        ' { [ ! -f .git/shallow ] || cp .git/shallow "$G/shallow"; } &&'
+        ' { [ ! -f .git/info/exclude ] || cat .git/info/exclude >> "$G/info/exclude"; } &&'
+        " B=project",
+        "fi",
+        'GIT_DIR="$G"; GIT_WORK_TREE="$PWD"; export GIT_DIR GIT_WORK_TREE',
+    ]
 
 
 def read(stdout: str, mark: str) -> tuple[dict, int, str]:

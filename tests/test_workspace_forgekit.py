@@ -7,6 +7,7 @@ the very command MIZAN sends against the real ForgeKit when it is installed loca
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -145,17 +146,35 @@ def test_the_command_uses_the_images_forgekit_and_puts_its_state_back():
     assert (
         script.index("cp -a .forge") < script.index("verify --json") < script.index("rm -rf .forge")
     )
-    assert 'GIT_DIR="$PWD/$S/git"' in script
+    assert 'G="$PWD/$S/git"' in script and 'GIT_DIR="$G"; GIT_WORK_TREE="$PWD"' in script
     exclude = next(line for line in script.splitlines() if "info/exclude" in line)
     assert all(f" {name}/" in exclude for name in ("node_modules", ".cache", ".forge"))
     assert f"S=.cache/mizan-forge/{mark}" in script
     plain = forgekit.command(["impact", "sum"], mark)
-    assert "GIT_DIR" not in plain and "nogit" not in plain
+    assert "MIZAN snapshot" in script  # only verify commits a snapshot of a git-less project
+    assert "MIZAN snapshot" not in plain and "nogit" not in plain
     docs = forgekit.command(["docs", "sync", "--base", "HEAD"], mark, git="require")
-    assert 'if [ ! -e .git ]; then echo "$M nogit"' in docs and "GIT_DIR" not in docs
+    assert 'if [ -z "$H" ]; then echo "$M nogit"' in docs and "MIZAN snapshot" not in docs
     for bad in ({"mark": "not-hex"}, {"git": "maybe"}):
         with pytest.raises(ValueError):
             forgekit.command(["verify"], **{"mark": mark, **bad})
+
+
+def test_git_never_reads_the_projects_config_hooks_or_attributes_files():
+    mark = "cd" * 16
+    for mode in forgekit.GIT_MODES:
+        script = forgekit.command(["impact", "sum"], mark, git=mode)
+        for setting in (
+            "GIT_CONFIG_NOSYSTEM=1",
+            "GIT_CONFIG_GLOBAL=/dev/null",
+            "GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false",
+            "GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=/dev/null",
+            "GIT_CONFIG_KEY_2=core.pager GIT_CONFIG_VALUE_2=cat",
+        ):
+            assert setting in script, (mode, setting)
+        # ForgeKit reads git through a git directory of MIZAN's own, set before it runs.
+        assert script.index('GIT_DIR="$G"') < script.index(f"{forgekit.FORGE} impact")
+        assert '"$PWD/.git/objects" > "$G/objects/info/alternates"' in script
 
 
 def test_the_answer_is_read_after_this_runs_marker_only():
@@ -366,7 +385,9 @@ async def test_verify_runs_in_the_live_session_and_keeps_the_verdict_with_the_fi
     store, workspace = bound
     sandbox = Sandbox(monkeypatch)
     sandbox.reply, sandbox.baseline = fixture("verify-pass-npm.json"), "snapshot"
+    tested = store.content_tree(workspace)[0]
     result = await CodingWorkspaceSkill().verify()
+    assert result["tree"] == result["tree_after"] == tested
     assert result["verdict"] == "PASS" and result["passed"] and result["recorded"]
     assert result["commands"][0]["command"] == "npm test" and result["counts"]["pass"] == 1
     assert result["tree"] == store.content_tree(workspace)[0] and result["bound"]
@@ -374,7 +395,7 @@ async def test_verify_runs_in_the_live_session_and_keeps_the_verdict_with_the_fi
     run = sandbox.commands[0]
     assert run["language"] == "shell" and run["timeout_s"] == skill_module.VERIFY_TIMEOUT
     assert "timeout -k 5 580" in run["command"]  # ForgeKit stops before the run does
-    assert 'GIT_DIR="$PWD/$S/git"' in run["command"]
+    assert 'G="$PWD/$S/git"' in run["command"]
     kept = store.verification(workspace)
     assert kept["verdict"] == "PASS" and kept["stale"] is False
     assert kept["commands"] == result["commands"] and "detail" not in kept
@@ -421,16 +442,22 @@ async def test_an_edit_during_the_run_leaves_the_verdict_unbound(bound, monkeypa
     assert store.verification(workspace) is None
 
 
-async def test_files_the_tests_wrote_are_their_outputs_and_the_verdict_stays_bound(
-    bound, monkeypatch
-):
+async def test_the_verdict_is_kept_for_the_tree_that_was_tested_not_its_outputs(bound, monkeypatch):
     store, workspace = bound
     sandbox = Sandbox(monkeypatch)
     sandbox.reply = fixture("verify-pass-npm.json")
+    tested = store.content_tree(workspace)[0]
     sandbox.during = lambda: store.write(workspace, "junit.xml", "<testsuites/>\n")
     sandbox.changed = ["junit.xml"]  # pulled back from the session by this run
     result = await CodingWorkspaceSkill().verify()
     assert result["bound"] and result["recorded"]
+    # The record is the tree that was tested; the files now hold the run's outputs too,
+    # which no test ran against, so it is not the current files' verification.
+    after = store.content_tree(workspace)[0]
+    assert result["tree"] == tested and result["tree_after"] == after != tested
+    kept = store.verification(workspace)
+    assert kept["tree"] == tested and kept["tree_after"] == after and kept["stale"] is True
+    store.delete(workspace, "junit.xml")  # the tested files again: current
     assert store.verification(workspace)["stale"] is False
 
 
@@ -492,6 +519,9 @@ def test_impact_and_docs_check_are_reads_and_verify_runs_like_workspace_run():
     assert ApprovalContext("u", "s", "auto_edits").needs_approval("workspace_verify")
     assert not ApprovalContext("u", "s", "auto").needs_approval("workspace_verify")
     assert ApprovalContext("u", "s", "plan").blocks("workspace_verify")
+    unattended = ApprovalContext("u", "s", "auto_edits", deferred=True)
+    assert not unattended.needs_approval("workspace_verify")  # in the sandbox, like run
+    assert not unattended.needs_approval("workspace_run")
 
 
 def test_the_handoff_model_gets_the_tools_and_their_results_are_data():
@@ -574,3 +604,120 @@ def test_the_command_runs_the_real_forgekit_and_changes_no_file(tmp_path, monkey
     with pytest.raises(forgekit.ForgeKitError) as no_git:
         run(["docs", "sync", "--base", "HEAD"], "require")
     assert no_git.value.code == "no_git"
+
+
+# ── A repository whose git config would run commands runs none of them ────
+
+HOSTILE = ("fsmonitor", "external", "textconv", "clean", "smudge", "process", "hook",
+           "pager", "global")  # fmt: skip
+
+
+def _hostile_repo(root: Path, bin_dir: Path) -> None:
+    """A project whose .git/config, info/attributes and ~/.gitconfig name programs; each
+    program leaves a file named after it in ``bin_dir`` when git runs it."""
+    bin_dir.mkdir()
+    for name in HOSTILE:
+        program = bin_dir / name
+        program.write_text(f"#!/bin/sh\ntouch {bin_dir}/fired-{name}\ncat\n")
+        program.chmod(0o755)
+    files = {
+        "package.json": '{"name": "tiny", "type": "module", "scripts": {"test": "node --test"}}\n',
+        "total.js": "export function computeTotal(items) { return items.length; }\n",
+        "README.md": "# tiny\n\n`computeTotal(items)` counts the items.\n",
+        ".gitattributes": "*.js diff=evil filter=evil\n*.md filter=proc\n",
+        "notes.txt": "a note\n",
+    }
+    for path, content in files.items():
+        (root / path).write_text(content)
+    clean = {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, env=clean)
+
+    git("init", "-q")
+    git("add", "-A")
+    git("-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "init")
+    for key, program in [
+        ("core.fsmonitor", "fsmonitor"), ("diff.external", "external"),
+        ("diff.evil.textconv", "textconv"), ("filter.evil.clean", "clean"),
+        ("filter.evil.smudge", "smudge"), ("filter.proc.process", "process"),
+        ("core.hooksPath", ""), ("core.pager", "pager"),
+    ]:  # fmt: skip
+        git("config", key, str(bin_dir / program) if program else str(bin_dir))
+    (bin_dir / "post-index-change").write_text(f"#!/bin/sh\ntouch {bin_dir}/fired-hook\n")
+    (bin_dir / "post-index-change").chmod(0o755)
+    (root / ".git" / "info" / "attributes").write_text("*.txt filter=evil\n")
+    (root / "notes.txt").write_text("a changed note\n")  # filtered by info/attributes
+    # The uncommitted change ForgeKit is asked about.
+    (root / "total.js").write_text("export function computeTotal(items) { return 0; }\n")
+
+
+def _run(root, args, git_mode, home):
+    import secrets
+
+    mark = secrets.token_hex(16)
+    done = subprocess.run(
+        ["/bin/sh", "-c", forgekit.command(args, mark, git=git_mode, limit=90)],
+        cwd=root, capture_output=True, text=True, timeout=120,
+        env={"PATH": "/usr/local/bin:/usr/bin:/bin:" + str(Path(shutil.which("node")).parent),
+             "HOME": str(home)},
+    )  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    return forgekit.read(done.stdout, mark)
+
+
+# Stands in for ForgeKit: runs the git commands ForgeKit's verify, impact and docs sync run
+# (diffs of the work tree and the index, status, the untracked list) and reports the diff.
+FAKE_FORGE = """
+const { execFileSync } = require("node:child_process");
+const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
+const diff = git("diff", "--unified=0", "HEAD");
+git("diff", "--cached"); git("status", "--porcelain"); git("ls-files", "--others", "--exclude-standard");
+const head = git("rev-parse", "HEAD").trim();
+console.log(JSON.stringify({ tests: { status: "PASS" }, head, diff }));
+"""
+
+
+@pytest.mark.skipif(
+    not (shutil.which("git") and shutil.which("node") and Path(forgekit.GIT).exists()),
+    reason="git and node are not installed here",
+)
+def test_a_hostile_git_config_runs_nothing_and_the_history_still_reads(tmp_path, monkeypatch):
+    project, bin_dir, home = tmp_path / "project", tmp_path / "bin", tmp_path / "home"
+    project.mkdir()
+    home.mkdir()
+    _hostile_repo(project, bin_dir)
+    (home / ".gitconfig").write_text(f"[core]\n\tfsmonitor = {bin_dir}/global\n")
+    fake = tmp_path / "forge.cjs"
+    fake.write_text(FAKE_FORGE)
+    fake.chmod(0o755)
+    monkeypatch.setattr(forgekit, "FORGE", str(fake))
+    monkeypatch.setattr(forgekit, "NODE", shutil.which("node"))
+    monkeypatch.setattr(forgekit, "PYTHON", shutil.which("python3"))
+    expected = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=project, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    for mode in forgekit.GIT_MODES:
+        data, _code, baseline = _run(project, ["verify"], mode, home)
+        assert baseline == "project" and data["head"] == expected
+        # The project's history is read: the uncommitted change is in the diff.
+        assert "return 0;" in data["diff"] and "return items.length" in data["diff"]
+        assert sorted(p.name for p in bin_dir.glob("fired-*")) == [], mode
+    assert not list(project.rglob(".cache"))
+
+
+@pytest.mark.skipif(not _real(), reason="ForgeKit, git and node are not installed here")
+def test_the_real_forgekit_reads_a_hostile_repository_without_running_it(tmp_path, monkeypatch):
+    project, bin_dir, home = tmp_path / "project", tmp_path / "bin", tmp_path / "home"
+    project.mkdir()
+    home.mkdir()
+    _hostile_repo(project, bin_dir)
+    monkeypatch.setattr(forgekit, "FORGE", shutil.which("forge"))
+    monkeypatch.setattr(forgekit, "NODE", shutil.which("node"))
+    monkeypatch.setattr(forgekit, "PYTHON", shutil.which("python3"))
+    stale = forgekit.docs(_run(project, ["docs", "sync", "--base", "HEAD"], "require", home)[0])
+    assert stale["changed_files"] == ["notes.txt", "total.js"]  # never MIZAN's own state
+    assert [entry["file"] for entry in stale["stale"]] == ["README.md"]
+    impact = forgekit.impact(_run(project, ["impact", "computeTotal"], "any", home)[0])
+    assert impact["found"]
+    assert sorted(p.name for p in bin_dir.glob("fired-*")) == []
