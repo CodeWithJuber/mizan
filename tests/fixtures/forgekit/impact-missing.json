@@ -1,0 +1,18 @@
+{
+  "target": "nosuchthing",
+  "found": false,
+  "threshold": 0.1,
+  "impacted": [],
+  "impactedFiles": [],
+  "directFiles": [],
+  "hops": {},
+  "definedIn": [],
+  "relations": {},
+  "llmVerified": [],
+  "totalGraphNodes": 7,
+  "totalGraphEdges": 10,
+  "capped": false,
+  "skippedFiles": 0,
+  "unresolvedImports": 0,
+  "ambiguousRefs": 0
+}

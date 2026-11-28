@@ -16,8 +16,16 @@ sends them to the host as `docker save` archives. The `workspace-browser` image
 continues and MIZAN reads pages without a browser. The workflow checks
 main still has that SHA; the host checks that its backend image ID equals the locally installed image for that
 SHA. A newer main/backend requires a reviewed retarget, not bypassing the check.
-The baseline runtime includes the pinned plotting dependencies. A different
-runtime still requires its corresponding tested image. Production activation and
+The baseline runtime includes the pinned plotting dependencies. The runtime image
+also carries esbuild and ForgeKit (`@codewithjuber/forgekit`, the exact version in
+`docker/Dockerfile.workspace-runtime`; the build runs `forge --version`), which
+`workspace_verify`, `workspace_impact` and `workspace_docs_check` run inside
+sessions and one-shot jobs ([coding-workspaces.md](coding-workspaces.md)). A
+runtime built before it answers those tools with `forgekit_missing` until the
+next upgrade loads the commit's image; `TestRealRuntime` in
+`tests/test_coding_workspace.py` checks the version and a real verification
+against a built image. A different runtime still requires its corresponding
+tested image. Production activation and
 live Python, PNG and interactive HTML verification were recorded in a
 production validation report that is not published.
 

@@ -454,6 +454,34 @@ async def test_permission_revocation_after_discovery_still_blocks_execution(runt
     assert "Permission denied" in agent._last_tool_results[-1]["result"]["error"]
 
 
+async def test_a_project_chat_offers_every_project_tool_at_once(runtime):
+    from skills.builtin.coding_workspace import CodingWorkspaceSkill
+    from workspace.store import WorkspaceStore
+
+    agent, registry, _ = runtime
+    registry.register(CodingWorkspaceSkill())
+    principal = bind_principal(TokenPayload("owner", "owner", ["user"], 10**12, 0, "fixture"))
+    project = WorkspaceStore("owner").create("Fixture")["id"]
+    selected = bind_workspace(project)
+    try:
+        provider = ScriptedProvider([answer("Nothing to change")])
+        agent.ai_client = provider
+        await agent.execute("Madad karo")
+        offered = names(provider.requests[0]["tools"])
+        project_tools = {n for n in names(agent.get_tool_schemas()) if n.startswith("workspace_")}
+        # Reading, writing and ForgeKit's checks together, with nothing to discover first.
+        assert project_tools <= offered
+        assert {
+            "workspace_write",
+            "workspace_edit",
+            "workspace_verify",
+            "workspace_impact",
+        } <= offered
+    finally:
+        reset_workspace(selected)
+        reset_principal(principal)
+
+
 def test_owner_and_selected_workspace_filter_also_limits_discovery(runtime):
     from skills.builtin.coding_workspace import CodingWorkspaceSkill
 

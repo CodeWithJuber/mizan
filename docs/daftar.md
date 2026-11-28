@@ -52,6 +52,8 @@ When the model answers, it may be shown up to five things you wrote in your othe
 - **Export JSON:** a portable `mizan-daftar/1` file with notes, preferences and decisions.
 - **Import:** brings notes, preferences and decisions into another MIZAN account (hand-off notes, summaries and learned items are MIZAN's own state and are skipped). Imported notes are marked "imported". An entry that carries instructions aimed at the AI is skipped ([Amanah](amanah.md)), so an import cannot plant a prompt injection in memory.
 
+A note never keeps a secret: a key, token or password in a note (one you add, edit, import or say "remember" in a chat) is stored as `[redacted:<kind>]` and the rest of its words as written ([Satr](satr.md)).
+
 ## API
 
 All routes act on the signed-in user's own ledger.

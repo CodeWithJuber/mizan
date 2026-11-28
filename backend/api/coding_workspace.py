@@ -10,14 +10,14 @@ from pathlib import Path
 from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.artifacts import create_artifact, get_artifact, require_auth, validate_image
 from security.auth import TokenPayload
 from workspace import session_client
 from workspace.context import refuse_if_busy
 from workspace.execution import capabilities, run_project
-from workspace.store import MAX_FILES, WorkspaceStore
+from workspace.store import MAX_FILES, MAX_PROTECTED, WorkspaceStore
 
 router = APIRouter(prefix="/api/workspaces", tags=["coding workspaces"])
 
@@ -61,10 +61,19 @@ class CheckpointRestore(BaseModel):
     paths: list[str] | None = Field(default=None, max_length=MAX_FILES)
 
 
-class WorkspaceRename(BaseModel):
+class WorkspaceUpdate(BaseModel):
+    """A new name, goal and/or the project's protected paths (an empty list protects nothing)."""
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
     # Niyyah: what the project is for; "" clears it (the chat's first request is the goal).
     goal: str | None = Field(default=None, max_length=1000)
+    protected_paths: list[str] | None = Field(default=None, max_length=MAX_PROTECTED)
+
+    @model_validator(mode="after")
+    def one_change(self) -> WorkspaceUpdate:
+        if self.name is None and self.protected_paths is None and self.goal is None:
+            raise ValueError("Send a name, a goal or protected_paths")
+        return self
 
 
 class ArtifactPublish(FilePath):
@@ -139,16 +148,18 @@ def create_workspace(body: WorkspaceCreate, user: TokenPayload = Depends(require
 
 
 @router.patch("/{workspace_id}")
-def rename_workspace(
-    workspace_id: str, body: WorkspaceRename, user: TokenPayload = Depends(require_editor)
+def update_workspace(
+    workspace_id: str, body: WorkspaceUpdate, user: TokenPayload = Depends(require_editor)
 ) -> dict:
-    """Rename a project, or set its goal (Niyyah: each run's work is read against it)."""
-    if body.name is None and body.goal is None:
-        raise HTTPException(422, "Give the project a new name or goal")
+    """Rename a project, set its goal (Niyyah: each run's work is read against it) or
+    its protected paths: a change the agent makes to one of them asks the person in
+    every permission mode (docs/coding-workspaces.md)."""
     store = WorkspaceStore(user.user_id)
     metadata: dict = {}
-    if body.name is not None:
-        metadata = store.rename_project(workspace_id, body.name)
+    if body.name is not None or body.protected_paths is not None:
+        metadata = store.update_project(
+            workspace_id, name=body.name, protected_paths=body.protected_paths
+        )
     if body.goal is not None:
         metadata = store.set_goal(workspace_id, body.goal)
     return {"goal": "", **metadata}
@@ -309,7 +320,12 @@ def checkpoint(
 
 @router.get("/{workspace_id}/checkpoints")
 def checkpoints(workspace_id: str, user: TokenPayload = Depends(require_auth)) -> dict:
-    return {"checkpoints": WorkspaceStore(user.user_id).checkpoints(workspace_id)}
+    """The project's checkpoints and its ForgeKit verification (stale once files change)."""
+    store = WorkspaceStore(user.user_id)
+    return {
+        "checkpoints": store.checkpoints(workspace_id),
+        "verification": store.verification(workspace_id),
+    }
 
 
 @router.post("/{workspace_id}/checkpoints/{checkpoint_id}/restore")

@@ -130,6 +130,20 @@ PRESETS: list[dict] = [
         "docs_url": "https://pypi.org/project/mcp-server-fetch/",
         "official": True,
     },
+    {
+        # The sandbox image carries ForgeKit (docker/Dockerfile.workspace-runtime), so the
+        # server starts without a download; it works on /workspace of its own sandbox.
+        "id": "forge-cortex",
+        "name": "ForgeKit cortex (sandbox)",
+        "description": "ForgeKit's cortex tools (impact prediction, substrate and assumption "
+        "checks, evidence, memory and its ledger) over /workspace in your own sandbox.",
+        "transport": "stdio",
+        "command": "forge",
+        "args": ["cortex-mcp"],
+        "auth": "none",
+        "docs_url": "https://github.com/CodeWithJuber/forgekit/blob/main/docs/INTEGRATIONS.md",
+        "official": True,
+    },
 ]
 
 

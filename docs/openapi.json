@@ -17524,9 +17524,9 @@
     "tags": [
      "coding workspaces"
     ],
-    "summary": "Rename Workspace",
-    "description": "Rename a project, or set its goal (Niyyah: each run's work is read against it).",
-    "operationId": "rename_workspace_api_workspaces__workspace_id__patch",
+    "summary": "Update Workspace",
+    "description": "Rename a project, set its goal (Niyyah: each run's work is read against it) or\nits protected paths: a change the agent makes to one of them asks the person in\nevery permission mode (docs/coding-workspaces.md).",
+    "operationId": "update_workspace_api_workspaces__workspace_id__patch",
     "parameters": [
      {
       "name": "workspace_id",
@@ -17575,7 +17575,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/WorkspaceRename"
+        "$ref": "#/components/schemas/WorkspaceUpdate"
        }
       }
      }
@@ -17588,7 +17588,7 @@
         "schema": {
          "type": "object",
          "additionalProperties": true,
-         "title": "Response Rename Workspace Api Workspaces  Workspace Id  Patch"
+         "title": "Response Update Workspace Api Workspaces  Workspace Id  Patch"
         }
        }
       }
@@ -18697,6 +18697,7 @@
      "coding workspaces"
     ],
     "summary": "Checkpoints",
+    "description": "The project's checkpoints and its ForgeKit verification (stale once files change).",
     "operationId": "checkpoints_api_workspaces__workspace_id__checkpoints_get",
     "parameters": [
      {
@@ -27728,7 +27729,7 @@
     ],
     "title": "WorkspaceCreate"
    },
-   "WorkspaceRename": {
+   "WorkspaceUpdate": {
     "properties": {
      "name": {
       "anyOf": [
@@ -27754,10 +27755,26 @@
        }
       ],
       "title": "Goal"
+     },
+     "protected_paths": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Protected Paths"
      }
     },
     "type": "object",
-    "title": "WorkspaceRename"
+    "title": "WorkspaceUpdate",
+    "description": "A new name, goal and/or the project's protected paths (an empty list protects nothing)."
    },
    "YaqinTagRequest": {
     "properties": {

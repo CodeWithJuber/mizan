@@ -26,6 +26,12 @@ RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
     if [ -f /run/proxy-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/run/proxy-ca.pem; fi; \
     npm install --global --no-fund --no-audit esbuild@0.28.2 \
     && esbuild --version
+# ForgeKit runs the project's tests, its code graph and its docs check for MIZAN's
+# workspace_verify/impact/docs_check (workspace/forgekit.py pins the same version).
+RUN --mount=type=secret,id=proxy_ca,target=/run/proxy-ca.pem \
+    if [ -f /run/proxy-ca.pem ]; then export NODE_EXTRA_CA_CERTS=/run/proxy-ca.pem; fi; \
+    npm install --global --no-fund --no-audit @codewithjuber/forgekit@1.26.0 \
+    && forge --version
 COPY --chmod=444 backend/workspace/runtime.py /runtime.py
 COPY --chmod=444 backend/workspace/session_agent.py /session_agent.py
 COPY --chmod=444 backend/workspace/egress_proxy.py /egress_proxy.py
