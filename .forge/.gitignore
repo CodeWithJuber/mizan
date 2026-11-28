@@ -1,0 +1,8 @@
+# Forge runtime state — never committed (written by `forge init`)
+sessions/
+cache/
+trace/
+atlas.cache.json
+metrics.jsonl
+provenance.json
+runtime-map.json

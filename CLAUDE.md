@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # MIZAN (ميزان) - Agentic Personal AI
 
 > Quranic Cognitive Architecture (QCA) for human-like reasoning. Version 3.0.0.
@@ -181,7 +183,8 @@ Pure-PyTorch transformer operating in **root-space** (`(root_id, pattern_id)` pa
 - Backend runs with `--reload`, so local edits in `backend/` take effect automatically.
 - Admin-saved runtime settings (`runtime_settings.json`) override `.env` at startup; when a value seems ignored, check Settings → Developer → System settings for a "Set here" badge.
 - `.env` values are NOT auto-loaded into `os.environ` — pydantic-settings reads them, but `providers.py` calls `load_dotenv()`.
-- `.claude/` and `.claude.local.md` are gitignored — new local Claude Code config won't be committed; files already tracked there (`.claude/skills/mizan/SKILL.md`, kept identical to `.agents/skills/mizan/SKILL.md`) still are.
+- `.claude/*` and `.claude.local.md` are gitignored except `.claude/settings.json` (ForgeKit's hooks) and `.claude/skills/` (`.claude/skills/mizan/SKILL.md`, kept identical to `.agents/skills/mizan/SKILL.md`); other local Claude Code config won't be committed.
+- **ForgeKit** (`@codewithjuber/forgekit`) is on for every coding agent: `AGENTS.md` (its block, imported at the top of this file), `.forge/forge.config.json` (`tools: all`, project hooks, `verify` excludes `packages/bayan`), `.mcp.json` (`forge-cortex`), and the hook files `forge hooks on --hosts claude,codex,gemini,cursor,copilot` writes (`.claude/settings.json`, `.codex/`, `.gemini/`, `.cursor/`, `.github/hooks/forge.json`). Hooks call only the installed CLI, never a repository script (no session-start script, no OpenCode plugin: a branch could change them); the CLI is installed and kept at npm's latest by the cloud environment's setup script. `scripts/ci/agent-config-guard.sh` (CI's first job) fails a pull request that changes agent hook/MCP files unless the owner wrote it or it carries the label `agent-config-reviewed`. Edit shared rules in ForgeKit's `source/` and run `forge sync`, never inside the `forge:begin`/`forge:end` block; `forge verify` before calling a change done; `FORGE_HOOKS=0` turns the hooks off for one shell (`docs/forgekit.md`).
 - The Ruh model and `ml` extra require PyTorch; `/api/ruh/*` and training endpoints are inert unless `RUH_ENABLED=true` and the model path is configured.
 - Approvals are in-process futures: keep the backend at **one uvicorn worker** (the prod image does).
 - Back up `$MIZAN_DATA_DIR/connectors.key` with the data volume; without it saved connector secrets cannot be decrypted.

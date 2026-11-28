@@ -1,0 +1,18 @@
+{
+  "tools": "all",
+  "hooks": {
+    "project": true,
+    "hosts": [
+      "claude",
+      "codex",
+      "gemini",
+      "cursor",
+      "copilot"
+    ]
+  },
+  "verify": {
+    "exclude": [
+      "packages/bayan"
+    ]
+  }
+}
