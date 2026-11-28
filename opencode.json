@@ -1,0 +1,12 @@
+{
+  "mcp": {
+    "forge-cortex": {
+      "type": "local",
+      "command": [
+        "forge",
+        "cortex-mcp"
+      ],
+      "enabled": true
+    }
+  }
+}

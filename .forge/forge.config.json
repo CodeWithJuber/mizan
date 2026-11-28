@@ -1,0 +1,11 @@
+{
+  "tools": "all",
+  "hooks": {
+    "project": true
+  },
+  "verify": {
+    "exclude": [
+      "packages/bayan"
+    ]
+  }
+}

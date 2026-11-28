@@ -1,0 +1,2 @@
+# PCM ledger logs are hash-deduped append-only sets - union merge is conflict-free (forge)
+.forge/ledger/*/*.log merge=union

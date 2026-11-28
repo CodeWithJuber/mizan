@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "forge-cortex": {
+      "command": "forge",
+      "args": [
+        "cortex-mcp"
+      ]
+    }
+  }
+}
