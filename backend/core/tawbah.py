@@ -15,13 +15,142 @@ Error recovery protocol that transforms failures into learning:
 Errors are not failures — they are opportunities for Tazkiyah (purification).
 """
 
+import hashlib
+import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 logger = logging.getLogger("mizan.tawbah")
+
+# ── Loop detection: the same failure, again and again, is not progress ──────
+# Ported from ForgeKit's diagnose.js and doom-loop guard. Within one run each failed tool
+# call is reduced to a signature (the tool, its error's class, the message with what
+# varies between identical failures taken out); the THRASH_K-th identical signature
+# stops that path with a diagnosis instead of a fourth try.
+
+THRASH_K = 3
+
+_NORMALISE: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"),
+        "<ts>",
+    ),
+    (re.compile(r"\b\d{1,2}:\d{2}:\d{2}(?:\.\d+)?\b"), "<ts>"),
+    (re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I), "<id>"),
+    (re.compile(r"\b0x[0-9a-f]+\b", re.I), "<addr>"),
+    (re.compile(r"\b[0-9a-f]{12,}\b", re.I), "<hex>"),
+    # /home/x/src/a.py → a.py: the machine's prefix goes, the file's name is signal.
+    (re.compile(r"(?:/[\w.~-]+)+/([\w.-]+)"), r"\1"),
+    (re.compile(r"\b[A-Za-z]:\\(?:[\w.~ -]+\\)*([\w.-]+)"), r"\1"),
+    (re.compile(r"\bline \d+", re.I), "line <n>"),
+    (re.compile(r":\d+(?::\d+)?\b"), ":<n>"),
+    (re.compile(r"\b\d+(?:\.\d+)?\s*m?s\b"), "<dur>"),
+    (re.compile(r"\b\d+\b"), "<n>"),
+    (re.compile(r"[ \t]+"), " "),
+)
+_EXCEPTION = re.compile(r"\b([A-Z][A-Za-z0-9]*(?:Error|Exception|Exit|Interrupt))\b")
+_CLASSES = (
+    (
+        "dependency",
+        re.compile(r"module not found|cannot find module|no module named|ERESOLVE", re.I),
+    ),
+    ("permission", re.compile(r"EACCES|permission denied|unauthori[sz]ed|forbidden", re.I)),
+    ("timeout", re.compile(r"timeout|timed out|ETIMEDOUT", re.I)),
+    ("not_found", re.compile(r"not found|no such file|does not exist|404", re.I)),
+    ("assertion", re.compile(r"assertion|expected .* actual", re.I)),
+)
+
+
+def normalize_error(text: str) -> str:
+    """The error with what varies between identical failures taken out: times, ids,
+    addresses, digests, machine paths, line numbers, durations and other numbers."""
+    value = str(text or "").replace("\r\n", "\n")
+    for pattern, replacement in _NORMALISE:
+        value = pattern.sub(replacement, value)
+    return value.strip()
+
+
+def error_text(result: Any) -> str:
+    """What a failed tool result says went wrong: its error, else the end of stderr."""
+    if not isinstance(result, dict):
+        return str(result)[:2000]
+    if result.get("error"):
+        return str(result["error"])[:2000]
+    stderr = str(result.get("stderr") or "").strip()
+    if stderr:
+        lines = [line for line in stderr.splitlines() if line.strip()]
+        return "\n".join(lines[-3:])[:2000]  # the root error is usually last
+    code = result.get("exit_code", result.get("returncode", result.get("status")))
+    return f"exit {code}" if code is not None else json.dumps(result, default=str)[:500]
+
+
+def error_class(text: str) -> str:
+    """An exception's name when the text names one, else a kind of failure."""
+    found = _EXCEPTION.findall(str(text or ""))
+    if found:
+        return str(found[-1])
+    for name, pattern in _CLASSES:
+        if pattern.search(str(text or "")):
+            return name
+    return "error"
+
+
+def failure_signature(tool_name: str, result: Any) -> str | None:
+    """The signature of a failed call (None when the call did not fail)."""
+    from agents.execution_contract import tool_result_failed
+
+    if not tool_result_failed(result):
+        return None
+    text = error_text(result)
+    key = f"{tool_name}\0{error_class(text)}\0{normalize_error(text)}"
+    return hashlib.sha256(key.encode("utf-8", "replace")).hexdigest()[:16]
+
+
+class TawbahLoop:
+    """One run's failed tool calls, counted by signature."""
+
+    def __init__(self, k: int = THRASH_K):
+        self.k = k
+        self.counts: dict[str, int] = {}
+        self.diagnoses: list[dict] = []
+
+    def observe(self, tool_name: str, result: Any) -> dict | None:
+        """The diagnosis when this failure is the k-th (or a later) identical one."""
+        signature = failure_signature(tool_name, result)
+        if signature is None:
+            return None
+        count = self.counts[signature] = self.counts.get(signature, 0) + 1
+        if count < self.k:
+            return None
+        text = error_text(result)
+        diagnosis = {
+            "tool": tool_name,
+            "signature": signature,
+            "error_class": error_class(text),
+            "error": normalize_error(text).splitlines()[0][:200] if text.strip() else "",
+            "count": count,
+            "first": count == self.k,
+        }
+        if diagnosis["first"]:
+            self.diagnoses.append(diagnosis)
+        return diagnosis
+
+    @staticmethod
+    def stop_note(result: Any, diagnosis: dict) -> dict:
+        """The result the model reads instead of a plain failure: the error kept, and
+        why this path is closed."""
+        base = result if isinstance(result, dict) else {"error": str(result)}
+        note = (
+            f"This path failed {diagnosis['count']} times with the same error "
+            f"({diagnosis['error_class']}: {diagnosis['error']}). Trying it again will "
+            "fail the same way: change approach (a different tool, different input, or "
+            "a different plan), or tell the person what blocks you and what you tried."
+        )
+        return {**base, "tawbah": note}
 
 
 class TawbahStage(Enum):
@@ -190,6 +319,24 @@ class TawbahProtocol:
                 )
                 logger.error("[TAWBAH] Max attempts reached for %s", record.id)
 
+        return record
+
+    def loop(self, agent_id: str, task: str, diagnosis: dict) -> TawbahRecord:
+        """Record a path that failed the same way THRASH_K times in one run: the error
+        acknowledged, its signature as the cause, a change of approach as the plan."""
+        record = self.acknowledge(
+            agent_id, f"{diagnosis.get('tool')}: {diagnosis.get('error', '')}", task
+        )
+        record.error_type = "repeated_failure"
+        self._error_patterns["repeated_failure"] = (
+            self._error_patterns.get("repeated_failure", 0) + 1
+        )
+        self.analyze(
+            record,
+            f"{diagnosis.get('tool')} failed {diagnosis.get('count')} times with the same "
+            f"{diagnosis.get('error_class')} (signature {diagnosis.get('signature')})",
+        )
+        self.plan(record, "Stop retrying this path; change approach or report what blocks it")
         return record
 
     def get_lessons(self, error_type: str | None = None) -> list[dict[str, Any]]:
