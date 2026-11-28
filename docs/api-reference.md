@@ -608,7 +608,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/workspaces/preview/{cap}/{port}/{path:path}` | capability URL | Preview |
 | PUT | `/api/workspaces/preview/{cap}/{port}/{path:path}` | capability URL | Preview |
 | DELETE | `/api/workspaces/{workspace_id}` | user | Delete a whole project, its checkpoints and its sandbox session. |
-| PATCH | `/api/workspaces/{workspace_id}` | user | Rename a project. |
+| PATCH | `/api/workspaces/{workspace_id}` | user | Rename a project or set its protected paths: a change the agent makes to one of them asks the person in every permission mode (docs/coding-workspaces.md). |
 | POST | `/api/workspaces/{workspace_id}/artifact` | user | Artifact |
 | POST | `/api/workspaces/{workspace_id}/checkpoint` | user | Checkpoint |
 | GET | `/api/workspaces/{workspace_id}/checkpoints` | user | The project's checkpoints and its ForgeKit verification (stale once files change). |

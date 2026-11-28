@@ -9,7 +9,8 @@ groups (`backend/runtime_settings.py`) are:
   effort and output limits, owned-model-only mode, projects per user
 - Agents: the default permission mode of a chat that sends none
   (`MIZAN_DEFAULT_PERMISSION_MODE`, `auto`), tools that ask a person in every mode
-  (`MIZAN_ALWAYS_ASK_TOOLS`, empty), tool calls per minute
+  (`MIZAN_ALWAYS_ASK_TOOLS`, empty), the package check before installs
+  (`MIZAN_WARA`, `on`: [wara.md](wara.md)), tool calls per minute
   (`MIZAN_TOOL_CALLS_PER_MINUTE`, 120) and chat messages per minute
   (`MIZAN_CHAT_PER_MINUTE`, 60). Each agent's own settings win for its runs
   ([personal-agents.md](personal-agents.md))

@@ -183,7 +183,9 @@ error?}`. **Logs** (`GET /{id}/logs`) are the last 200 lines: connections and
 errors, the server's own log messages, and what a host process wrote to stderr.
 Every line is redacted first (`manager.redact`): the connector's own sealed header and
 env values, and anything shaped like a credential (`Authorization:`, `Bearer …`,
-`token=`, `api_key=`, `secret=`, `password=`), read `[redacted]`.
+`token=`, `api_key=`, `secret=`, `password=`, known token formats, random-looking
+tokens: Satr's patterns, [satr.md](satr.md)), read `[redacted]`. A connector tool's
+result is covered the same way before the model sees it.
 
 ## Limits and errors
 

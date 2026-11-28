@@ -676,7 +676,10 @@ class DhikrMemorySystem:
         import uuid
 
         from memory import tadhkir
+        from security import satr
 
+        # Satr: a key, token or password is never kept; the note keeps its words.
+        content = satr.cover(content)
         # Said again: the memory already held is repeated, not copied ("he used to
         # repeat it thrice so that the people could understand it", Bukhari 95).
         repeated = self._repeated(content, memory_type, agent_id)

@@ -17102,9 +17102,9 @@
     "tags": [
      "coding workspaces"
     ],
-    "summary": "Rename Workspace",
-    "description": "Rename a project.",
-    "operationId": "rename_workspace_api_workspaces__workspace_id__patch",
+    "summary": "Update Workspace",
+    "description": "Rename a project or set its protected paths: a change the agent makes to one of\nthem asks the person in every permission mode (docs/coding-workspaces.md).",
+    "operationId": "update_workspace_api_workspaces__workspace_id__patch",
     "parameters": [
      {
       "name": "workspace_id",
@@ -17153,7 +17153,7 @@
      "content": {
       "application/json": {
        "schema": {
-        "$ref": "#/components/schemas/WorkspaceRename"
+        "$ref": "#/components/schemas/WorkspaceUpdate"
        }
       }
      }
@@ -17166,7 +17166,7 @@
         "schema": {
          "type": "object",
          "additionalProperties": true,
-         "title": "Response Rename Workspace Api Workspaces  Workspace Id  Patch"
+         "title": "Response Update Workspace Api Workspaces  Workspace Id  Patch"
         }
        }
       }
@@ -27196,20 +27196,40 @@
     ],
     "title": "WorkspaceCreate"
    },
-   "WorkspaceRename": {
+   "WorkspaceUpdate": {
     "properties": {
      "name": {
-      "type": "string",
-      "maxLength": 100,
-      "minLength": 1,
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Name"
+     },
+     "protected_paths": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Protected Paths"
      }
     },
     "type": "object",
-    "required": [
-     "name"
-    ],
-    "title": "WorkspaceRename"
+    "title": "WorkspaceUpdate",
+    "description": "A new name and/or the project's protected paths (an empty list protects nothing)."
    },
    "YaqinTagRequest": {
     "properties": {
