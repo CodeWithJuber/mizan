@@ -25,8 +25,9 @@ screenshot.
   - MIZAN shows you exactly what would be sent (method, address, form data) and
     asks.
   - Only on your **Allow** does it run the steps again with that one request
-    approved (`shahid_submit`). Allow is asked in every chat mode, Full auto
-    included.
+    approved (`shahid_submit`). The chat's permission mode decides whether that is
+    asked (`auto` runs it); an administrator who names `shahid_submit` in
+    `MIZAN_ALWAYS_ASK_TOOLS` has it asked in every mode, `auto` included.
   - In an unattended run (a watcher, Telegram) the action is held for you, and
     with no one to ask nothing is sent.
 

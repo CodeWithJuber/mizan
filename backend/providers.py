@@ -19,6 +19,7 @@ import logging
 import math
 import os
 import re
+import time
 import uuid
 from collections.abc import Callable
 from contextvars import ContextVar
@@ -37,6 +38,9 @@ logger = logging.getLogger("mizan.providers")
 # A lower reasoning effort for one call, set by the agent when the model's
 # reasoning used the whole output limit and no answer text came back.
 REASONING_EFFORT: ContextVar[str | None] = ContextVar("mizan_reasoning_effort", default=None)
+# An agent's own Claude effort (its settings.effort), bound for one run; it stands in
+# for MIZAN_CHAT_EFFORT.
+AGENT_EFFORT: ContextVar[str | None] = ContextVar("mizan_agent_effort", default=None)
 
 
 def _answer_reasoning_options(provider_name: str, model: str, max_tokens: int) -> dict:
@@ -358,7 +362,7 @@ def anthropic_effort(model: str) -> str | None:
     )
     if not supported:
         return None
-    level = os.getenv("MIZAN_CHAT_EFFORT", "high").strip().lower()
+    level = str(AGENT_EFFORT.get() or os.getenv("MIZAN_CHAT_EFFORT") or "high").strip().lower()
     if level not in _EFFORT_LEVELS:
         level = "high"
     # xhigh arrived with 4.7; Opus 4.5 knows only low/medium/high.
@@ -598,6 +602,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         base_url: str | None = None,
         default_headers: dict | None = None,
         provider_name: str = "openai",
+        price_prefix: str = "",
     ):
         from openai import OpenAI, Timeout
 
@@ -608,6 +613,15 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             kwargs["default_headers"] = default_headers
         self._client = OpenAI(**kwargs)
         self.provider_name = provider_name
+        # Iqtisad prices this provider's models by OpenRouter's live id for them
+        # (x-ai/grok-…): a call is admitted and charged as that id.
+        self.price_prefix = price_prefix
+
+    def _priced(self, model: str) -> str:
+        prefix = getattr(self, "price_prefix", "")
+        if prefix and model and "/" not in model:
+            return f"{prefix}/{model}"
+        return model
 
     @staticmethod
     def _parse_xml_tool_calls(text: str) -> list["ContentBlock"]:
@@ -809,7 +823,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             kwargs["temperature"] = temperature
 
         ticket = _admit(
-            model,
+            self._priced(model),
             max_tokens,
             (system, messages, tools),
             fallbacks=self._fallbacks(model, tools),
@@ -924,7 +938,10 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             provider_name=self.provider_name,
         )
         wrapper.admit = lambda: _admit(
-            model, max_tokens, (system, messages, tools), fallbacks=self._fallbacks(model, tools)
+            self._priced(model),
+            max_tokens,
+            (system, messages, tools),
+            fallbacks=self._fallbacks(model, tools),
         )
         return wrapper
 
@@ -1368,6 +1385,86 @@ def ruh_checkpoint_path() -> str:
     return ""
 
 
+# OpenAI-compatible providers configured by a key alone. Their models are listed
+# live from GET {base_url}/models (fetch_compatible_models, cached an hour), never
+# from a table here; ``fallback_model`` is only the default until that list is read.
+COMPATIBLE_ENDPOINTS: dict[str, dict[str, Any]] = {
+    "xai": {
+        "display": "xAI (Grok)",
+        "base_url": "https://api.x.ai/v1",
+        "keys": ("XAI_API_KEY",),
+        "price_prefix": "x-ai",
+        "fallback_model": "grok-4",  # fallback until the live list is read
+    },
+    "meta": {
+        # Meta Model API (developer.meta.com/ai): OpenAI-compatible Chat Completions
+        # at api.meta.ai/v1 with a Bearer key; Meta's docs name it MODEL_API_KEY.
+        "display": "Meta (Muse Spark)",
+        "base_url": "https://api.meta.ai/v1",
+        "keys": ("META_API_KEY", "MODEL_API_KEY"),
+        "price_prefix": "meta",
+        "fallback_model": "muse-spark-1.1",  # fallback until the live list is read
+    },
+}
+_LIVE_MODELS: dict[str, tuple[float, list[dict]]] = {}
+LIVE_MODELS_SECONDS = 3600
+
+
+def compatible_key(provider: str) -> str:
+    """The API key of an OpenAI-compatible provider ("" when none is set)."""
+    for name in COMPATIBLE_ENDPOINTS.get(provider, {}).get("keys", ()):
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def compatible_models(provider: str) -> list[dict]:
+    """The provider's models as last read live (empty before the first read)."""
+    cached = _LIVE_MODELS.get(provider)
+    return list(cached[1]) if cached else []
+
+
+async def fetch_compatible_models(provider: str, *, transport: Any = None) -> list[dict]:
+    """The provider's models from its own GET /models, cached for an hour."""
+    import httpx
+
+    endpoint = COMPATIBLE_ENDPOINTS.get(provider)
+    api_key = compatible_key(provider)
+    if endpoint is None or not api_key:
+        return []
+    cached = _LIVE_MODELS.get(provider)
+    if cached and time.time() - cached[0] < LIVE_MODELS_SECONDS:
+        return list(cached[1])
+    try:
+        async with httpx.AsyncClient(timeout=15, transport=transport) as client:
+            response = await client.get(
+                f"{endpoint['base_url']}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+        response.raise_for_status()
+        rows = response.json().get("data") or response.json().get("models") or []
+    except Exception as exc:  # noqa: BLE001 - a listing must not fail the settings page
+        logger.warning("%s models unavailable: %s", provider, type(exc).__name__)
+        return list(cached[1]) if cached else []
+    models = []
+    for row in rows if isinstance(rows, list) else []:
+        model_id = str((row or {}).get("id") or "").strip() if isinstance(row, dict) else ""
+        if not model_id:
+            continue
+        context = row.get("context_length") or row.get("context_window") or 0
+        models.append(
+            {
+                "id": model_id,
+                "name": str(row.get("name") or row.get("display_name") or model_id),
+                "context": int(context) if isinstance(context, (int, float)) else 0,
+                "vision": "image" in json.dumps(row.get("input_modalities") or ""),
+            }
+        )
+    _LIVE_MODELS[provider] = (time.time(), models)
+    return list(models)
+
+
 def configured_provider_name() -> str | None:
     """The operator's ``LLM_PROVIDER``; empty or ``auto`` means auto-detect."""
     name = os.getenv("LLM_PROVIDER", "").strip().lower()
@@ -1413,6 +1510,10 @@ def create_provider(
             provider = "openai"
         elif model.startswith("ruh"):
             provider = "ruh"
+        elif model.startswith("grok") and compatible_key("xai"):
+            provider = "xai"
+        elif model.startswith("muse") and compatible_key("meta"):
+            provider = "meta"
         elif model.startswith(("llama", "mistral", "phi", "gemma", "qwen", "codellama")):
             provider = "ollama"
 
@@ -1424,6 +1525,10 @@ def create_provider(
             provider = "openrouter"
         elif os.getenv("OPENAI_API_KEY", ""):
             provider = "openai"
+        elif compatible_key("xai"):
+            provider = "xai"
+        elif compatible_key("meta"):
+            provider = "meta"
         else:
             provider = "anthropic"  # fallback
 
@@ -1478,6 +1583,19 @@ def create_provider(
             logger.warning("OPENAI_API_KEY not set")
             return None
         return OpenAICompatibleProvider(api_key=api_key, provider_name="openai")
+
+    elif provider in COMPATIBLE_ENDPOINTS:
+        endpoint = COMPATIBLE_ENDPOINTS[provider]
+        api_key = compatible_key(provider)
+        if not api_key:
+            logger.warning("%s not set", endpoint["keys"][0])
+            return None
+        return OpenAICompatibleProvider(
+            api_key=api_key,
+            base_url=endpoint["base_url"],
+            provider_name=provider,
+            price_prefix=endpoint["price_prefix"],
+        )
 
     elif provider == "ollama":
         ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -1577,6 +1695,13 @@ def get_default_model(provider_name: str) -> str:
     env_model = os.getenv("DEFAULT_MODEL", "")
     if env_model:
         return normalize_model_for_provider(env_model, provider_name)
+    if provider_name in COMPATIBLE_ENDPOINTS:
+        live = compatible_models(provider_name)
+        return (
+            str(live[0]["id"])
+            if live
+            else str(COMPATIBLE_ENDPOINTS[provider_name]["fallback_model"])
+        )
 
     return PROVIDER_DEFAULT_MODELS.get(provider_name, DEFAULT_CLAUDE_MODEL)
 
@@ -1879,6 +2004,22 @@ def get_provider_status() -> dict:
         }
     )
 
+    # xAI (Grok) and Meta (Muse Spark): OpenAI-compatible, models listed live.
+    for name, endpoint in COMPATIBLE_ENDPOINTS.items():
+        providers.append(
+            {
+                "name": name,
+                "display": endpoint["display"],
+                "configured": bool(compatible_key(name)),
+                "base_url": endpoint["base_url"],
+                "models": compatible_models(name),
+                "models_live": True,
+                "default_model": (compatible_models(name) or [{"id": endpoint["fallback_model"]}])[
+                    0
+                ]["id"],
+            }
+        )
+
     # Ollama
     ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
     providers.append(
@@ -2147,6 +2288,13 @@ async def check_provider_health(provider_name: str) -> dict:
                 return {"provider": "openai", "healthy": resp.status_code == 200}
         except Exception as e:
             return {"provider": "openai", "healthy": False, "error": str(e)}
+
+    elif provider_name in COMPATIBLE_ENDPOINTS:
+        if not compatible_key(provider_name):
+            return {"provider": provider_name, "healthy": False, "error": "No API key"}
+        _LIVE_MODELS.pop(provider_name, None)
+        models = await fetch_compatible_models(provider_name)
+        return {"provider": provider_name, "healthy": bool(models), "models": len(models)}
 
     elif provider_name == "ollama":
         ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")

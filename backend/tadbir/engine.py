@@ -9,10 +9,14 @@ or repairing a program, or wording an answer from verified facts; MIZAN
 checks that wording (Furqan) and falls back to its own templates. Quran and
 hadith text never pass through a language model.
 
-Modes (``MIZAN_ORCHESTRATION``): ``mizan`` (default) performs every action
-itself and lets the model answer the rest in words, with no tools at all;
-``hybrid`` hands what MIZAN does not recognise to the model-driven agent
-loop; ``llm`` turns Tadbir off. ``strict`` is the former name of ``mizan``.
+Modes (``MIZAN_ORCHESTRATION``, or an agent's own ``settings.orchestration``):
+``hybrid`` (default) keeps MIZAN's recipes (Quran, hadith, computing, dates…) and
+hands the rest to the model-driven agent loop, which chains tools itself: what
+MIZAN does not recognise, a request for a connected tool (``use_tool``), a
+request of several parts with no scripture in it, and any request on which
+Tadbir itself failed. ``mizan`` performs every action itself and lets the model
+answer the rest in words, with no tools at all; ``llm`` turns Tadbir off.
+``strict`` is the former name of ``mizan``.
 """
 
 from __future__ import annotations
@@ -28,7 +32,9 @@ import re
 import shlex
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -92,10 +98,37 @@ _ANALYTIC = re.compile(
 )
 
 
-def orchestration_mode() -> str:
-    value = os.getenv("MIZAN_ORCHESTRATION", "mizan").strip().lower()
+DEFAULT_MODE = "hybrid"
+# An agent's own orchestration (its settings.orchestration), bound for one run.
+_agent_mode: ContextVar[str | None] = ContextVar("mizan_agent_orchestration", default=None)
+# Families whose text must come from MIZAN's sources: a request with one of these
+# parts stays with Tadbir in hybrid mode, so no model writes scripture.
+SCRIPTURE_INTENTS = frozenset({"quran", "quran_count", "quran_search", "hadith", "sarf"})
+
+
+def _mode(value: str | None) -> str | None:
+    value = (value or "").strip().lower()
     value = "mizan" if value == "strict" else value  # strict is the former name
-    return value if value in MODES else "mizan"
+    return value if value in MODES else None
+
+
+def orchestration_mode() -> str:
+    """This run's mode: the agent's own setting, else ``MIZAN_ORCHESTRATION``."""
+    return (
+        _mode(_agent_mode.get())
+        or _mode(os.getenv("MIZAN_ORCHESTRATION", DEFAULT_MODE))
+        or DEFAULT_MODE
+    )
+
+
+@contextmanager
+def bind_mode(mode: str | None) -> Iterator[None]:
+    """Run with an agent's own orchestration (None or an unknown value: the global one)."""
+    token = _agent_mode.set(_mode(mode))
+    try:
+        yield
+    finally:
+        _agent_mode.reset(token)
 
 
 def full_orchestration() -> bool:
@@ -116,6 +149,17 @@ def _esbuild(paths: list[str]) -> str:
         "else echo 'esbuild is not in the sandbox' >&2; exit 127; fi; "
         f'for f in {files}; do "$E" "$f" --log-level=error --outfile=/dev/null || exit 1; done'
     )
+
+
+def _model_chains(
+    parts: list[tuple[str, fahm.Understanding]] | None, understanding: fahm.Understanding
+) -> bool:
+    """In hybrid mode, whether the model-driven agent loop takes this request: a
+    request for a connected tool, or several steps none of which is scripture
+    (scripture parts stay with MIZAN, whose text comes from the source)."""
+    if parts is not None:
+        return not any(u.intent in SCRIPTURE_INTENTS for _part, u in parts)
+    return understanding.intent == "use_tool"
 
 
 class Defer(Exception):  # noqa: N818 - control flow, not an error
@@ -238,6 +282,10 @@ class Tadbir:
             entities=understanding.to_dict()["entities"],
             by=understanding.entities.get("understood_by", "fahm"),
         )
+        if mode == "hybrid" and _model_chains(parts, understanding):
+            # The model-driven loop chains the tools itself (a connector, several steps).
+            trace.event("plan", "hybrid_agent_loop", intent=understanding.intent)
+            return None
         try:
             if parts is not None:
                 outcome = await self._compound(parts)

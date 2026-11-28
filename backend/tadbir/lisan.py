@@ -49,6 +49,22 @@ _BASE = (
 )
 
 
+def persona(agent: Any) -> str:
+    """The agent's name and the persona its owner gave it, for Lisan to speak as. It
+    comes after Lisan's role and each task's own rules, which still hold."""
+    name = str(getattr(agent, "name", "") or "").strip()[:100]
+    config = getattr(agent, "config", None)
+    prompt = str(config.get("system_prompt") or "").strip() if isinstance(config, dict) else ""
+    if not prompt:
+        return f"You speak as {name}, the agent the person is talking to." if name else ""
+    return (
+        f"You speak as {name or 'the agent'}, the agent the person is talking to. Its persona "
+        f"and instructions, set by its owner:\n{prompt[:10000]}\n"
+        "MIZAN's rules above still hold: Quran and hadith text comes only from MIZAN's "
+        "sources, and keep the reply format each task asks for."
+    )
+
+
 # The instruction for each kind of code work: the base version Tajdid renews.
 INSTRUCTIONS = {
     "write_code": (
@@ -268,7 +284,9 @@ class Lisan:
                         provider.create,
                         model=model,
                         max_tokens=max_tokens,
-                        system=f"{_BASE}\n\n{system}",
+                        system="\n\n".join(
+                            part for part in (_BASE, system, persona(self.agent)) if part
+                        ),
                         # The images the user attached to this turn (Basar).
                         messages=[{"role": "user", "content": basar.content(user)}],
                     ),

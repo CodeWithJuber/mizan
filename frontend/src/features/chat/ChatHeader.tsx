@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { NAFS_LEVELS } from "../../components/AgentCard";
+import { AgentAvatar, NAFS_LEVELS } from "../../components/AgentCard";
 import { useAgents, useSelectedAgent, useSelectedAgentId } from "../agents/agents";
 import { useChatActions, useChatState } from "./ChatProvider";
 import { chatTitle, useChatRow } from "./sessions";
@@ -64,9 +64,7 @@ export function ChatHeader() {
             <DropdownMenuLabel>Who answers</DropdownMenuLabel>
             {agents.map((agent) => (
               <DropdownMenuItem key={agent.id} onClick={() => select(agent.id)}>
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-brand">
-                  {agent.name[0]?.toUpperCase()}
-                </span>
+                <AgentAvatar agent={agent} className="size-6 text-xs font-medium" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{agent.name}</span>
                   <span className="block text-xs text-muted-foreground">

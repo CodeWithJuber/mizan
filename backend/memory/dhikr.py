@@ -637,6 +637,16 @@ class DhikrMemorySystem:
         existing = {row[1] for row in c.execute("PRAGMA table_info(chat_preferences)").fetchall()}
         if "session_id" not in existing:
             c.execute("ALTER TABLE chat_preferences ADD COLUMN session_id TEXT DEFAULT ''")
+        # Personal agents: who owns an agent and whether everyone sees it (an older
+        # database's agents were made by administrators for everyone).
+        existing = {row[1] for row in c.execute("PRAGMA table_info(agent_profiles)").fetchall()}
+        for column, kind in (("owner_id", "TEXT"), ("shared", "INTEGER DEFAULT 1")):
+            if column not in existing:
+                try:
+                    c.execute(f"ALTER TABLE agent_profiles ADD COLUMN {column} {kind}")
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        raise
         # Performance indexes
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_audit_severity ON audit_log(severity)")
@@ -1117,15 +1127,42 @@ class DhikrMemorySystem:
         }
 
     async def save_agent_profile(self, profile: dict):
-        """Save agent profile"""
+        """Save an agent profile. Fields the profile leaves out keep their saved value
+        (an edit never resets the agent's record, its creation time or its owner)."""
         conn = self._get_conn()
         c = conn.cursor()
+        row = c.execute(
+            "SELECT created_at, total_tasks, success_rate, error_count, learning_iterations, "
+            "owner_id, shared FROM agent_profiles WHERE id = ?",
+            (profile.get("id"),),
+        ).fetchone()
+        saved = dict(
+            zip(
+                (
+                    "created_at",
+                    "total_tasks",
+                    "success_rate",
+                    "error_count",
+                    "learning_iterations",
+                    "owner_id",
+                    "shared",
+                ),
+                row or (None, 0, 0.0, 0, 0, None, 1),
+                strict=True,
+            )
+        )
+
+        def kept(key: str, default: Any) -> Any:
+            if key in profile and profile[key] is not None:
+                return profile[key]
+            return saved[key] if saved[key] is not None else default
+
         c.execute(
             """
             INSERT OR REPLACE INTO agent_profiles
             (id, name, role, nafs_level, capabilities, created_at, total_tasks,
-             success_rate, error_count, learning_iterations, config)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             success_rate, error_count, learning_iterations, config, owner_id, shared)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 profile.get("id"),
@@ -1133,40 +1170,57 @@ class DhikrMemorySystem:
                 profile.get("role"),
                 profile.get("nafs_level", 1),
                 json.dumps(profile.get("capabilities", [])),
-                profile.get("created_at", datetime.now(UTC).isoformat()),
-                profile.get("total_tasks", 0),
-                profile.get("success_rate", 0.0),
-                profile.get("error_count", 0),
-                profile.get("learning_iterations", 0),
+                kept("created_at", datetime.now(UTC).isoformat()),
+                kept("total_tasks", 0),
+                kept("success_rate", 0.0),
+                kept("error_count", 0),
+                kept("learning_iterations", 0),
                 json.dumps(profile.get("config", {})),
+                profile["owner_id"] if "owner_id" in profile else saved["owner_id"],
+                int(bool(kept("shared", 1))),
             ),
         )
         conn.commit()
         self._release_conn(conn)
+
+    async def delete_agent_profile(self, agent_id: str) -> bool:
+        """Remove an agent's profile, so a deleted agent does not come back at startup."""
+        conn = self._get_conn()
+        try:
+            cursor = conn.execute("DELETE FROM agent_profiles WHERE id = ?", (agent_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            self._release_conn(conn)
 
     async def get_all_agents(self) -> list[dict]:
         """Get all agent profiles"""
         conn = self._get_conn()
         c = conn.cursor()
         c.execute("SELECT * FROM agent_profiles")
+        columns = [item[0] for item in c.description]
         rows = c.fetchall()
         self._release_conn(conn)
 
         agents = []
-        for row in rows:
+        for values in rows:
+            row = dict(zip(columns, values, strict=True))
+            shared = row.get("shared")
             agents.append(
                 {
-                    "id": row[0],
-                    "name": row[1],
-                    "role": row[2],
-                    "nafs_level": row[3],
-                    "capabilities": json.loads(row[4]) if row[4] else [],
-                    "created_at": row[5],
-                    "total_tasks": row[6],
-                    "success_rate": row[7],
-                    "error_count": row[8],
-                    "learning_iterations": row[9],
-                    "config": json.loads(row[10]) if row[10] else {},
+                    "id": row["id"],
+                    "name": row["name"],
+                    "role": row["role"],
+                    "nafs_level": row["nafs_level"],
+                    "capabilities": json.loads(row["capabilities"]) if row["capabilities"] else [],
+                    "created_at": row["created_at"],
+                    "total_tasks": row["total_tasks"],
+                    "success_rate": row["success_rate"],
+                    "error_count": row["error_count"],
+                    "learning_iterations": row["learning_iterations"],
+                    "config": json.loads(row["config"]) if row["config"] else {},
+                    "owner_id": row.get("owner_id"),
+                    "shared": True if shared is None else bool(shared),
                 }
             )
         return agents

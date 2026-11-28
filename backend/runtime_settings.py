@@ -58,17 +58,35 @@ _PROVIDERS = (
     "mizan-hybrid",
     "mizan-owned",
     "mizan-minimind",
+    "xai",
+    "meta",
 )
 _BOOL = ("true", "false")
 
 SETTINGS: tuple[Setting, ...] = (
     # ── Orchestration ──
     Setting("MIZAN_ORCHESTRATION", "Model", "Who directs the work", "choice",
-            "mizan: MIZAN's own architecture (Tadbir) plans, runs every tool and verifies; the "
-            "language model only writes words and code and never controls a tool. hybrid: what "
-            "MIZAN does not recognise goes to the model-driven agent loop. llm: the model "
-            "drives the agent loop. strict is the former name of mizan.",
-            "mizan", ("mizan", "hybrid", "strict", "llm")),
+            "hybrid: MIZAN's own recipes (Quran, hadith, computing, dates, projects) run as "
+            "before, and everything else, a connected tool or a request of several steps, goes "
+            "to the model-driven agent loop, which chains tools itself. mizan: MIZAN's own "
+            "architecture (Tadbir) plans, runs every tool and verifies; the language model "
+            "only writes words and code and never controls a tool. llm: the model drives the "
+            "agent loop. Each agent may choose its own. strict is the former name of mizan.",
+            "hybrid", ("mizan", "hybrid", "strict", "llm")),
+    Setting("MIZAN_DEFAULT_PERMISSION_MODE", "Agents", "Default permission mode", "choice",
+            "What a chat does before an action when it sends no mode of its own (and its agent "
+            "has none): auto runs every permitted tool, auto_edits asks before commands and "
+            "outside changes, ask asks before every change, plan only reads.",
+            "auto", ("auto", "auto_edits", "ask", "plan")),
+    Setting("MIZAN_ALWAYS_ASK_TOOLS", "Agents", "Tools that always ask", "text",
+            "Comma-separated tool names that wait for a person in every permission mode (and "
+            "are held when no one is watching), for example shahid_submit. Empty: the chat's "
+            "permission mode decides for every tool.", ""),
+    Setting("MIZAN_TOOL_CALLS_PER_MINUTE", "Agents", "Tool calls per minute", "int",
+            "How often one agent may call the same tool per minute.", "120", (), 1, 10000),
+    Setting("MIZAN_CHAT_PER_MINUTE", "Agents", "Chat messages per minute", "int",
+            "Messages each signed-in user may send per minute (each may start model work).",
+            "60", (), 1, 10000),
     Setting("MIZAN_DEBUG_MODE", "Model", "Debug mode (base model vs MIZAN)", "choice",
             "Who may send one message to the base model alone and to MIZAN side by side, with "
             "MIZAN's full trace: admins, every signed-in user, or no one. A comparison runs "
@@ -230,6 +248,11 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("OPENROUTER_API_KEY", "API keys", "OpenRouter API key", "secret",
             "Access to 300+ hosted models.", apply="provider"),
     Setting("OPENAI_API_KEY", "API keys", "OpenAI API key", "secret", "", apply="provider"),
+    Setting("XAI_API_KEY", "API keys", "xAI (Grok) API key", "secret",
+            "From console.x.ai. Grok models are listed live from api.x.ai.", apply="provider"),
+    Setting("META_API_KEY", "API keys", "Meta (Muse Spark) API key", "secret",
+            "A Meta Model API key (Model API dashboard, API keys; Meta's own docs call it "
+            "MODEL_API_KEY). Muse models are listed live from api.meta.ai.", apply="provider"),
     Setting("MIZAN_BASE_API_KEY", "API keys", "Hybrid base model API key", "secret",
             "Key for the OpenAI-compatible base model endpoint.", apply="restart"),
     Setting("HF_TOKEN", "API keys", "Hugging Face token", "secret",
@@ -251,10 +274,12 @@ SETTINGS: tuple[Setting, ...] = (
             "Share of the model's context window used for history.", "0.5", (), 0.1, 0.8),
     Setting("MIZAN_ANTHROPIC_COMPACTION", "Chat limits", "Claude server compaction", "bool",
             "Let Claude compact very long single runs.", "true", _BOOL),
-    Setting("MIZAN_CHAT_TOOL_SCHEMA_LIMIT", "Chat limits", "Tools offered per request", "int",
-            "Tool definitions sent per request, including discovery.", "8", (), 2, 32),
-    Setting("MIZAN_CHAT_TOOL_SCHEMA_BYTES", "Chat limits", "Tool definition bytes", "int",
-            "Size budget for the tool definitions per request.", "12288", (), 4096, 65536),
+    Setting("MIZAN_TOOL_CATALOG_LIMIT", "Chat limits", "Tools offered per request", "int",
+            "Tool definitions sent per request, including discovery; the rest are found "
+            "with the discovery tool. Replaces MIZAN_CHAT_TOOL_SCHEMA_LIMIT.", "16", (), 2, 32),
+    Setting("MIZAN_TOOL_CATALOG_BYTES", "Chat limits", "Tool definition bytes", "int",
+            "Size budget for the tool definitions per request. Replaces "
+            "MIZAN_CHAT_TOOL_SCHEMA_BYTES.", "32768", (), 4096, 65536),
     Setting("MIZAN_LLM_FIRST_PROGRESS_SECONDS", "Chat limits", "First progress timeout (s)",
             "int", "Wait for first visible text or tool progress.", "60", (), 1, 180),
     Setting("MIZAN_LLM_BUFFERED_FIRST_PROGRESS_SECONDS", "Chat limits",

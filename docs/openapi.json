@@ -85,7 +85,7 @@
   "/api/auth/me": {
    "get": {
     "summary": "Auth Me",
-    "description": "Who this credential belongs to, its roles, and when the token expires.",
+    "description": "Who this credential belongs to, its roles, when the token expires, and the\nserver's default permission mode for chats.",
     "operationId": "auth_me_api_auth_me_get",
     "parameters": [
      {
@@ -337,7 +337,7 @@
   "/api/agents": {
    "get": {
     "summary": "List Agents",
-    "description": "List all agents with their Nafs profile; ``detail=false`` gives each in a\nfew fields, and ``limit``/``offset`` page through them.",
+    "description": "The agents you may use (shared ones and your own; administrators see all) with\ntheir Nafs profile and settings; ``detail=false`` gives each in a few fields, and\n``limit``/``offset`` page through them.",
     "operationId": "list_agents_api_agents_get",
     "parameters": [
      {
@@ -438,7 +438,7 @@
    },
    "post": {
     "summary": "Create New Agent",
-    "description": "Resolve a provider once and persist the validated agent before publishing it.",
+    "description": "A new agent: an administrator's is shared with everyone unless ``shared`` is\nfalse; anyone else's is their own, seen and changed by them alone.",
     "operationId": "create_new_agent_api_agents_post",
     "parameters": [
      {
@@ -504,7 +504,239 @@
       }
      }
     },
-    "x-mizan-access": "admin",
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/agents/default": {
+   "get": {
+    "summary": "Get Default Agent",
+    "description": "Your default agent: it answers your chats that name none, your Telegram, email\nand WhatsApp messages and your watchers' tasks (None: Khalifah).",
+    "operationId": "get_default_agent_api_agents_default_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DefaultAgent"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "put": {
+    "summary": "Set Default Agent",
+    "description": "Choose your default agent (one you may use); null goes back to Khalifah.",
+    "operationId": "set_default_agent_api_agents_default_put",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DefaultAgent"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/DefaultAgent"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/agents/import": {
+   "post": {
+    "summary": "Import Agent",
+    "description": "An agent exported with GET /api/agents/{id}/export, made again as yours. Its\npersona is read by Amanah first: one that tries to override MIZAN's rules, hide\nsomething from the user or send their data away is refused.",
+    "operationId": "import_agent_api_agents_import_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/AgentImport"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
     "security": [
      {
       "bearer": []
@@ -518,6 +750,7 @@
   "/api/agents/{agent_id}": {
    "get": {
     "summary": "Get Agent",
+    "description": "One agent you may use, with its settings and the tools its model is offered.",
     "operationId": "get_agent_api_agents__agent_id__get",
     "parameters": [
      {
@@ -582,7 +815,7 @@
       }
      }
     },
-    "x-mizan-access": "user (more for admin)",
+    "x-mizan-access": "user",
     "security": [
      {
       "bearer": []
@@ -594,6 +827,7 @@
    },
    "delete": {
     "summary": "Delete Agent",
+    "description": "Delete an agent you own (administrators: any); its saved profile goes too.",
     "operationId": "delete_agent_api_agents__agent_id__delete",
     "parameters": [
      {
@@ -658,7 +892,7 @@
       }
      }
     },
-    "x-mizan-access": "admin",
+    "x-mizan-access": "user",
     "security": [
      {
       "bearer": []
@@ -670,7 +904,7 @@
    },
    "put": {
     "summary": "Update Agent",
-    "description": "Update an existing agent's name, model, or system prompt.",
+    "description": "Change an agent's name, model, persona or settings (each setting merged on its\nown; null resets it). Its record (tasks, success, Nafs) is kept.",
     "operationId": "update_agent_api_agents__agent_id__put",
     "parameters": [
      {
@@ -745,7 +979,165 @@
       }
      }
     },
-    "x-mizan-access": "admin",
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/agents/{agent_id}/clone": {
+   "post": {
+    "summary": "Clone Agent",
+    "description": "A copy of an agent you may use, as your own (\"<name> (copy)\"). The persona is\ncopied only when you may see it.",
+    "operationId": "clone_agent_api_agents__agent_id__clone_post",
+    "parameters": [
+     {
+      "name": "agent_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Agent Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/agents/{agent_id}/export": {
+   "get": {
+    "summary": "Export Agent",
+    "description": "The agent as ``mizan-agent/1`` JSON, for POST /api/agents/import here or on\nanother server (no keys, no memory, no record). The persona is included only when\nyou may see it.",
+    "operationId": "export_agent_api_agents__agent_id__export_get",
+    "parameters": [
+     {
+      "name": "agent_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Agent Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
     "security": [
      {
       "bearer": []
@@ -759,7 +1151,7 @@
   "/api/agents/{agent_id}/model": {
    "post": {
     "summary": "Set Agent Model",
-    "description": "Set model for a specific agent (does not affect other agents).",
+    "description": "Set the model of an agent you own (administrators: any); others keep theirs.",
     "operationId": "set_agent_model_api_agents__agent_id__model_post",
     "parameters": [
      {
@@ -834,7 +1226,7 @@
       }
      }
     },
-    "x-mizan-access": "admin",
+    "x-mizan-access": "user",
     "security": [
      {
       "bearer": []
@@ -6291,7 +6683,7 @@
   "/api/providers/switch": {
    "post": {
     "summary": "Switch Provider",
-    "description": "Switch the active LLM provider and model for all agents.\nPersists choice to database so it survives restarts.",
+    "description": "Switch the default LLM provider and model: every agent that follows the default\nmoves; an agent given its own provider and model keeps them.\nPersists choice to database so it survives restarts.",
     "operationId": "switch_provider_api_providers_switch_post",
     "parameters": [
      {
@@ -21866,7 +22258,7 @@
       "anyOf": [
        {
         "type": "string",
-        "pattern": "^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$"
+        "pattern": "^(anthropic|openrouter|openai|xai|meta|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$"
        },
        {
         "type": "null"
@@ -21904,8 +22296,29 @@
        "type": "string"
       },
       "type": "array",
-      "title": "Capabilities",
-      "default": []
+      "maxItems": 200,
+      "title": "Capabilities"
+     },
+     "settings": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentSettingsPatch"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "shared": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Shared"
      }
     },
     "type": "object",
@@ -21914,11 +22327,98 @@
     ],
     "title": "AgentCreate"
    },
+   "AgentExportBody": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "type": {
+      "type": "string",
+      "pattern": "^(super|khalifah|general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$",
+      "title": "Type",
+      "default": "general"
+     },
+     "provider": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^(anthropic|openrouter|openai|xai|meta|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Provider"
+     },
+     "model": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Model"
+     },
+     "system_prompt": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 10000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "System Prompt"
+     },
+     "settings": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentSettingsPatch"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "AgentExportBody",
+    "description": "One agent in ``mizan-agent/1``: no keys, no memory, no record."
+   },
+   "AgentImport": {
+    "properties": {
+     "format": {
+      "type": "string",
+      "const": "mizan-agent/1",
+      "title": "Format"
+     },
+     "agent": {
+      "$ref": "#/components/schemas/AgentExportBody"
+     }
+    },
+    "type": "object",
+    "required": [
+     "format",
+     "agent"
+    ],
+    "title": "AgentImport"
+   },
    "AgentModelRequest": {
     "properties": {
      "provider": {
       "type": "string",
-      "pattern": "^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
+      "pattern": "^(anthropic|openrouter|openai|xai|meta|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
       "title": "Provider"
      },
      "model": {
@@ -21934,6 +22434,202 @@
      "model"
     ],
     "title": "AgentModelRequest"
+   },
+   "AgentSettingsPatch": {
+    "properties": {
+     "temperature": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 1.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Temperature"
+     },
+     "effort": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "low",
+         "medium",
+         "high",
+         "xhigh",
+         "max"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Effort"
+     },
+     "max_steps": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 1000.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Steps"
+     },
+     "max_output_tokens": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 128000.0,
+        "minimum": 256.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Output Tokens"
+     },
+     "orchestration": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "mizan",
+         "hybrid",
+         "llm"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Orchestration"
+     },
+     "permission_mode": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "auto_edits",
+         "ask",
+         "plan",
+         "auto"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Permission Mode"
+     },
+     "tools_allow": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tools Allow"
+     },
+     "tools_deny": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tools Deny"
+     },
+     "connectors": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Connectors"
+     },
+     "skills": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Skills"
+     },
+     "starter_prompts": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 12
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Starter Prompts"
+     },
+     "avatar": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 2048
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avatar"
+     },
+     "learn_skills": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Learn Skills"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "AgentSettingsPatch",
+    "description": "Some settings of an agent; a key sent as null goes back to its default."
    },
    "AgentUpdate": {
     "properties": {
@@ -21973,6 +22669,16 @@
        }
       ],
       "title": "System Prompt"
+     },
+     "settings": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentSettingsPatch"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "type": "object",
@@ -23162,6 +23868,24 @@
      "cost_usd"
     ],
     "title": "DeepResearchResponse"
+   },
+   "DefaultAgent": {
+    "properties": {
+     "agent_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Agent Id"
+     }
+    },
+    "type": "object",
+    "title": "DefaultAgent"
    },
    "DisambiguateRequest": {
     "properties": {
@@ -24629,7 +25353,7 @@
     "properties": {
      "provider": {
       "type": "string",
-      "pattern": "^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
+      "pattern": "^(anthropic|openrouter|openai|xai|meta|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
       "title": "Provider"
      },
      "model": {
@@ -26311,6 +27035,18 @@
       "pattern": "^(judge|always)$",
       "title": "Priority",
       "default": "judge"
+     },
+     "agent_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Agent Id"
      }
     },
     "type": "object",
@@ -26383,6 +27119,18 @@
        }
       ],
       "title": "Enabled"
+     },
+     "agent_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Agent Id"
      }
     },
     "type": "object",

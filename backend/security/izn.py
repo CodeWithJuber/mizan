@@ -9,6 +9,7 @@ Solves OpenClaw's skill data exfiltration problem.
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
@@ -89,6 +90,16 @@ NAFS_PERMISSION_TIERS: dict[int, dict[str, "PermissionLevel"]] = {
 }
 
 
+def tool_calls_per_minute() -> int:
+    """How often one agent may call one tool per minute (``MIZAN_TOOL_CALLS_PER_MINUTE``,
+    default 120), read on every check so an administrator's change applies at once."""
+    try:
+        return max(1, min(10_000, int(float(os.getenv("MIZAN_TOOL_CALLS_PER_MINUTE", "120")))))
+    except (TypeError, ValueError, OverflowError):
+        return 120
+
+
+# Tools called in quick succession while coding (kept for reference and plugins).
 _HIGH_RATE_TOOLS = frozenset(
     {
         "workspace_read",
@@ -112,7 +123,7 @@ class ToolPermission:
     level: PermissionLevel = PermissionLevel.RESTRICTED
     allowed_params: dict[str, list[str]] = field(default_factory=dict)
     blocked_params: dict[str, list[str]] = field(default_factory=dict)
-    max_calls_per_minute: int = 30
+    max_calls_per_minute: int = field(default_factory=tool_calls_per_minute)
     description: str = ""
 
 
@@ -143,7 +154,7 @@ class IznPolicy:
         return ToolPermission(
             tool_name=tool_name,
             level=PermissionLevel.RESTRICTED,
-            max_calls_per_minute=120 if tool_name in _HIGH_RATE_TOOLS else 30,
+            max_calls_per_minute=tool_calls_per_minute(),
         )
 
 
@@ -152,6 +163,10 @@ class IznPermission:
     Central permission manager.
     Checks every tool invocation against the agent's IznPolicy.
     """
+
+    # Default policies by agent role. No role is denied a tool by default: every agent
+    # may use what its owner allows (the gates that act are approvals, Amanah, Hudud
+    # and, for non-admins, the sandbox); an administrator can still revoke a tool.
 
     # Default policies by agent role
     DEFAULT_POLICIES = {
@@ -162,20 +177,20 @@ class IznPermission:
             "read_file": PermissionLevel.RESTRICTED,
             "write_file": PermissionLevel.RESTRICTED,
             "list_files": PermissionLevel.ALLOWED,
-            "python_eval": PermissionLevel.DENIED,
+            "python_eval": PermissionLevel.RESTRICTED,
         },
         "mubashir": {
-            "bash": PermissionLevel.DENIED,
+            "bash": PermissionLevel.RESTRICTED,
             "browse_url": PermissionLevel.ALLOWED,
             "search_web": PermissionLevel.ALLOWED,
             "extract_content": PermissionLevel.ALLOWED,
             "take_screenshot": PermissionLevel.RESTRICTED,
             "http_get": PermissionLevel.ALLOWED,
             "read_file": PermissionLevel.RESTRICTED,
-            "write_file": PermissionLevel.DENIED,
+            "write_file": PermissionLevel.RESTRICTED,
         },
         "mundhir": {
-            "bash": PermissionLevel.DENIED,
+            "bash": PermissionLevel.RESTRICTED,
             "analyze_text": PermissionLevel.ALLOWED,
             "synthesize_sources": PermissionLevel.ALLOWED,
             "fact_check": PermissionLevel.ALLOWED,
@@ -196,7 +211,7 @@ class IznPermission:
             "write_file": PermissionLevel.RESTRICTED,
         },
         "rasul": {
-            "bash": PermissionLevel.DENIED,
+            "bash": PermissionLevel.RESTRICTED,
             "send_webhook": PermissionLevel.RESTRICTED,
             "check_email": PermissionLevel.RESTRICTED,
             "send_notification": PermissionLevel.ALLOWED,
@@ -267,7 +282,7 @@ class IznPermission:
             }
 
         # Check rate limit for tool
-        if not self._check_tool_rate(agent_id, tool_name, tool_perm.max_calls_per_minute):
+        if not self._check_tool_rate(agent_id, tool_name, tool_calls_per_minute()):
             return {
                 "allowed": False,
                 "reason": f"Rate limit exceeded for tool '{tool_name}'",

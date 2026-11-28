@@ -99,20 +99,33 @@ async def test_invalid_update_is_atomic(settings_api, monkeypatch):
     memory.save_agent_profile.assert_not_awaited()
 
 
-async def test_global_switch_refreshes_cached_users_and_clears_persisted_override(
-    settings_api, monkeypatch
+async def test_global_switch_moves_default_followers_and_keeps_own_choices(
+    settings_api, monkeypatch, mock_wali, mock_izn
 ):
     main, template, user, memory = settings_api
-    private = await main.chat_agent_for(user, template)
-    template.config["provider_override"] = {"provider": "old", "model": "old"}
+    follower = create_agent("general", name="Follower", wali=mock_wali, izn=mock_izn)
+    follower.ai_client = SimpleNamespace(provider_name="original")
+    main.active_agents[follower.id] = follower
+    private = await main.chat_agent_for(user, follower)
+    own_private = await main.chat_agent_for(user, template)
+    chosen = template.ai_client
+    template.config["provider_override"] = {"provider": "original", "model": "original-model"}
     provider = SimpleNamespace(provider_name="openrouter")
     monkeypatch.setattr(main, "create_provider", lambda **kwargs: provider)
-    await main.switch_provider(
+    result = await main.switch_provider(
         main.ProviderSwitchRequest(provider="openrouter", model="claude-sonnet-4-6")
     )
+    assert result["agents_updated"] == 1
+    await main.chat_agent_for(user, follower)
     await main.chat_agent_for(user, template)
-    assert private.ai_client is provider
+    # The agent that follows the default moves, its users' copies too.
+    assert follower.ai_client is provider and private.ai_client is provider
     assert private.ai_model == "anthropic/claude-sonnet-4.6"
-    assert "provider_override" not in template.config
-    memory.save_agent_profile.assert_awaited_once()
+    # The agent given its own provider and model keeps them.
+    assert template.ai_client is chosen and own_private.ai_client is chosen
+    assert template.config["provider_override"] == {
+        "provider": "original",
+        "model": "original-model",
+    }
+    memory.save_agent_profile.assert_not_awaited()
     memory.set_preference.assert_any_await("active_model", "anthropic/claude-sonnet-4.6")

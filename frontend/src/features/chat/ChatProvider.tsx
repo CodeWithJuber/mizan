@@ -26,10 +26,12 @@ import { CHAT_INPUT_LIMIT, chatFailureNeedsRecovery, parseChatRun } from "../../
 import { useChatRecovery } from "../../hooks/useChatRecovery.ts";
 import { keptArtifacts, keptImages, chatFailureFields, messageUsage, restoredMessageFields } from "../../utils/chatFailure.ts";
 import { checkLine, isReceipt, removedLine } from "../../utils/mahw.ts";
-import type { AgentMode } from "../../components/ModeSwitcher";
 import type { ApprovalDecision } from "../../components/AgentActivity";
 import type { ElicitationAction } from "../../utils/elicitation";
-import { loadPermissionMode } from "../../components/PermissionModeSwitch";
+import {
+  agentPermissionMode, baselinePermissionMode, chatPermissionMode, forgetPermissionMode, rememberPermissionMode,
+  savedPermissionMode, serverPermissionDefault, type PermissionSource,
+} from "../../utils/permissionMode";
 import {
   ACTIVITY_EVENTS, emptyActivity, hasActivity, reduceActivity,
   type AgentActivity, type PermissionMode,
@@ -48,7 +50,7 @@ import {
 } from "../../utils/sessionCache";
 import { addToast } from "../../components/Toast";
 import { confirmDialog } from "../../components/ui/confirm";
-import { useAuth } from "../../app/auth";
+import { useAuth, useMe } from "../../app/auth";
 import { setSocketHandlers, sendSocket, useSocketStatus } from "../../realtime/socket";
 import { addTerminalLine, useTerminal } from "../../realtime/terminal";
 import { useRefreshAgents, useSelectedAgent } from "../agents/agents";
@@ -99,6 +101,9 @@ const CONTINUE_PROMPT = "Continue from exactly where you stopped. Do not repeat 
 
 export const CHAT_SESSIONS_KEY = ["chat-sessions"] as const;
 
+/** "single" = the default path; "deep_research" = planner → workers → aggregator → verifier (gated + budgeted). */
+export type AgentMode = "single" | "deep_research";
+
 export interface RunProgress {
   startedAt: number;
   phase?: string;
@@ -120,6 +125,10 @@ export interface ChatState {
   agentMode: AgentMode;
   deepResearchConfirmed: boolean;
   permissionMode: PermissionMode;
+  /** The mode a chat starts in when no one chose: the server's default for the person, else "auto". */
+  defaultPermissionMode: PermissionMode;
+  /** Where `permissionMode` came from: picked in this chat, the agent's settings, this browser, the server. */
+  permissionSource: PermissionSource;
   chatModelOverride: string;
   attachedFiles: File[];
   /** The project this chat works on ("" for none); the server's binding wins. */
@@ -173,7 +182,10 @@ export interface ChatActions {
   exportChat: (format: ExportFormatId) => Promise<void>;
   setAgentMode: (mode: AgentMode) => void;
   setDeepResearchConfirmed: (confirmed: boolean) => void;
-  setPermissionMode: (mode: PermissionMode) => void;
+  /** Pick a mode for this chat; `remember` (default) also keeps it for the next chats in this browser. */
+  setPermissionMode: (mode: PermissionMode, options?: { remember?: boolean }) => void;
+  /** Back to the default mode in this chat, and forget the browser's saved choice. */
+  resetPermissionMode: () => void;
   setChatModelOverride: (model: string) => void;
   setAttachedFiles: (files: File[] | ((previous: File[]) => File[])) => void;
   selectWorkspace: (id: string) => void;
@@ -221,7 +233,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Live tool calls, plan and approval prompts of the current reply.
   const [activity, setActivity] = useState<AgentActivity>(emptyActivity);
   const activityRef = useRef<AgentActivity>(emptyActivity());
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>(loadPermissionMode);
+  // The mode picked in each chat this visit; the browser's last pick (a per-viewer convenience).
+  const [chosenModes, setChosenModes] = useState<Record<string, PermissionMode>>({});
+  const [savedMode, setSavedMode] = useState<PermissionMode | null>(() => savedPermissionMode());
   const applyActivity = useCallback((event: Record<string, unknown>) => {
     const next = reduceActivity(activityRef.current, event);
     if (next !== activityRef.current) {
@@ -290,6 +304,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
     queryFn: async () => (await api.get("/providers")) as unknown as ProviderStatus,
   });
+
+  // Permission mode: picked in this chat > the agent's own > this browser's last pick > the server's default > "auto".
+  const { data: me } = useMe();
+  const serverMode = serverPermissionDefault(me, providerStatus);
+  const defaultPermissionMode = baselinePermissionMode(serverMode);
+  const { mode: permissionMode, source: permissionSource } = chatPermissionMode({
+    chosen: chosenModes[sessionId], agent: agentPermissionMode(selectedAgent), saved: savedMode, serverDefault: serverMode,
+  });
+  const setPermissionMode = (mode: PermissionMode, options?: { remember?: boolean }) => {
+    if (options?.remember !== false) {
+      rememberPermissionMode(mode);
+      setSavedMode(mode);
+    }
+    const sid = sessionIdRef.current;
+    setChosenModes((previous) => ({ ...previous, [sid]: mode }));
+  };
+  const resetPermissionMode = () => {
+    forgetPermissionMode();
+    setSavedMode(null);
+    const sid = sessionIdRef.current;
+    setChosenModes((previous) => ({ ...previous, [sid]: defaultPermissionMode }));
+  };
 
   // Debug mode: compare one message with the base model alone (Muqabala).
   const { data: debugAllowed = false } = useQuery({
@@ -425,6 +461,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setThinkingTraces({});
     useTerminal.getState().clear();
     setHistoryLoadError(false);
+    setChosenModes({});
     const id = newSessionId();
     setSessionId(id);
     sessionIdRef.current = id;
@@ -1555,11 +1592,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Actions are stable for the whole visit; each call reaches the latest closure.
   const latest = useRef({
     sendMessage, stopGeneration, requestContinuation, decideApproval, answerElicitation, startNewSession, switchSession,
-    deleteSession, loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun,
+    deleteSession, loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun, setPermissionMode, resetPermissionMode,
   });
   latest.current = {
     sendMessage, stopGeneration, requestContinuation, decideApproval, answerElicitation, startNewSession, switchSession,
-    deleteSession, loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun,
+    deleteSession, loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun, setPermissionMode, resetPermissionMode,
   };
 
   const actions = useMemo<ChatActions>(() => ({
@@ -1582,7 +1619,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     exportChat: (format) => latest.current.exportChat(format),
     setAgentMode,
     setDeepResearchConfirmed,
-    setPermissionMode,
+    setPermissionMode: (mode, options) => latest.current.setPermissionMode(mode, options),
+    resetPermissionMode: () => latest.current.resetPermissionMode(),
     setChatModelOverride,
     setAttachedFiles,
     selectWorkspace,
@@ -1602,7 +1640,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const state: ChatState = {
     sessionId, messages, input, streaming, awaitingText, activity, thinkingTraces, activeThinkingId, runProgress,
-    agentMode, deepResearchConfirmed, permissionMode, chatModelOverride, attachedFiles, workspaceId, livePreview, artifacts,
+    agentMode, deepResearchConfirmed, permissionMode, defaultPermissionMode, permissionSource, chatModelOverride, attachedFiles, workspaceId, livePreview, artifacts,
     showArtifacts, debugAllowed, debugOn, debugPrompt, historyLoadError, historyLoading, hasOlderHistory,
     olderHistoryLoading, draftStorageFailed, truncatedContinue, recovery,
   };

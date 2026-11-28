@@ -4,7 +4,7 @@ The current architecture, drawn from the code at commit `5cc11dc` (28 October 20
 
 ## The principle: MIZAN directs, the language model speaks
 
-MIZAN's own faculties do the understanding, the acting and the checking. The language model is **Lisan**, the language faculty: it is asked to write a program, map unfamiliar wording onto MIZAN's actions, or word an answer from facts MIZAN already holds. In the default orchestration mode (`MIZAN_ORCHESTRATION=mizan`) the model never chooses or calls a tool. Quran and hadith text, and computed results, never come from the model.
+MIZAN's own faculties do the understanding, the acting and the checking. The language model is **Lisan**, the language faculty: it is asked to write a program, map unfamiliar wording onto MIZAN's actions, or word an answer from facts MIZAN already holds. In `MIZAN_ORCHESTRATION=mizan` the model never chooses or calls a tool; in the default, `hybrid`, MIZAN's recipes run as there and the model-driven loop takes the rest ([tadbir.md](tadbir.md#modes)). Quran and hadith text, and computed results, never come from the model.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/overview-dark.svg">
@@ -66,7 +66,7 @@ Interactive version, with every component linked to its source: [`diagrams/runti
   - `plan`: changes are refused.
 - **Asked in the chat.** An action that needs a person is shown as a card in the live chat. It is decided within 10 minutes, or it is declined.
 - **Held when no one is watching.** Watchers, schedules, triggers, the queue and channel messages run unattended. Their changing actions are held in `held_actions.db` with their exact parameters and SHA-256 for up to 24 hours, and decided once at `/api/chat/held/{id}`.
-- **Always asked.** `shahid_submit` is asked in every mode.
+- **Always asked.** Tools an administrator names in `MIZAN_ALWAYS_ASK_TOOLS` (empty by default; `shahid_submit` is the usual one) are asked in every mode. A chat that sends no mode gets its agent's own, else `MIZAN_DEFAULT_PERMISSION_MODE` (`auto`).
 
 Approvals are in-process futures, so the backend runs as one uvicorn worker.
 
@@ -134,7 +134,7 @@ Learned state is the adaptive store, in the same SQLite file as the agent's memo
 
 | Decision | What it buys | What it costs |
 | --- | --- | --- |
-| **MIZAN acts; the model only speaks** (`MIZAN_ORCHESTRATION=mizan`) | Every action is chosen by MIZAN, checked at one gate and leaves a receipt; results are verified; recognised requests often need no model call | A request Fahm does not recognise gets an answer in words and no tools. `hybrid` hands those to the model-driven loop instead |
+| **MIZAN acts; the model only speaks** (`MIZAN_ORCHESTRATION=mizan`) | Every action is chosen by MIZAN, checked at one gate and leaves a receipt; results are verified; recognised requests often need no model call | A request Fahm does not recognise gets an answer in words and no tools. `hybrid` (the default) hands those, connector requests and multi-step requests to the model-driven loop instead |
 | **Understanding by fitted naive Bayes, not by the model or regexes** | Fast on the CPU, fitted by leave-one-out, auditable, learnable per user without retraining a model | It reads probabilistically: on held-out seeds the family is right 75.0% of the time ([fahm.md](fahm.md)). Lisan maps the wording only when action families outweigh conversation |
 | **Learning in per-user state, not in weights** | What is learned can be verified, listed (Daftar) and erased (Mahw); one user's mistakes never reach another | Nothing is learned across users, and the model itself does not improve |
 | **One backend worker** | Approvals are simple in-process futures; runs share the learned state without a broker | One process bounds throughput; rate limits and pending approvals live in memory |

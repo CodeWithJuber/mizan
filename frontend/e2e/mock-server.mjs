@@ -8,10 +8,91 @@ import { createHash, randomUUID } from "node:crypto";
 const PORT = Number(process.env.MOCK_PORT || 8765);
 const TOKEN = "e2e-token";
 
+// Agent settings as the server sends them: every key, null = the server's default.
+const settingsDefaults = () => ({
+  temperature: null, effort: null, max_steps: null, max_output_tokens: null, orchestration: null, permission_mode: null,
+  tools_allow: [], tools_deny: [], connectors: [], skills: [], starter_prompts: [], avatar: null, learn_skills: true,
+});
 const agents = [
-  { id: "agent-1", name: "Khalifah", role: "wakil", state: "resting", nafs_level: 3, total_tasks: 4, success_rate: 0.75, hikmah_count: 2, tools: ["bash"], model: "claude-haiku-5-5" },
-  { id: "agent-2", name: "Katib", role: "katib", state: "resting", nafs_level: 1, total_tasks: 0, success_rate: 0, hikmah_count: 0, tools: [], model: "claude-haiku-5-5" },
+  {
+    id: "agent-1", name: "Khalifah", role: "wakil", state: "resting", nafs_level: 3, total_tasks: 4, success_rate: 0.75, hikmah_count: 2,
+    tools: ["bash"], effective_tools: ["bash"], model: "claude-haiku-5-5", provider: "anthropic",
+    owner_id: null, shared: true, editable: true, is_default: true, settings: settingsDefaults(), provider_warning: null,
+  },
+  {
+    id: "agent-2", name: "Katib", role: "katib", state: "resting", nafs_level: 1, total_tasks: 0, success_rate: 0, hikmah_count: 0,
+    tools: [], effective_tools: [], model: "claude-haiku-5-5", provider: "anthropic",
+    owner_id: "u1", shared: false, editable: true, is_default: false, provider_warning: null,
+    settings: { ...settingsDefaults(), avatar: "✍️", starter_prompts: ["Draft a short letter of thanks", "Summarise this chat in three lines"] },
+  },
 ];
+/** Requests to /api/agents* in the order they came (the browser tests read them back). */
+const agentCalls = [];
+let nextAgent = 3;
+
+/** A new agent from a create, import or clone body. */
+function makeAgent(body, extra = {}) {
+  const agent = {
+    id: `agent-${nextAgent++}`, name: String(body.name || "Agent"), role: body.type || body.role || "general", state: "resting",
+    nafs_level: 1, total_tasks: 0, success_rate: 0, hikmah_count: 0, tools: ["bash"], effective_tools: ["bash"],
+    model: body.model || "claude-haiku-5-5", provider: body.provider || "anthropic", system_prompt: body.system_prompt || "",
+    owner_id: "u1", shared: body.shared === true, editable: true, is_default: false, provider_warning: null,
+    settings: { ...settingsDefaults(), ...body.settings },
+    ...extra,
+  };
+  agents.push(agent);
+  return agent;
+}
+
+const exported = (agent) => ({
+  format: "mizan-agent/1",
+  agent: { name: agent.name, type: agent.role, provider: agent.provider, model: agent.model, system_prompt: agent.system_prompt || "", settings: agent.settings },
+});
+
+async function agentRoutes(req, res, path, method) {
+  const body = method === "GET" || method === "DELETE" ? {} : await readBody(req);
+  agentCalls.push({ method, path, body });
+  if (path === "/api/agents") {
+    if (method === "POST") return json(res, 200, makeAgent(body));
+    return json(res, 200, { agents });
+  }
+  if (path === "/api/agents/calls") return json(res, 200, { calls: agentCalls });
+  if (path === "/api/agents/default") {
+    if (method === "PUT") {
+      if (!agents.some((agent) => agent.id === body.agent_id)) return json(res, 404, { detail: "No such agent" });
+      for (const agent of agents) agent.is_default = agent.id === body.agent_id;
+    }
+    return json(res, 200, { agent_id: agents.find((agent) => agent.is_default)?.id ?? null });
+  }
+  if (path === "/api/agents/import" && method === "POST") {
+    if (body.format !== "mizan-agent/1" || !body.agent) return json(res, 422, { detail: "Not a MIZAN agent file" });
+    return json(res, 200, makeAgent({ ...body.agent }));
+  }
+  const match = /^\/api\/agents\/([^/]+)(?:\/(clone|export|model))?$/.exec(path);
+  const agent = match && agents.find((item) => item.id === decodeURIComponent(match[1]));
+  if (!agent) return json(res, 404, { detail: "Agent not found" });
+  if (match[2] === "clone" && method === "POST") {
+    return json(res, 200, makeAgent({ ...exported(agent).agent, name: `${agent.name} (copy)` }));
+  }
+  if (match[2] === "export") return json(res, 200, exported(agent));
+  if (match[2] === "model" && method === "POST") {
+    Object.assign(agent, { model: body.model, provider: body.provider });
+    return json(res, 200, agent);
+  }
+  if (method === "PUT") {
+    if (typeof body.name === "string") agent.name = body.name;
+    if (typeof body.system_prompt === "string") agent.system_prompt = body.system_prompt;
+    if (body.settings) {
+      for (const [key, value] of Object.entries(body.settings)) agent.settings[key] = value ?? settingsDefaults()[key];
+    }
+    return json(res, 200, agent);
+  }
+  if (method === "DELETE") {
+    agents.splice(agents.indexOf(agent), 1);
+    return json(res, 200, { deleted: agent.id });
+  }
+  return json(res, 200, agent);
+}
 
 /** session_id -> { title, messages: [{id, role, content, created_at, metadata}] } */
 const sessions = new Map();
@@ -505,8 +586,11 @@ const server = http.createServer(async (req, res) => {
 
   if (path === "/api/auth/me") return json(res, 200, { user_id: "u1", username: "tester", roles: ["admin"], credential: "token", issued_at: null, expires_at: null });
   if (path === "/api/auth/logout") return json(res, 200, { ok: true });
-  if (path === "/api/agents") return json(res, 200, { agents });
+  if (path === "/api/agents" || path.startsWith("/api/agents/")) return agentRoutes(req, res, path, method);
   if (path === "/api/providers") return json(res, 200, { providers: [{ name: "anthropic", configured: true, display: "Anthropic" }], default_model: "claude-haiku-5-5" });
+  if (/^\/api\/providers\/[^/]+\/models$/.test(path)) {
+    return json(res, 200, { models: [{ id: "claude-haiku-5-5", name: "Claude Haiku 5.5" }, { id: "claude-opus-5-5", name: "Claude Opus 5.5" }], total: 2 });
+  }
   if (path === "/api/debug/status") return json(res, 200, { enabled: true });
   if (path === "/api/agent-skills") return json(res, 200, { skills: [{ name: "tafsir-notes", description: "Notes from tafsir", enabled: true }], shadowed: [] });
   if (path === "/api/chat/stream" && method === "POST") return stream(req, res);

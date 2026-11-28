@@ -129,16 +129,24 @@ def test_mizan_fills_a_field_only_with_the_users_own_words():
     assert _none is None and "origins" in elsewhere
 
 
-def test_sending_to_a_site_always_needs_a_person():
+def test_the_permission_mode_decides_unless_a_tool_is_set_to_always_ask(monkeypatch):
+    # By default the chat's mode decides: auto sends, the stricter modes ask.
+    monkeypatch.delenv("MIZAN_ALWAYS_ASK_TOOLS", raising=False)
+    assert not ApprovalContext("owner", "chat", mode="auto").needs_approval("shahid_submit")
+    assert ApprovalContext("owner", "chat", mode="ask").needs_approval("shahid_submit")
+    unattended = ApprovalContext("owner", "chat", mode="auto", deferred=True)
+    assert unattended.needs_approval("shahid_submit")
+    # An administrator may name tools that ask a person in every mode.
+    monkeypatch.setenv("MIZAN_ALWAYS_ASK_TOOLS", "shahid_submit, other_tool")
     for mode in ("auto", "auto_edits", "ask"):
         context = ApprovalContext("owner", "chat", mode=mode)
         assert context.needs_approval("shahid_submit")
+        assert context.needs_approval("other_tool")
         assert not context.needs_approval("shahid_read")
-    unattended = ApprovalContext("owner", "chat", mode="auto", deferred=True)
-    assert unattended.needs_approval("shahid_submit")
 
 
-async def test_with_no_one_to_ask_nothing_is_sent(monkeypatch, tmp_path):
+async def test_with_no_one_to_ask_an_always_ask_tool_sends_nothing(monkeypatch, tmp_path):
+    monkeypatch.setenv("MIZAN_ALWAYS_ASK_TOOLS", "shahid_submit")
     monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("agents.base.create_provider", lambda **kwargs: None)
     agent = create_agent("general", izn=IznPermission())
