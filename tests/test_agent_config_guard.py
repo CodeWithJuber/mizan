@@ -63,6 +63,10 @@ def run(repo: Path, **env: str) -> subprocess.CompletedProcess:
         ".github/hooks/forge.json",
         ".opencode/plugins/x.js",
         "AGENTS.md",
+        ".claude/skills/forge-learned-x/SKILL.md",
+        ".agents/skills/mizan/SKILL.md",
+        ".pi/mcp.json",
+        ".forge/decisions.md",
     ],
 )
 def test_a_stranger_changing_agent_config_needs_the_label(repo, path):

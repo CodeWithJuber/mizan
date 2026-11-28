@@ -57,6 +57,10 @@ backend/.vault.key
 .forge/atlas.json
 .forge/verify-events.jsonl
 .forge/*.forge-bak-*
+# Raw ledger records stay per machine: the reviewed Markdown under .forge/brain/facts/,
+# .forge/lessons/ and .forge/decisions.md (portableMemory) is what a new checkout rebuilds them from
+.forge/ledger/*
+!.forge/ledger/.gitignore
 
 # IDE
 .vscode/*
