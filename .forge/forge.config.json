@@ -14,5 +14,6 @@
     "exclude": [
       "packages/bayan"
     ]
-  }
+  },
+  "portableMemory": true
 }

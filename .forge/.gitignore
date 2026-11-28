@@ -6,3 +6,5 @@ atlas.cache.json
 metrics.jsonl
 provenance.json
 runtime-map.json
+jev-memory.jsonl
+jev-skills.json

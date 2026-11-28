@@ -25,6 +25,8 @@ watched() {
   case "$1" in
     .claude/settings.json | .claude/settings.local.json | .mcp.json | opencode.json | AGENTS.md) return 0 ;;
     .claude/hooks/* | .claude/agents/* | .claude/commands/*) return 0 ;;
+    # Skills are instructions every agent loads; ForgeKit's Jev now writes learned ones itself.
+    .claude/skills/* | .agents/skills/*) return 0 ;;
     .codex/* | .gemini/* | .cursor/* | .github/hooks/* | .opencode/* | .forge/*) return 0 ;;
     .vscode/mcp.json | .roo/* | .zed/* | .continue/* | .kimi-code/* | .openclaw/* | .pi/* | .hermes/*) return 0 ;;
     .aider.conf.yml | scripts/ci/agent-config-guard.sh) return 0 ;;
