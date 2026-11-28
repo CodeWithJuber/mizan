@@ -69,6 +69,41 @@ export interface Agent {
   model?: string;
   provider?: string;
   system_prompt?: string;
+  // Personal agents (older servers send none of these: read them as optional).
+  /** The person who made it; null for the server's own agents. */
+  owner_id?: string | null;
+  /** Everyone on the server may chat with it (only an admin can share one). */
+  shared?: boolean;
+  /** The signed-in person may edit and delete it. */
+  editable?: boolean;
+  /** Answers when the person has not picked an agent. */
+  is_default?: boolean;
+  /** What the builder sets; read through `agentSettingsFrom`, never directly. */
+  settings?: Partial<AgentSettings> | null;
+  /** The tools it may use after its allow and deny lists. */
+  effective_tools?: string[];
+  /** Why its provider or model may not answer (no key, unknown model). */
+  provider_warning?: string | null;
+}
+
+export type AgentEffort = "low" | "medium" | "high" | "xhigh" | "max";
+export type AgentOrchestration = "mizan" | "hybrid" | "llm";
+
+/** An agent's own settings: null = the server's default, an empty list = no restriction. */
+export interface AgentSettings {
+  temperature: number | null;
+  effort: AgentEffort | null;
+  max_steps: number | null;
+  max_output_tokens: number | null;
+  orchestration: AgentOrchestration | null;
+  permission_mode: import("./utils/agentActivity").PermissionMode | null;
+  tools_allow: string[];
+  tools_deny: string[];
+  connectors: string[];
+  skills: string[];
+  starter_prompts: string[];
+  avatar: string | null;
+  learn_skills: boolean;
 }
 
 // ===== Yaqin Certainty Types =====

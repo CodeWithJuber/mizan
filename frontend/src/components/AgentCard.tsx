@@ -1,4 +1,8 @@
+import { Star, TriangleAlert } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import type { Agent } from "../types";
+import { AGENT_AVATAR_MAX, agentSettingsFrom, agentTools, textLength } from "../utils/agentSettings.ts";
 
 export const NAFS_LEVELS: Record<
   number,
@@ -23,6 +27,24 @@ const STATE_COLORS: Record<string, string> = {
   error: "bg-red-100 dark:bg-red-500/15 text-red-600 dark:text-red-400",
 };
 
+/** The agent's own avatar (an emoji or a few letters), else its initial. */
+export function AgentAvatar({ agent, className }: { agent: Pick<Agent, "name" | "settings">; className?: string }) {
+  // A longer avatar (an image link from another client) shows as the initial here.
+  const saved = agentSettingsFrom(agent.settings).avatar;
+  const avatar = saved && textLength(saved) <= AGENT_AVATAR_MAX ? saved : null;
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted font-semibold text-brand",
+        className,
+      )}
+    >
+      {avatar ?? (agent.name[0]?.toUpperCase() || "A")}
+    </span>
+  );
+}
+
 interface AgentCardProps {
   agent: Agent;
   selected: boolean;
@@ -31,6 +53,7 @@ interface AgentCardProps {
 
 export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
   const nafs = NAFS_LEVELS[agent.nafs_level] || NAFS_LEVELS[1];
+  const tools = agentTools(agent);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -50,9 +73,7 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
       aria-label={`Agent ${agent.name}, ${nafs.desc}, ${agent.state}`}
     >
       <div className="flex items-start gap-3 mb-3">
-        <div className="w-10 h-10 rounded-full bg-muted border border-border flex items-center justify-center text-mizan-gold font-semibold text-sm shrink-0">
-          {agent.name[0]?.toUpperCase() || "A"}
-        </div>
+        <AgentAvatar agent={agent} className="size-10 text-sm" />
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm text-foreground truncate">
             {agent.name}
@@ -60,6 +81,20 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
           <div className="text-xs text-muted-foreground font-mono uppercase tracking-wide">
             {agent.role}
           </div>
+          {(agent.is_default || agent.shared !== undefined) && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {agent.is_default && (
+                <Badge>
+                  <Star /> Default
+                </Badge>
+              )}
+              {agent.shared !== undefined && (
+                <Badge variant="outline" title={agent.shared ? "Everyone on this server can chat with it" : "Only you can see it"}>
+                  {agent.shared ? "Shared" : "Private"}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
         <span
           className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATE_COLORS[agent.state] || STATE_COLORS.resting}`}
@@ -152,16 +187,16 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
         ))}
       </div>
 
-      {(agent.tools || []).length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {(agent.tools || []).slice(0, 4).map((t) => (
+      {tools.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2" title={tools.join(", ")}>
+          {tools.slice(0, 4).map((t) => (
             <span key={t} className="tool-tag">
               {t}
             </span>
           ))}
-          {(agent.tools || []).length > 4 && (
-            <span className="text-xs px-1.5 py-0.5 bg-muted rounded text-gray-400 font-mono">
-              +{(agent.tools || []).length - 4}
+          {tools.length > 4 && (
+            <span className="text-xs px-1.5 py-0.5 bg-muted rounded text-muted-foreground font-mono">
+              +{tools.length - 4}
             </span>
           )}
         </div>
@@ -169,10 +204,17 @@ export function AgentCard({ agent, selected, onClick }: AgentCardProps) {
 
       {agent.model && (
         <div className="mt-2 flex items-center gap-1.5">
-          <span className="text-xs px-2 py-0.5 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 rounded text-purple-600 dark:text-purple-400 font-mono truncate">
+          <span className="text-xs px-2 py-0.5 bg-muted border border-border rounded text-muted-foreground font-mono truncate">
             {agent.model}
           </span>
         </div>
+      )}
+
+      {agent.provider_warning && (
+        <p className="mt-2 flex items-start gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-xs text-foreground">
+          <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
+          <span className="min-w-0 wrap-break-word">{agent.provider_warning}</span>
+        </p>
       )}
     </div>
   );

@@ -1224,6 +1224,55 @@ def test_failed_chat_retains_safe_code_final_usage_and_receipt(
         assert metadata["usage_incomplete"] is False
 
 
+@pytest.mark.parametrize("transport", ["sse", "websocket"])
+def test_a_chat_answers_when_the_approval_store_cannot_be_opened(api, monkeypatch, transport):
+    # Every chat binds an approval context, which reads what the person allowed "always"
+    # from $MIZAN_DATA_DIR. A data directory that cannot be created (a non-root server whose
+    # MIZAN_DATA_DIR is unset falls back to /data/mizan) must neither fail the chat nor leave
+    # a WebSocket client waiting for a frame that never comes.
+    main, client, tokens, _, _, agent, _ = api
+    monkeypatch.setenv("MIZAN_DATA_DIR", "/proc/mizan-no-such-dir")
+    body = message(session=f"no-store-{transport}")
+    if transport == "sse":
+        response = client.post("/api/chat/stream", json=body, headers=headers(tokens["alice"]))
+        assert frames(response.text)[-1]["type"] == "chat_complete"
+        return
+
+    async def answer(content, context, **callbacks):
+        await callbacks["stream_callback"]("ok")
+        return {"success": True, "result": "ok", "usage": {}}
+
+    monkeypatch.setattr(agent, "execute", answer)
+    monkeypatch.setattr(main, "manager", main.ConnectionManager())
+    monkeypatch.setattr(
+        main, "get_provider_status", lambda: {"active": "fixture", "default_model": "fixture"}
+    )
+    monkeypatch.setattr(
+        main,
+        "wali",
+        SimpleNamespace(
+            audit=SimpleNamespace(log=lambda *args: None),
+            check_rate_limit=lambda *args: {"allowed": True},
+        ),
+    )
+    received: list[dict] = []
+
+    def talk():
+        with client.websocket_connect("/ws/no-store?token=" + tokens["alice"]) as websocket:
+            received.append(websocket.receive_json())
+            websocket.send_json({"type": "chat", **body})
+            while received[-1]["type"] not in {"chat_complete", "error"}:
+                received.append(websocket.receive_json())
+
+    # In a thread joined with a timeout: before the fix the client waited forever.
+    worker = threading.Thread(target=talk, daemon=True)
+    worker.start()
+    worker.join(30)
+    assert not worker.is_alive(), "the WebSocket chat never sent its last frame"
+    assert received[-1]["type"] == "chat_complete"
+    assert received[-1]["content"] == "ok"
+
+
 def test_ruh_status_distinguishes_configuration_from_loaded_model(api, monkeypatch, tmp_path):
     main, client, tokens, _, _, agent, _ = api
     agent.ai_client = SimpleNamespace(provider_name="ruh", _loaded=False)

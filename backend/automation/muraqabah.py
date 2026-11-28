@@ -396,6 +396,9 @@ class Store:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(notices)")}
             if "meta" not in columns:  # actions a task held for the owner's approval
                 conn.execute("ALTER TABLE notices ADD COLUMN meta TEXT")
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(watchers)")}
+            if "agent_id" not in columns:  # the agent that runs the task (none: default)
+                conn.execute("ALTER TABLE watchers ADD COLUMN agent_id TEXT")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=10)
@@ -429,7 +432,14 @@ class Store:
         return _watcher(rows[0]) if rows else None
 
     def add(
-        self, owner: str, title: str, trigger: dict, task: str, priority: str = "judge"
+        self,
+        owner: str,
+        title: str,
+        trigger: dict,
+        task: str,
+        priority: str = "judge",
+        *,
+        agent_id: str | None = None,
     ) -> dict:
         if len(self.watchers(owner)) >= MAX_WATCHERS:
             raise ValueError(f"At most {MAX_WATCHERS} watchers")
@@ -440,10 +450,10 @@ class Store:
         watcher_id = uuid.uuid4().hex[:12]
         self._run(
             "INSERT INTO watchers (id, owner_id, title, trigger, task, priority, enabled, created, "
-            "next_due) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
+            "next_due, agent_id) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)",
             (watcher_id, owner, title[:120], json.dumps(trigger), task[:1000],
              "always" if priority == "always" else "judge", _utc(datetime.now(UTC)),
-             _utc(due) if due else None),
+             _utc(due) if due else None, (agent_id or None) and str(agent_id)[:100]),
         )  # fmt: skip
         return self.watcher(owner, watcher_id) or {}
 
@@ -456,6 +466,11 @@ class Store:
             for k, v in changes.items()
             if k in {"title", "task", "priority", "enabled"} and v is not None
         }
+        agent_fields = (
+            {"agent_id": str(changes["agent_id"])[:100] or None}
+            if changes.get("agent_id") is not None
+            else {}
+        )
         trigger = (
             validate_trigger(changes["trigger"]) if changes.get("trigger") else current["trigger"]
         )
@@ -467,6 +482,7 @@ class Store:
         fields["trigger"] = json.dumps(trigger)
         if "enabled" in fields:
             fields["enabled"] = 1 if fields["enabled"] else 0
+        fields.update(agent_fields)
         assignments = ", ".join(f"{key} = ?" for key in fields)  # keys from the fixed set above
         self._run(
             f"UPDATE watchers SET {assignments} WHERE owner_id = ? AND id = ?",  # noqa: S608
@@ -665,8 +681,12 @@ async def fire(
     else:
         from security.approvals import collecting_held
 
-        with collecting_held() as found:
-            result = await run_task(owner, watcher["task"])
+        token = _agent.set(watcher.get("agent_id"))
+        try:
+            with collecting_held() as found:
+                result = await run_task(owner, watcher["task"])
+        finally:
+            _agent.reset(token)
         held = found
         if held:
             waiting = ", ".join(sorted({item["tool"] for item in held}))
@@ -737,6 +757,7 @@ async def tick(store: Store, now: datetime, *, run_task: RunTask, deliver: Deliv
 
 _STORES: dict[str, Store] = {}
 _inside: ContextVar[bool] = ContextVar("mizan_inside_watcher", default=False)
+_agent: ContextVar[str | None] = ContextVar("mizan_watcher_agent", default=None)
 
 
 def default_store() -> Store:
@@ -758,6 +779,11 @@ def running_watcher() -> Iterator[None]:
 
 def inside_watcher() -> bool:
     return _inside.get()
+
+
+def current_watcher_agent() -> str | None:
+    """The agent the running watcher names (None: the owner's default agent)."""
+    return _agent.get()
 
 
 def session_id(owner: str) -> str:

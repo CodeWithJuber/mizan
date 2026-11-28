@@ -150,12 +150,15 @@ Results also carry `orchestrator: "mizan"`. The chat shows "Done by MIZAN" and
 ## Modes
 
 Admins set `MIZAN_ORCHESTRATION` in Settings → Developer → System settings. It applies
-immediately.
+immediately. Each agent may choose its own (`settings.orchestration` on the agent,
+[personal-agents.md](personal-agents.md)); `null` follows the server's setting. The
+mode is bound for each run of that agent (`tadbir.engine.bind_mode`), so two agents
+in one chat team can work differently.
 
 | Mode | Behaviour |
 |------|-----------|
-| `mizan` (default) | MIZAN performs every action, and **the model never controls a tool**. A request with no recipe or plan is answered in words through the full chat pipeline (memory, persona, history, streaming), with zero tools offered, not even tool discovery. `strict` is accepted as the former name. |
-| `hybrid` | Tadbir handles what it understands. Anything else goes to the model-driven agent loop, which keeps the capability and execution guards. This was the default before. |
+| `hybrid` (default) | Tadbir runs its recipes (Quran, hadith, Sarf, computing, code, projects, dates, web search and reading, memory). The model-driven agent loop takes everything else, and chains tools itself: a request MIZAN does not recognise, a request for a connected tool (`use_tool`), a request of several parts none of which is scripture, and any request on which Tadbir itself failed. The loop keeps the capability and execution guards (approvals, Amanah, Hudud, the sandbox for non-admins), and Sidq still checks every Quran and hadith quote in the model's words. A request with a Quran or hadith part stays with MIZAN, whose text comes from the source. |
+| `mizan` | MIZAN performs every action, and **the model never controls a tool**. A request with no recipe or plan is answered in words through the full chat pipeline (memory, persona, history, streaming), with zero tools offered, not even tool discovery. `strict` is accepted as the former name. This was the default until the personal-agents change. |
 | `llm` | Tadbir is off. The model drives the agent loop as before. |
 
 ## Learning automatically

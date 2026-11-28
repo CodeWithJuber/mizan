@@ -49,12 +49,16 @@ export function useAgents() {
   });
 }
 
-/** The chatting agent: the saved choice when it still exists, else the first. */
+/** The chatting agent: the saved choice when it still exists, else the person's default, else the first. */
+export function pickSelectedAgent(agents: Agent[] | undefined, id: string | null): Agent | null {
+  if (!agents?.length) return null;
+  return agents.find((agent) => agent.id === id) ?? agents.find((agent) => agent.is_default) ?? agents[0];
+}
+
 export function useSelectedAgent(): Agent | null {
   const { data: agents } = useAgents();
   const id = useSelectedAgentId((state) => state.id);
-  if (!agents?.length) return null;
-  return agents.find((agent) => agent.id === id) ?? agents[0];
+  return pickSelectedAgent(agents, id);
 }
 
 export function useRefreshAgents() {

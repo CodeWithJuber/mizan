@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { config } from "../../config";
 import { authFetch } from "../../utils/authFetch";
 import { addToast } from "../../components/Toast";
-import { savePermissionMode } from "../../components/PermissionModeSwitch";
 import { allowedLabel } from "../../utils/agentActivity";
 import { useChatActions, useChatState } from "./ChatProvider";
 
@@ -71,10 +70,8 @@ export function PlanApproval() {
   }
   const run = () => {
     const mode = permissionMode === "plan" ? "auto_edits" : permissionMode;
-    if (permissionMode === "plan") {
-      savePermissionMode(mode);
-      actions.setPermissionMode(mode);
-    }
+    // Leaving plan mode is for this chat only: the next chats keep the person's own default.
+    if (permissionMode === "plan") actions.setPermissionMode(mode, { remember: false });
     void actions.sendMessage("Run the approved plan", { planApproved: true, permissionMode: mode });
   };
   return (

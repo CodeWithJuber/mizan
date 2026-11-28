@@ -298,6 +298,13 @@ def _sentence(text: str, start: int, end: int) -> tuple[int, int]:
     return left, right
 
 
+def beyond_instructions(text: str, source: str = "") -> list[dict]:
+    """Findings in text whose whole point is to instruct the AI (an agent's persona, a
+    skill): plain instructions are expected there, so only the rest counts: overriding
+    MIZAN's rules, concealment from the user, exfiltration links, hidden text."""
+    return [finding for finding in scan(text, source) if finding.get("kind") != "instruction"]
+
+
 def neutralize(text: str) -> tuple[str, list[dict]]:
     """The text with hidden characters removed and each instruction replaced by a marker."""
     findings = scan(text)

@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import threading
@@ -35,6 +36,8 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+logger = logging.getLogger("mizan.approvals")
 
 MODES = ("auto", "auto_edits", "ask", "plan")
 APPROVAL_TIMEOUT_SECONDS = 600
@@ -77,9 +80,19 @@ EDIT_TOOLS = frozenset(
 )
 
 
-# Send something to a site on the user's behalf (a form, an order): a person
-# decides each time, whatever the chat's mode, and never with no one to ask.
-ALWAYS_ASK_TOOLS = frozenset({"shahid_submit"})
+def always_ask_tools() -> frozenset[str]:
+    """Tools a person decides each time, whatever the chat's mode, and never with no
+    one to ask (``MIZAN_ALWAYS_ASK_TOOLS``, comma-separated; empty by default: the
+    permission mode decides for every tool)."""
+    raw = os.getenv("MIZAN_ALWAYS_ASK_TOOLS", "")
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
+def default_mode() -> str:
+    """The permission mode of a chat that sends none (``MIZAN_DEFAULT_PERMISSION_MODE``)."""
+    mode = os.getenv("MIZAN_DEFAULT_PERMISSION_MODE", "auto").strip().lower()
+    return mode if mode in MODES else "auto"
+
 
 # Runs inside MIZAN's isolated sandbox (no host access, egress allowlist):
 # unattended runs may use it without a person present.
@@ -141,7 +154,7 @@ class ApprovalContext:
         self, tool_name: str, read_only_hint: bool = False, params: dict | None = None
     ) -> bool:
         category = tool_category(tool_name, read_only_hint, params)
-        if tool_name in ALWAYS_ASK_TOOLS:
+        if tool_name in always_ask_tools():
             return True
         if category == "read" or always_key(tool_name, params) in self.always:
             return False
@@ -360,7 +373,13 @@ def chat_context(owner_id: str, session_id: str, mode: str) -> ApprovalContext:
     """The approval context of a message in a web chat: a person is reading it, and
     what they allowed "always" in this chat before still holds."""
     context = ApprovalContext(owner_id, session_id, mode, interactive=True, persist_always=True)
-    context.always |= chat_always_store().keys(owner_id, session_id)
+    try:
+        context.always |= chat_always_store().keys(owner_id, session_id)
+    except (OSError, sqlite3.Error) as error:
+        # The store lives in MIZAN_DATA_DIR; when it cannot be opened the chat goes on with
+        # no remembered grants, so the person is asked again: never fewer questions, and
+        # never a refused message.
+        logger.warning("Earlier 'always' grants could not be read for this chat: %s", error)
     _live.add(context)
     return context
 

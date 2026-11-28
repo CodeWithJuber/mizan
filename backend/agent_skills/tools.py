@@ -30,9 +30,12 @@ def skill_content(skill: AgentSkill) -> str:
     )
 
 
-def tool_schemas(user_id: str, workspace_id: str | None) -> list[dict]:
-    """Schemas for this user, or none at all when no skill is available."""
+def tool_schemas(user_id: str, workspace_id: str | None, only=None) -> list[dict]:
+    """Schemas for this user, or none at all when no skill is available. ``only``
+    (a predicate on the skill's name) keeps the skills an agent is set to use."""
     skills = available_skills(user_id, workspace_id)
+    if only is not None:
+        skills = {name: skill for name, skill in skills.items() if only(name)}
     if not skills:
         return []
     catalog = "\n".join(f"- {name}: {skill.description}" for name, skill in skills.items())

@@ -4,7 +4,7 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-308 routes in 61 areas.
+313 routes in 61 areas.
 
 Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tadrib](#tadrib) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
@@ -26,12 +26,17 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 
 | Method | Path | Who | What it does |
 |---|---|---|---|
-| GET | `/api/agents` | user (more for admin) | List all agents with their Nafs profile; ``detail=false`` gives each in a few fields, and ``limit``/``offset`` page through them. |
-| POST | `/api/agents` | admin | Resolve a provider once and persist the validated agent before publishing it. |
-| DELETE | `/api/agents/{agent_id}` | admin | Delete agent |
-| GET | `/api/agents/{agent_id}` | user (more for admin) | Get agent |
-| PUT | `/api/agents/{agent_id}` | admin | Update an existing agent's name, model, or system prompt. |
-| POST | `/api/agents/{agent_id}/model` | admin | Set model for a specific agent (does not affect other agents). |
+| GET | `/api/agents` | user (more for admin) | The agents you may use (shared ones and your own; administrators see all) with their Nafs profile and settings; ``detail=false`` gives each in a few fields, and ``limit``/``offset`` page through them. |
+| POST | `/api/agents` | user | A new agent: an administrator's is shared with everyone unless ``shared`` is false; anyone else's is their own, seen and changed by them alone. |
+| GET | `/api/agents/default` | user | Your default agent: it answers your chats that name none, your Telegram, email and WhatsApp messages and your watchers' tasks (None: Khalifah). |
+| PUT | `/api/agents/default` | user | Choose your default agent (one you may use); null goes back to Khalifah. |
+| POST | `/api/agents/import` | user | An agent exported with GET /api/agents/{id}/export, made again as yours. Its persona is read by Amanah first: one that tries to override MIZAN's rules, hide something from the user or send their data away is refused. |
+| DELETE | `/api/agents/{agent_id}` | user | Delete an agent you own (administrators: any); its saved profile goes too. |
+| GET | `/api/agents/{agent_id}` | user | One agent you may use, with its settings and the tools its model is offered. |
+| PUT | `/api/agents/{agent_id}` | user | Change an agent's name, model, persona or settings (each setting merged on its own; null resets it). Its record (tasks, success, Nafs) is kept. |
+| POST | `/api/agents/{agent_id}/clone` | user | A copy of an agent you may use, as your own ("<name> (copy)"). The persona is copied only when you may see it. |
+| GET | `/api/agents/{agent_id}/export` | user | The agent as ``mizan-agent/1`` JSON, for POST /api/agents/import here or on another server (no keys, no memory, no record). The persona is included only when you may see it. |
+| POST | `/api/agents/{agent_id}/model` | user | Set the model of an agent you own (administrators: any); others keep theirs. |
 
 ## artifacts
 
@@ -50,7 +55,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/auth/api-key` | user | Create an API key for the authenticated user |
 | POST | `/api/auth/login` | public | Authenticate and get JWT token |
 | POST | `/api/auth/logout` | user | End this token now (it stays revoked across restarts); with ``everywhere``, every token the account was given before now. |
-| GET | `/api/auth/me` | user | Who this credential belongs to, its roles, and when the token expires. |
+| GET | `/api/auth/me` | user | Who this credential belongs to, its roles, when the token expires, and the server's default permission mode for chats. |
 | POST | `/api/auth/register` | public | Register a new user aged 16 or older (docs/consent.md): chats with an Islamic assistant reveal religious belief, a special category of personal data, and a younger child needs a parent's consent. |
 
 ## automation
@@ -379,7 +384,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | Method | Path | Who | What it does |
 |---|---|---|---|
 | GET | `/api/providers` | user | List all LLM providers with their status, models, and configuration. Inspired by OpenClaw's multi-provider architecture. |
-| POST | `/api/providers/switch` | admin | Switch the active LLM provider and model for all agents. Persists choice to database so it survives restarts. |
+| POST | `/api/providers/switch` | admin | Switch the default LLM provider and model: every agent that follows the default moves; an agent given its own provider and model keeps them. Persists choice to database so it survives restarts. |
 | GET | `/api/providers/{provider_name}/health` | user | Health check for a specific provider. Verifies API keys are valid and the provider is reachable. |
 | GET | `/api/providers/{provider_name}/models` | user | List available models for a specific provider. For OpenRouter: fetches the live catalog with search/filter/pagination. For Ollama: fetches locally installed models. |
 

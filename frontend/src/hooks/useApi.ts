@@ -17,6 +17,27 @@ export class ApiError extends Error {
   }
 }
 
+/** What went wrong, from the server's error envelope (`detail` + `error.message`). */
+export function apiErrorMessage(data: Record<string, unknown>): string {
+  if (typeof data.detail === "string" && data.detail) return data.detail;
+  // A validation error lists where and why: name the first few fields.
+  if (Array.isArray(data.detail)) {
+    const lines = data.detail.slice(0, 2).flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const { loc, msg } = item as { loc?: unknown; msg?: unknown };
+      if (typeof msg !== "string") return [];
+      const field = Array.isArray(loc) ? loc.filter((part) => part !== "body").join(".") : "";
+      return [field ? `${field}: ${msg}` : msg];
+    });
+    if (lines.length) return lines.join("; ");
+  }
+  const error = data.error;
+  if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") {
+    return (error as { message: string }).message;
+  }
+  return typeof error === "string" ? error : "";
+}
+
 async function handleResponse(res: Response): Promise<Record<string, unknown>> {
   let data: Record<string, unknown> = {};
   try {
@@ -25,10 +46,7 @@ async function handleResponse(res: Response): Promise<Record<string, unknown>> {
     // non-JSON body — keep empty
   }
   if (!res.ok) {
-    const msg =
-      (typeof data.detail === "string" && data.detail) ||
-      (typeof data.error === "string" && data.error) ||
-      (isRestarting(res) ? RESTART_MESSAGE : `Request failed (${res.status})`);
+    const msg = apiErrorMessage(data) || (isRestarting(res) ? RESTART_MESSAGE : `Request failed (${res.status})`);
     throw new ApiError(res.status, msg);
   }
   return data;

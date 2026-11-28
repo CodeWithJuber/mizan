@@ -1,5 +1,8 @@
 /** Izn mode for the next chat request: how much the agent may do without asking. */
 import { PERMISSION_MODES, type PermissionMode } from "../utils/agentActivity";
+import {
+  loadPermissionMode as loadMode, PERMISSION_STORAGE_KEY, rememberPermissionMode,
+} from "../utils/permissionMode";
 
 export const PERMISSION_LABELS: Record<PermissionMode, { title: string; hint: string }> = {
   auto_edits: { title: "Auto edits", hint: "Edits project files; asks before running commands or external actions" },
@@ -8,23 +11,15 @@ export const PERMISSION_LABELS: Record<PermissionMode, { title: string; hint: st
   auto: { title: "Full auto", hint: "Runs every permitted tool without asking" },
 };
 
-export const STORAGE_KEY = "mizan_permission_mode";
+export const STORAGE_KEY = PERMISSION_STORAGE_KEY;
 
 export function savePermissionMode(mode: PermissionMode) {
-  try {
-    localStorage.setItem(STORAGE_KEY, mode);
-  } catch {
-    // per-viewer convenience only
-  }
+  rememberPermissionMode(mode);
 }
 
-export function loadPermissionMode(): PermissionMode {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY) as PermissionMode | null;
-    return saved && PERMISSION_MODES.includes(saved) ? saved : "auto_edits";
-  } catch {
-    return "auto_edits";
-  }
+/** The saved choice, else the server's default (when given), else "auto". */
+export function loadPermissionMode(serverDefault?: unknown): PermissionMode {
+  return loadMode(serverDefault);
 }
 
 export default function PermissionModeSwitch({
@@ -39,7 +34,7 @@ export default function PermissionModeSwitch({
         disabled={disabled}
         onChange={(event) => {
           const next = event.target.value as PermissionMode;
-          try { localStorage.setItem(STORAGE_KEY, next); } catch { /* per-viewer convenience only */ }
+          rememberPermissionMode(next);
           onChange(next);
         }}
         aria-label="Agent permission mode"

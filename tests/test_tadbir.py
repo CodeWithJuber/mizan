@@ -618,7 +618,7 @@ async def test_search_answer_keeps_only_supported_citations(agent, monkeypatch):
 
 
 async def test_modes_route_unknown_requests(agent, monkeypatch):
-    # mizan (default): the model answers in words and is given no tools at all.
+    # mizan: the model answers in words and is given no tools at all.
     agent.ai_client = ScriptedProvider(["Recursion is a function calling itself."])
     result = await agent.execute("Explain recursion simply")
     assert result["result"] == "Recursion is a function calling itself."

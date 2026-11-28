@@ -131,3 +131,14 @@ def test_the_web_chat_seeds_what_was_allowed_before(api, monkeypatch):
     (context,) = seen
     assert context.interactive and context.persist_always
     assert "workspace_run" in context.always
+
+
+def test_a_chat_is_still_asked_when_the_always_store_cannot_be_opened(monkeypatch, caplog):
+    # A data directory that cannot be created (a non-root server whose MIZAN_DATA_DIR is
+    # unset falls back to /data/mizan): the chat goes on with no remembered grants, so the
+    # person is asked again rather than the message failing.
+    monkeypatch.setenv("MIZAN_DATA_DIR", "/proc/mizan-no-such-dir")
+    context = chat_context("alice", "chat-1", "ask")
+    assert context.always == set()
+    assert context.needs_approval("workspace_run")
+    assert "always" in caplog.text.lower()

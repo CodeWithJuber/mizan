@@ -95,7 +95,7 @@ Then open `http://localhost:3100` for the web app. The API is on `http://localho
 ## Features
 
 **Understanding and orchestration**
-- **Tadbir** ([docs/tadbir.md](docs/tadbir.md)): MIZAN plans, runs every tool and verifies. `MIZAN_ORCHESTRATION=mizan` (the default) means the model never controls a tool. **Majlis** gives each part to the best agent by Thompson sampling.
+- **Tadbir** ([docs/tadbir.md](docs/tadbir.md)): MIZAN plans, runs every tool and verifies. `MIZAN_ORCHESTRATION=hybrid` (the default) runs MIZAN's recipes and lets the model chain tools for the rest; `mizan` means the model never controls a tool. Every user can make **personal agents** of their own ([docs/personal-agents.md](docs/personal-agents.md)). **Majlis** gives each part to the best agent by Thompson sampling.
 - **Fahm by evidence** ([docs/fahm.md](docs/fahm.md)): weighted naive Bayes with leave-one-out-fitted smoothing, weights and a length exponent. The decision is MAP, with "converse" as one of the classes.
 - **Ta'lim** ([docs/talim.md](docs/talim.md)): administrators teach new intents or languages, typed or imported from Hugging Face. A batch is kept only when it makes no known example worse.
 
