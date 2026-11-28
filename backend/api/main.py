@@ -2217,7 +2217,12 @@ async def chat_context(
     handoff = None
     from memory import azm
 
-    if not history and not recall_off and azm.kept_for(user.user_id):
+    # learning: off keeps nothing for the person, and so starts them from nothing kept.
+    learning_off = not stateless.learns() or any(
+        item["key"] == "learning" and str(item["value"]).strip().lower() == "off"
+        for item in preferences
+    )
+    if not history and not recall_off and not learning_off and azm.kept_for(user.user_id):
         try:
             handoff = await asyncio.to_thread(
                 azm.opening,
@@ -3655,6 +3660,8 @@ class ElicitationAnswer(BaseModel):
 
     action: str = Field(..., pattern=r"^(accept|decline|cancel)$")
     content: dict[str, Any] | None = Field(default=None, max_length=100)
+    # The chat the answer is given in: given, it must be the chat that asked.
+    session_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 @app.post("/api/chat/elicitations/{elicitation_id}")
@@ -3669,7 +3676,11 @@ async def answer_chat_elicitation(
     from connectors.elicitation import broker as elicitations
 
     if not re.fullmatch(r"[0-9a-f]{32}", elicitation_id) or not elicitations.resolve(
-        user.user_id, elicitation_id, body.action, body.content if body.action == "accept" else None
+        user.user_id,
+        elicitation_id,
+        body.action,
+        body.content if body.action == "accept" else None,
+        session_id=body.session_id,
     ):
         raise HTTPException(404, "No pending question with that id")
     from security import sakk

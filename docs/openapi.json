@@ -24580,6 +24580,19 @@
        }
       ],
       "title": "Content"
+     },
+     "session_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Session Id"
      }
     },
     "type": "object",

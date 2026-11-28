@@ -135,9 +135,12 @@ signs in. The agent never waits on a browser window.
   something during a tool call. In an interactive chat it arrives as the live
   event `elicitation` (`{id, server, message, schema}`, or `url` for a page to
   open); the person answers with `POST /api/chat/elicitations/{id}`
-  `{action: "accept" | "decline" | "cancel", content?}` within 5 minutes. An
-  accepted answer must fit the server's schema. With no one watching (an
-  unattended run, the API), MIZAN declines.
+  `{action: "accept" | "decline" | "cancel", content?, session_id?}` within 5
+  minutes. Only the person whose run asked can answer, and with `session_id`
+  (the web chat sends it) only from the chat that asked. An accepted answer must
+  fit the server's schema. With no one watching (an unattended run, the API),
+  MIZAN declines. MIZAN's own question before a guessed action uses the same
+  card ([tabayyun.md](tabayyun.md)).
 - **Progress.** Progress a server reports during a call reaches the chat as the
   live event `tool_progress` (`{tool, server, progress, total, message}`).
 - **Tool list changes.** When a server says its tools changed

@@ -259,7 +259,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const response = await authFetch(`${config.API_URL}/chat/elicitations/${encodeURIComponent(id)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(content ? { action, content } : { action }),
+      // The chat answering it: the server accepts the answer only from the chat that asked.
+      body: JSON.stringify({ action, ...(content ? { content } : {}), session_id: sessionIdRef.current }),
     }).catch(() => null);
     applyActivity({ type: "elicitation_resolved", id, action: response?.ok ? action : "expired" });
   }, [applyActivity]);

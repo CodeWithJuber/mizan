@@ -32,6 +32,12 @@ A snapshot of at most 8 KB (8192 UTF-8 bytes) rewritten, never appended, at the 
 
 The writer selects rows in that order until the snapshot fits, so what is written is exactly what is read. Every heading stays, and a section that lost rows ends with "(+N more not kept)": a drop is never silent. A row longer than a quarter of the budget is cut, so one long answer cannot push out the rest, and anything shaped like a credential is replaced with `[redacted]`.
 
+The hand-off is never a way for outside text to reach a later chat:
+
+- every row is read by Amanah before it is kept, and a row it reads as an instruction to the AI is dropped (the same check a decision passes);
+- a run that read outside text with an instruction in it (a page, a file, a tool result, pasted text: Amanah's taint, `amanah.ignored`) keeps nothing the model wrote in it: no last answer, no plan steps, no question it would have asked; only the goal, the person's last request and the decisions;
+- when a later chat reads it, the text is neutralized and fenced like outside text (`amanah.guard`, `<<untrusted …>>`), framed as data and not instructions, and an instruction found in it then taints that run as well.
+
 ### Where it is read
 
 A new chat (one with no earlier turns) starts with a hand-off in its context, as a block the model reads as MIZAN's note, not as the person's request (`[HAND-OFF …]` in `BaseAgent._build_messages`; the current request wins):
@@ -39,7 +45,7 @@ A new chat (one with no earlier turns) starts with a hand-off in its context, as
 - **on a project**: the project's hand-off, written by another chat on it;
 - **with an agent**, no project: the agent's hand-off, only when the new request is about what that one was about (one shared distinctive concept or more, `niyyah.related`), so "write a poem" does not start from a booking service.
 
-A chat never gets its own hand-off back. It is carried across chats like recall, so a stateless chat and the preference `cross_chat_recall: off` get none ([daftar.md](daftar.md)).
+A chat never gets its own hand-off back. It is carried across chats like recall, so a stateless chat, the preference `cross_chat_recall: off` and `learning: off` get none ([daftar.md](daftar.md), [consent.md](consent.md)).
 
 ## Never failing a chat
 

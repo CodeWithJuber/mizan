@@ -72,7 +72,8 @@ class Inquiry:
     task: str
     history: list[dict]
     words: str
-    seen: list[str] = field(default_factory=list)
+    # What this request's tools returned when they worked: {"text", "raw", "clean"}.
+    seen: list[dict] = field(default_factory=list)
     calls: list[dict] = field(default_factory=list)
     answers: list[str] = field(default_factory=list)
     understood: dict | None = None
@@ -80,12 +81,12 @@ class Inquiry:
     # The id of the person's message this request answers, when the chat saved it.
     source: str = ""
 
-    def grounded(self) -> str:
-        """Everything a reference may come from, normalized."""
+    def own(self) -> str:
+        """The person's words (with their answers) and the chat's own ids, normalized."""
         from workspace.context import bound_workspace_id, current_chat_session
 
         bound = " ".join(item for item in (bound_workspace_id(), current_chat_session()) if item)
-        return "\n".join([self.words, *self.answers, *self.seen, _norm(bound)])
+        return "\n".join([self.words, *self.answers, _norm(bound)])
 
 
 _run: ContextVar[Inquiry | None] = ContextVar("mizan_tabayyun", default=None)
@@ -151,9 +152,20 @@ def observe(tool: str, params: Any, result: Any, category: str) -> None:
         text = json.dumps(result, ensure_ascii=False, default=str)
     except (TypeError, ValueError):
         text = str(result)
-    inquiry.seen.append(_norm(text[:20_000]))
-    while sum(len(part) for part in inquiry.seen) > SEEN_CHARS and len(inquiry.seen) > 1:
+    raw = text[:20_000]
+    inquiry.seen.append({"text": _norm(raw), "raw": raw, "clean": None})
+    while sum(len(part["text"]) for part in inquiry.seen) > SEEN_CHARS and len(inquiry.seen) > 1:
         inquiry.seen.pop(0)
+
+
+def _clean(entry: dict) -> bool:
+    """A tool result is evidence only when Amanah finds no instruction to the AI in it
+    (read once, when a reference would rest on it)."""
+    if entry.get("clean") is None:
+        from . import amanah
+
+        entry["clean"] = not amanah.scan(str(entry.get("raw") or ""))
+    return bool(entry["clean"])
 
 
 # ── (c) references, and whether the person gave them ─────────────────────
@@ -241,6 +253,18 @@ def _given(piece: str, grounded: str, numbers: set[float], digits: str) -> bool:
     return False
 
 
+class _Haystack:
+    """One text references are looked for in, with its numbers and digits read once."""
+
+    def __init__(self, text: str):
+        self.text = text
+        self.numbers = _numbers(text)
+        self.digits = re.sub(r"\D", "", text)
+
+    def has(self, piece: str) -> bool:
+        return _given(piece, self.text, self.numbers, self.digits)
+
+
 def _required(schema: dict | None) -> tuple[list[str], dict]:
     if not isinstance(schema, dict):
         return [], {}
@@ -271,9 +295,17 @@ def ungrounded(params: Any, schema: dict | None, inquiry: Inquiry) -> list[tuple
     required, properties = _required(schema)
     if not required:
         return []
-    grounded = inquiry.grounded()
-    numbers = _numbers(grounded)
-    digits = re.sub(r"\D", "", grounded)
+    own = _Haystack(inquiry.own())
+
+    def given(piece: str) -> bool:
+        if own.has(piece):
+            return True
+        for entry in inquiry.seen:
+            found = entry.get("hay") or entry.setdefault("hay", _Haystack(entry["text"]))
+            if found.has(piece) and _clean(entry):
+                return True
+        return False
+
     missing: list[tuple[str, Any]] = []
     for name in required:
         if name not in params:
@@ -283,7 +315,7 @@ def ungrounded(params: Any, schema: dict | None, inquiry: Inquiry) -> list[tuple
         if isinstance(offered, list) and value in offered:
             continue  # one of the tool's own choices
         pieces = [piece for leaf in _leaves(value) for piece in particulars(leaf)]
-        if any(not _given(piece, grounded, numbers, digits) for piece in pieces):
+        if any(not given(piece) for piece in pieces):
             missing.append((name, value))
     return missing
 
@@ -347,14 +379,18 @@ async def _read(inquiry: Inquiry) -> dict | None:
 
 # ── the question ─────────────────────────────────────────────────────────
 
+# The guess is named, never filled in: the person types the value, or the right one.
 PHRASES = {
-    "en": "Before {tool} runs: which {label} do you mean? You have not said it, so “{value}” "
-    "would be a guess.",
-    "hi-latn": "{tool} chalane se pehle: kaunsa {label}? Aap ne yeh nahi bataya, to “{value}” "
-    "sirf andaza hoga.",
-    "ur": "{tool} چلانے سے پہلے: کون سا {label}؟ آپ نے یہ نہیں بتایا، اس لیے “{value}” محض اندازہ ہوگا۔",
-    "hi": "{tool} चलाने से पहले: कौन सा {label}? आपने यह नहीं बताया, इसलिए “{value}” सिर्फ़ अंदाज़ा होगा।",
-    "ar": "قبل تشغيل {tool}: أيّ {label} تقصد؟ لم تذكره، فـ«{value}» سيكون تخمينًا.",
+    "en": "Before {tool} runs: which {label} do you mean? You have not said it. Did you mean "
+    "“{value}”? Type it to confirm, or write the right one.",
+    "hi-latn": "{tool} chalane se pehle: kaunsa {label}? Aap ne yeh nahi bataya. Kya aap ka "
+    "matlab “{value}” hai? Tasdeeq ke liye likhiye, ya sahi likhiye.",
+    "ur": "{tool} چلانے سے پہلے: کون سا {label}؟ آپ نے یہ نہیں بتایا۔ کیا آپ کا مطلب “{value}” ہے؟ "
+    "تصدیق کے لیے لکھیے، یا درست لکھیے۔",
+    "hi": "{tool} चलाने से पहले: कौन सा {label}? आपने यह नहीं बताया। क्या आपका मतलब “{value}” "
+    "है? पुष्टि के लिए लिखिए, या सही लिखिए।",
+    "ar": "قبل تشغيل {tool}: أيّ {label} تقصد؟ لم تذكره. هل تقصد «{value}»؟ اكتبه للتأكيد، أو "
+    "اكتب الصحيح.",
 }
 
 
@@ -374,12 +410,13 @@ def _schema_of(agent: Any, tool_name: str) -> dict | None:
     )
 
 
-async def _ask(approvals: Any, record: dict, value: Any) -> tuple[str, str]:
+async def _ask(approvals: Any, record: dict) -> tuple[str, str]:
     """The question card; returns (outcome, the person's answer)."""
     from agents.events import emit
     from connectors import elicitation
 
-    default = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    # No default: the model's guess is named in the question, never prefilled, so an
+    # empty Send is no yes; the person types the value themselves.
     schema = {
         "type": "object",
         "properties": {
@@ -387,7 +424,7 @@ async def _ask(approvals: Any, record: dict, value: Any) -> tuple[str, str]:
                 "type": "string",
                 "title": record["argument"].replace("_", " "),
                 "description": "Your answer is read as your own words in this request.",
-                "default": str(default)[:500],
+                "minLength": 1,
                 "maxLength": 500,
             }
         },
@@ -484,7 +521,7 @@ async def before_action(
             "one can answer here. Ask them in your answer instead of guessing.",
             "tabayyun": record,
         }
-    outcome, answer = await _ask(approvals, record, value)
+    outcome, answer = await _ask(approvals, record)
     inquiry.asked = {**record, "outcome": outcome}
     if outcome != "answered":
         return {

@@ -374,14 +374,17 @@ def compose(
 ) -> str:
     """The snapshot: goal, open items, the last decisions, then where it stands.
     A row longer than a quarter of the budget is cut, so one long answer cannot
-    push out everything else."""
+    push out everything else, and a row Amanah reads as an instruction to the AI
+    is never kept: the snapshot is shown to the model in later chats."""
+    from tadbir import amanah
+
     longest = budget // 4
 
     def rows(values: Iterable[str]) -> list[str]:
         found = []
         for value in values:
             text = redacted(_flat(value, longest))
-            if text:
+            if text and not amanah.scan(text):
                 found.append(text)
         return found
 
@@ -484,8 +487,14 @@ def after_run(
     history: Sequence[dict] | None,
     goal: str = "",
     open_items: Sequence[str] = (),
+    tainted: bool = False,
 ) -> bool:
-    """Rewrite this chat's snapshot (and its project's and agent's) after a run."""
+    """Rewrite this chat's snapshot (and its project's and agent's) after a run.
+
+    ``tainted``: the run read outside text that tried to instruct the AI (Amanah).
+    Then nothing the model wrote in it is kept (its answer, its plan steps, the
+    question it would have asked): only the person's words, the goal and the
+    decisions, which MIZAN checked against the person's words."""
     try:
         from agents import session_state
         from tadbir import amanah
@@ -503,7 +512,7 @@ def after_run(
             "",
         )
         aim = goal or amanah.clean_message(first or task)
-        todos = session_state.load(owner, chat_id).get("todos") or []
+        todos = [] if tainted else session_state.load(owner, chat_id).get("todos") or []
         pending = [
             str(item.get("content") or "")
             for item in todos
@@ -511,11 +520,11 @@ def after_run(
         ]
         text = compose(
             goal=aim,
-            open_items=[*pending, *open_items],
+            open_items=[] if tainted else [*pending, *open_items],
             decisions=_in_scope(owner, chat_id, workspace_id or ""),
             state=[
                 f"Last request: {_flat(amanah.clean_message(task), 300)}",
-                f"Last answer: {_flat(answer, 600)}",
+                *([] if tainted else [f"Last answer: {_flat(answer, 600)}"]),
             ],
         )
         scopes = [

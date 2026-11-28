@@ -40,10 +40,20 @@ class ElicitationBroker:
         return elicitation_id, future
 
     def resolve(
-        self, user_id: str, elicitation_id: str, action: str, content: dict | None = None
+        self,
+        user_id: str,
+        elicitation_id: str,
+        action: str,
+        content: dict | None = None,
+        *,
+        session_id: str | None = None,
     ) -> bool:
+        """Deliver the owner's answer. ``session_id``, when the answer names its chat,
+        must be the chat that asked: an answer given elsewhere is not this one's."""
         pending = self._pending.get(elicitation_id)
         if pending is None or pending.user_id != user_id or pending.future.done():
+            return False
+        if session_id is not None and pending.session_id != session_id:
             return False
         if action not in ACTIONS:
             return False
