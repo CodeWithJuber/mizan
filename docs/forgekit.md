@@ -91,3 +91,14 @@ forge remember <name> "<fact>" && forge sync   # a lesson every agent sees
 To change the shared rules, edit ForgeKit's `source/` in the ForgeKit repository, or run `forge remember` here, then `forge sync`. Do not edit inside the `forge:begin`/`forge:end` block.
 
 `forge doctor` warns "settings missing" in a cloud session. That warning is expected: the hooks are wired per project, not in `~/.claude`. Do not run `forge doctor --fix` there, because it writes user-level hooks and switches the project hooks off.
+
+## Inside MIZAN, for its users
+
+This page is about the agents that develop MIZAN. MIZAN also runs ForgeKit for the people
+who use it: the workspace runtime image carries a pinned `@codewithjuber/forgekit`
+(`docker/Dockerfile.workspace-runtime`, the same version as `backend/workspace/forgekit.py`),
+and `workspace_verify`, `workspace_impact` and `workspace_docs_check` run `forge verify`,
+`forge impact` and `forge docs sync` inside each project's sandbox
+([coding-workspaces.md](coding-workspaces.md)). That pin is moved by hand, with the image,
+not by the cloud environment's setup script. `forge-cortex` is also offered as a sandbox
+stdio connector preset ([connectors.md](connectors.md)).

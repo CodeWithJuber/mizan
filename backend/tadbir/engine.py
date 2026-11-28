@@ -2111,7 +2111,10 @@ class Tadbir:
         changed = sorted(path for path, sha in after.items() if before.get(path) != sha)
         removed = sorted(set(before) - set(after))
         texts = await asyncio.to_thread(_project_texts, owner, workspace_id, changed)
-        checks, problem = await self._check_edit(texts, texts, sorted(after))
+        # A deleted file can break the tests too: they run whenever anything changed.
+        checks, problem = await self._check_edit(
+            texts, texts, sorted(after), tests=bool(changed or removed)
+        )
         problems = [problem] if problem else []
         served = any(
             item.get("name") == "workspace_sandbox"
@@ -2184,9 +2187,16 @@ class Tadbir:
         return None
 
     async def _check_edit(
-        self, changes: dict[str, str], current: dict[str, str], everything: list[str]
+        self,
+        changes: dict[str, str],
+        current: dict[str, str],
+        everything: list[str],
+        *,
+        tests: bool | None = None,
     ) -> tuple[list[tuple[str, bool | None, str]], str]:
-        """MIZAN's checks on the changed files, as (label, passed, detail); first problems."""
+        """MIZAN's checks on the changed files, as (label, passed, detail); first problems.
+        When something changed (``tests``, default: ``changes``) in a project ForgeKit can
+        find tests in, the project's own tests run too, and must pass to verify it."""
         checks: list[tuple[str, bool | None, str]] = []
         problems: list[str] = []
         commands: list[tuple[str, str]] = []
@@ -2245,7 +2255,49 @@ class Tadbir:
             checks.append((label, code == 0, ""))
             if code != 0:
                 problems.append(f"`{command}` failed:\n{output[-2000:]}")
+        from workspace.forgekit import needs_tests
+
+        if (bool(changes) if tests is None else tests) and needs_tests(known):
+            tested = await self._project_tests()
+            if tested is not None:
+                checks.append(tested[0])
+                if tested[1]:
+                    problems.append(tested[1])
         return checks, "\n\n".join(problems)
+
+    async def _project_tests(self) -> tuple[tuple[str, bool | None, str], str] | None:
+        """The project's own tests through ForgeKit (``workspace_verify``, which keeps the
+        verdict with the files it tested): (check, problem). None leaves MIZAN's other
+        checks to decide: the tool is not here, ForgeKit found no test command, or the
+        sandbox image predates ForgeKit."""
+        if not self._allowed("workspace_verify"):
+            return None
+        result = await self._tool("workspace_verify", {})
+        verdict = str(result.get("verdict") or "")
+        if result.get("code") == "forgekit_missing" or verdict == "NOT_CONFIGURED":
+            trace.event("verify", "forgekit", skipped=result.get("code") or "no test command")
+            return None
+        names = ", ".join(
+            str(item["command"])
+            for item in result.get("commands") or []
+            if isinstance(item, dict) and item.get("command")
+        )
+        label = phrase("check_project_tests", "en", commands=names or "forge verify")
+        if result.get("error") or not verdict:
+            return (label, None, str(result.get("error") or "ForgeKit gave no verdict")[:200]), ""
+        if not result.get("bound"):
+            return (label, None, "the project's files changed while its tests ran"), ""
+        if verdict == "PASS":
+            return (label, True, ""), ""
+        detail = str(result.get("detail") or "")[-2000:]
+        if verdict == "FAIL":
+            return (label, False, ""), f"The project's tests failed (forge verify):\n{detail}"
+        if verdict == "SUSPECT":
+            return (label, False, ""), (
+                "The tests pass, but ForgeKit found that the change weakened them "
+                f"(forge verify):\n{detail}"
+            )
+        return (label, None, (detail or "the tests did not finish")[:200]), ""  # INCOMPLETE
 
     async def _run_checks(self, commands: list[str]) -> list[tuple[int | None, str, str]]:
         """Each check's (exit code, output, error), all in one sandbox run so the person

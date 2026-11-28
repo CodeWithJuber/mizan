@@ -51,6 +51,10 @@ MAX_CHECKPOINT_BYTES = _limit(
     "MIZAN_WORKSPACE_MAX_CHECKPOINT_BYTES", 50 * 1024 * 1024, 1024 * 1024 * 1024
 )
 CHECKPOINT_KINDS = ("manual", "agent", "turn", "restore")
+# ForgeKit verifications of the project's files, keyed by their tree digest (beside the
+# files, never among them: a verification is not part of what it verifies).
+VERIFICATIONS = "verifications.json"
+_DIGEST = re.compile(r"[0-9a-f]{64}")
 # Git keeps its own history in the project; the file tools, quota and checkpoints
 # leave it alone, and only runs (where git itself works) see it.
 GIT_DIR = ".git"
@@ -166,6 +170,11 @@ def _sha(data: bytes) -> str:
 def _tree_digest(files: dict[str, str]) -> str:
     """One digest for a whole {path: sha256} tree, independent of order."""
     return _sha(json.dumps(files, sort_keys=True, separators=(",", ":")).encode())
+
+
+def _verdict_of(record: dict) -> dict:
+    """What a checkpoint shows of its files' verification."""
+    return {key: record.get(key) for key in ("verdict", "passed", "checked_at")}
 
 
 def _when(value: str) -> datetime:
@@ -812,8 +821,94 @@ class WorkspaceStore:
             return {**self._summary(manifest), "reused": False}
 
     def checkpoints(self, workspace_id: str) -> builtins.list[dict]:
+        """Newest first; a checkpoint whose files were verified says how (``verification``)."""
         with _LOCK:
-            return [self._summary(item) for item in self._manifests(workspace_id)]
+            records = self._verifications(workspace_id)
+            return [
+                {
+                    **self._summary(item),
+                    **(
+                        {"verification": _verdict_of(records[item["tree"]])}
+                        if item.get("tree") in records
+                        else {}
+                    ),
+                }
+                for item in self._manifests(workspace_id)
+            ]
+
+    # --- verification: ForgeKit's verdict, bound to the files it tested -----
+
+    def content_tree(self, workspace_id: str) -> tuple[str, dict[str, str]]:
+        """The project's files as {path: sha256} and their one digest: the ``tree`` a
+        checkpoint of these files records. Git's folder is not part of it."""
+        with _LOCK:
+            digests = {path: _sha(data) for path, data in self.files(workspace_id).items()}
+        return _tree_digest(digests), digests
+
+    def _verifications(self, workspace_id: str) -> dict[str, dict]:
+        path = self.project(workspace_id) / VERIFICATIONS
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            return {}
+        with os.fdopen(fd) as handle:
+            try:
+                data = json.load(handle)
+            except ValueError:
+                return {}
+        records = data.get("records") if isinstance(data, dict) else None
+        if not isinstance(records, dict):
+            return {}
+        return {
+            tree: record
+            for tree, record in records.items()
+            if _DIGEST.fullmatch(str(tree)) and isinstance(record, dict)
+        }
+
+    def record_verification(self, workspace_id: str, record: dict) -> dict:
+        """Keep a verification under the digest of the files it tested (``record["tree"]``):
+        one per tree, the newest ``MAX_CHECKPOINTS`` trees. Restoring files brings their
+        verification back, because the same files have the same digest."""
+        tree = str(record.get("tree") or "")
+        if not _DIGEST.fullmatch(tree):
+            raise HTTPException(422, "A verification needs the digest of the files it tested")
+        with _LOCK:
+            records = self._verifications(workspace_id)
+            records.pop(tree, None)
+            records[tree] = dict(record)
+            kept = sorted(records.items(), key=lambda item: str(item[1].get("checked_at") or ""))
+            self._atomic_json(
+                self.project(workspace_id) / VERIFICATIONS,
+                {"version": 1, "records": dict(kept[-MAX_CHECKPOINTS:])},
+            )
+        return dict(record)
+
+    def verification(self, workspace_id: str) -> dict | None:
+        """The verification of the project's current files when there is one, else the
+        newest, marked ``stale`` (the files changed since: a new tree), with the
+        checkpoint that holds the files it tested (``checkpoint_id``, None when none)."""
+        with _LOCK:
+            records = self._verifications(workspace_id)
+            if not records:
+                return None
+            current, _digests = self.content_tree(workspace_id)
+            record = records.get(current) or max(
+                records.values(), key=lambda item: str(item.get("checked_at") or "")
+            )
+            checkpoint = next(
+                (
+                    manifest["id"]
+                    for manifest in self._manifests(workspace_id)
+                    if manifest.get("tree") == record.get("tree")
+                ),
+                None,
+            )
+        return {
+            **record,
+            "stale": record.get("tree") != current,
+            "current_tree": current,
+            "checkpoint_id": checkpoint,
+        }
 
     def file_at(self, workspace_id: str, checkpoint_id: str, path: str) -> dict:
         """One file as it was in a checkpoint."""

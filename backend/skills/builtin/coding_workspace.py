@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import builtins
+import secrets
 import shlex
+from datetime import UTC, datetime
 from typing import cast
 
 from fastapi import HTTPException
@@ -11,7 +13,7 @@ from fastapi import HTTPException
 from agents.events import emit
 from api.coding_workspace import hardware, publish_artifact
 from security.auth import TokenPayload, current_user_id, request_has_role
-from workspace import session_client
+from workspace import forgekit, session_client
 from workspace.context import artifact_session, bound_workspace_id, selected_workspace
 from workspace.execution import run_project
 from workspace.store import WorkspaceStore
@@ -47,6 +49,18 @@ def allows_user_workspace_tool(
 
 _WEB_METHODS = {"web_browse": "browse", "web_search": "search"}
 SCRATCH_PROJECT = "Scratch"
+# ForgeKit's reads of a project: a fixed command MIZAN writes, in the sandbox, that runs
+# none of the project's code and changes none of its files (ForgeKit's own state is put
+# back), so they observe like git status (agents/base.py ``_read_only_hint``).
+# workspace_verify runs the project's tests (its code), so it is an execution, like
+# workspace_run.
+FORGEKIT_READS = frozenset({"workspace_impact", "workspace_docs_check"})
+VERIFY_TIMEOUT = 600
+# What a verification keeps with the files it tested (never their output).
+VERIFICATION_KEPT = (
+    "tree", "verdict", "passed", "commands", "counts", "test_integrity", "baseline", "forge",
+    "checked_at", "sandbox",
+)  # fmt: skip
 
 
 def scratch_project(store: WorkspaceStore) -> str:
@@ -110,6 +124,9 @@ class CodingWorkspaceSkill(SkillBase):
                 "diff",
                 "artifact",
                 "hardware",
+                "verify",
+                "impact",
+                "docs_check",
             )
         }
 
@@ -365,6 +382,93 @@ class CodingWorkspaceSkill(SkillBase):
             raise HTTPException(403, "Administrator role required")
         return cast(dict, hardware(TokenPayload(current_user_id() or "", "", ["admin"], 0, 0, "")))
 
+    # ── ForgeKit in the project's sandbox (workspace/forgekit.py) ─────────
+
+    @staticmethod
+    async def _forgekit(
+        store: WorkspaceStore, project: str, args: builtins.list[str], *, git: str, timeout: int
+    ) -> tuple[dict, str, dict]:
+        """ForgeKit's JSON, the git baseline it compared with, and the run itself. In the
+        live session when one runs (installed packages are there); otherwise a one-shot
+        run that copies nothing back."""
+        user_id = current_user_id() or ""
+        mark = secrets.token_hex(16)
+        session = await session_client.running(user_id, project)
+        limit = max(30, min(int(timeout), 900 if session else 120))
+        # ForgeKit stops 20 s before the run does, so its state is always put back.
+        script = forgekit.command(args, mark, git=git, limit=limit - 20)
+        if session:
+            run = await session_client.execute(user_id, project, script, "shell", limit)
+        else:
+            run = await run_project(store, project, script, "shell", limit, apply=False)
+        data, _code, baseline = forgekit.read(str(run.get("stdout", "")), mark)
+        return data, baseline, run
+
+    async def verify(
+        self, workspace_id: str | None = None, timeout_s: int = VERIFY_TIMEOUT
+    ) -> dict:
+        """Run the project's own tests with ForgeKit and keep the verdict with the files it
+        tested (their tree digest): a later edit makes a new tree, so the verdict is stale."""
+        store = self.store(edit=True)
+        project = selected_workspace(workspace_id)
+        _tree, tested = store.content_tree(project)
+        try:
+            data, baseline, run = await self._forgekit(
+                store, project, ["verify"], git="snapshot", timeout=int(timeout_s)
+            )
+            found = forgekit.verification(data)
+        except forgekit.ForgeKitError as exc:
+            return cast(dict, exc.result())
+        tree, now = store.content_tree(project)
+        moved = {path for path in tested.keys() | now.keys() if tested.get(path) != now.get(path)}
+        # Bound when ForgeKit saw no change to the code while the tests ran and every file
+        # that changed in the store is one the run itself wrote (its outputs), not an edit.
+        bound = not found["mutated"] and moved <= set(run.get("changed_files") or [])
+        result = {
+            **found,
+            "baseline": baseline,
+            "tree": tree,
+            "bound": bound,
+            "checked_at": datetime.now(UTC).isoformat(timespec="microseconds"),
+            "sandbox": str(run.get("sandbox") or ""),
+        }
+        if bound:
+            store.record_verification(project, {key: result[key] for key in VERIFICATION_KEPT})
+        else:
+            result["note"] = (
+                "The project's files changed while the tests ran, so this verdict is not "
+                "bound to them and was not kept; run workspace_verify again on a quiet project"
+            )
+        result["recorded"] = bound
+        return result
+
+    async def impact(
+        self, workspace_id: str | None = None, symbol: str | None = None, path: str | None = None
+    ) -> dict:
+        """The files ForgeKit's code graph predicts an edit to ``symbol`` or ``path`` touches."""
+        store = self.store()
+        project = selected_workspace(workspace_id)
+        try:
+            args = forgekit.impact_args(symbol, path)
+            data, _baseline, run = await self._forgekit(
+                store, project, args, git="any", timeout=120
+            )
+            return {**forgekit.impact(data), "sandbox": str(run.get("sandbox") or "")}
+        except forgekit.ForgeKitError as exc:
+            return cast(dict, exc.result())
+
+    async def docs_check(self, workspace_id: str | None = None) -> dict:
+        """The project's docs that its uncommitted changes made stale (against git's HEAD)."""
+        store = self.store()
+        project = selected_workspace(workspace_id)
+        try:
+            data, _baseline, run = await self._forgekit(
+                store, project, ["docs", "sync", "--base", "HEAD"], git="require", timeout=120
+            )
+            return {**forgekit.docs(data), "sandbox": str(run.get("sandbox") or "")}
+        except forgekit.ForgeKitError as exc:
+            return cast(dict, exc.result())
+
     def get_tool_schemas(self) -> builtins.list[dict]:
         string = {"type": "string"}
         project = {
@@ -508,6 +612,34 @@ class CodingWorkspaceSkill(SkillBase):
                 "Inspect backend CPU, memory and disk availability. Requires administrator role; does not grant unrestricted host access.",
                 {},
                 [],
+            ),
+            (
+                "verify",
+                "Run the project's own tests with ForgeKit (forge verify) in its sandbox. "
+                "Returns the verdict (PASS, FAIL, INCOMPLETE, NOT_CONFIGURED when it finds no "
+                "test command, SUSPECT when a change weakened the tests), each test command "
+                "it ran with pass/fail counts, and the digest of the files it tested. MIZAN "
+                "keeps the verdict with those files, so any later edit makes it stale. Start "
+                "the sandbox session first when the tests need installed packages. Say tests "
+                "pass only when the verdict is PASS.",
+                {**project, "timeout_s": {"type": "integer", "minimum": 30, "maximum": 900}},
+                ["workspace_id"],
+            ),
+            (
+                "impact",
+                "Before changing a shared name or file, list the project files an edit to it "
+                "will probably touch (ForgeKit's code graph, forge impact). Give symbol (a "
+                "function, class or Class.method) or path, not both.",
+                {**project, "symbol": string, "path": string},
+                ["workspace_id"],
+            ),
+            (
+                "docs_check",
+                "List the project's docs that its uncommitted changes made stale: docs that "
+                "mention a name the changes touched (ForgeKit's forge docs sync, against the "
+                "project's git HEAD). Needs the project's git history (workspace_git).",
+                project,
+                ["workspace_id"],
             ),
         ]
         return [

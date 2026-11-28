@@ -751,7 +751,15 @@ def test_api_presets_patch_merge_policy_and_logs(env, monkeypatch):
     alice = api_client(ALICE)
     presets = alice.get("/api/connectors/presets").json()["presets"]
     ids = {preset["id"] for preset in presets}
-    assert {"github", "notion", "linear", "huggingface", "filesystem", "fetch"} <= ids
+    assert {
+        "github",
+        "notion",
+        "linear",
+        "huggingface",
+        "filesystem",
+        "fetch",
+        "forge-cortex",
+    } <= ids
     for preset in presets:
         assert set(preset) >= {"id", "name", "description", "transport", "auth", "docs_url"}
         assert preset["auth"] in {"oauth", "headers", "none"}

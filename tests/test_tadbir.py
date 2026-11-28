@@ -1647,6 +1647,72 @@ async def test_typescript_files_are_parsed_by_esbuild_or_reported_not_run(agent,
     assert checks[0][1] is False and "x.ts:1:5: ERROR" in problem
 
 
+def _verdict(verdict, detail="", bound=True, **extra):
+    """What workspace_verify answers (see tests/test_workspace_forgekit.py)."""
+    return {"verdict": verdict, "bound": bound, "detail": detail,
+            "commands": [{"command": "npm test", "status": verdict}], **extra}  # fmt: skip
+
+
+TESTS_LABEL = "the project's tests pass (ForgeKit: npm test)"
+
+
+async def test_the_projects_own_tests_run_through_forgekit_and_must_pass(agent, monkeypatch):
+    from tadbir.engine import Tadbir
+
+    names = ["workspace_run", "workspace_verify"]
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [{"name": n, "description": "", "input_schema": {"type": "object"}} for n in names],
+    )
+    verdicts = [
+        _verdict("PASS"),
+        _verdict("FAIL", "not ok 1 - sum\n  AssertionError: expected 5, actual -1"),
+        _verdict("SUSPECT", "Test integrity: an assertion was removed from test/sum.test.js"),
+        _verdict("INCOMPLETE", '"pytest -q" executor unavailable (pytest not on PATH)'),
+        _verdict("PASS", bound=False),
+        {"verdict": "NOT_CONFIGURED", "bound": True, "commands": []},
+        {"error": "ForgeKit is not installed in this sandbox image", "code": "forgekit_missing"},
+        {"error": "The person declined this action"},
+    ]
+    fake = tools(
+        agent,
+        monkeypatch,
+        workspace_run={"stdout": "", "stderr": "", "exit_code": 0},
+        workspace_verify=verdicts,
+    )
+    agent._last_tool_results = []
+    changes = {"src/sum.js": "export const sum = (a, b) => a + b;\n"}
+    project_files = ["package.json", "src/sum.js", "test/sum.test.js"]
+
+    async def check(everything=project_files, **kwargs):
+        return await Tadbir(agent)._check_edit(changes, changes, everything, **kwargs)
+
+    checks, problem = await check()
+    assert (TESTS_LABEL, True, "") in checks and problem == ""
+    checks, problem = await check()  # the tests fail: a problem for the repair turn
+    assert (TESTS_LABEL, False, "") in checks
+    assert "The project's tests failed" in problem and "expected 5, actual -1" in problem
+    checks, problem = await check()  # weakened tests are a problem too
+    assert (TESTS_LABEL, False, "") in checks and "weakened" in problem
+    checks, problem = await check()  # did not finish: not a pass, and nothing to repair
+    assert (TESTS_LABEL, None, '"pytest -q" executor unavailable (pytest not on PATH)') in checks
+    assert problem == ""
+    checks, _ = await check()
+    assert (TESTS_LABEL, None, "the project's files changed while its tests ran") in checks
+    for _no_tests_or_old_image in range(2):  # NOT_CONFIGURED, then an image without ForgeKit
+        checks, problem = await check()
+        assert [label for label, _, _ in checks] == ["`src/sum.js` has valid syntax (sandbox)"]
+    checks, _ = await check()  # declined: the tests did not run, so it is not verified
+    assert ("the project's tests pass (ForgeKit: forge verify)", None,
+            "The person declined this action") in checks  # fmt: skip
+    asked = [name for name, _ in fake.calls].count("workspace_verify")
+    # No manifest ForgeKit could plan tests from, or nothing changed: it is not asked.
+    await check(everything=["src/sum.js", "index.html"])
+    await Tadbir(agent)._check_edit({}, {}, project_files)
+    assert [name for name, _ in fake.calls].count("workspace_verify") == asked
+
+
 def test_edit_blocks_are_read_and_applied_exactly():
     reply = (
         "```a.py edit\n<<<<<<< SEARCH\nx = 1\n=======\nx = 2\n>>>>>>> REPLACE\n"
@@ -2020,6 +2086,84 @@ async def test_a_node_project_is_edited_by_the_model_with_one_repair_turn(agent,
     assert "one turn to repair it" in result["result"]
     assert result["completion_status"] == "verified_by_mizan"
     assert "workspace_id" not in result  # the chat already had this project
+
+
+def _with_project_tests(agent, handoff, monkeypatch, verdicts):
+    """The handoff's tools plus workspace_verify answering ``verdicts`` in turn."""
+    act = agent._execute_tool_safe
+
+    async def tested(name, params):
+        if name == "workspace_verify":
+            handoff.calls.append((name, deepcopy(params)))
+            return verdicts.pop(0)
+        return await act(name, params)
+
+    monkeypatch.setattr(agent, "_execute_tool_safe", tested)
+    monkeypatch.setattr(
+        agent,
+        "get_tool_schemas",
+        lambda: [
+            {"name": n, "description": "", "input_schema": {}}
+            for n in [*HANDOFF_TOOLS, "workspace_verify"]
+        ],
+    )
+
+
+async def test_a_handoff_is_verified_only_when_the_projects_tests_pass(agent, handoff, monkeypatch):
+    from workspace.context import bind_workspace, reset_workspace
+
+    store = handoff.store
+    workspace = store.create("Shop")["id"]
+    store.write(workspace, "package.json", '{"scripts": {"test": "node --test"}}\n')
+    store.write(workspace, "src/total.js", "export const total = 1;\n")
+    failing = "not ok 1 - total is 2\n  AssertionError: expected 2, actual 3"
+    _with_project_tests(agent, handoff, monkeypatch, [_verdict("FAIL", failing), _verdict("PASS")])
+    agent.ai_client = ScriptedProvider(
+        [
+            tool_use("workspace_write", path="src/total.js", content="export const total = 3;\n"),
+            "I changed the total.",
+            tool_use("workspace_write", "t2", path="src/total.js", content="export const total = 2;\n"),
+            "Fixed the total so the test passes.",
+        ]
+    )  # fmt: skip
+    selected = bind_workspace(workspace)
+    try:
+        result = await agent.execute("Update the total in total.js to show 2")
+    finally:
+        reset_workspace(selected)
+    # The failing test reached the model as data, in its one repair turn.
+    repair = json.dumps(agent.ai_client.requests[2]["messages"])
+    assert "The project's tests failed" in repair and "expected 2, actual 3" in repair
+    assert [name for name, _ in handoff.calls].count("workspace_verify") == 2
+    assert f"- ✓ {TESTS_LABEL}" in result["result"]
+    assert result["completion_status"] == "verified_by_mizan"
+
+
+async def test_a_handoff_whose_tests_still_fail_is_not_verified(agent, handoff, monkeypatch):
+    from workspace.context import bind_workspace, reset_workspace
+
+    store = handoff.store
+    workspace = store.create("Shop")["id"]
+    store.write(workspace, "package.json", '{"scripts": {"test": "node --test"}}\n')
+    store.write(workspace, "src/total.js", "export const total = 1;\n")
+    _with_project_tests(
+        agent, handoff, monkeypatch, [_verdict("FAIL", "expected 2"), _verdict("FAIL", "still")]
+    )
+    agent.ai_client = ScriptedProvider(
+        [
+            tool_use("workspace_write", path="src/total.js", content="export const total = 3;\n"),
+            "I changed the total.",
+            "I could not find the cause.",
+        ]
+    )  # fmt: skip
+    selected = bind_workspace(workspace)
+    try:
+        result = await agent.execute("Update the total in total.js to show 2")
+    finally:
+        reset_workspace(selected)
+    assert f"- ✗ {TESTS_LABEL}" in result["result"]
+    assert "Not verified" in result["result"]
+    assert result["completion_status"] != "verified_by_mizan"
 
 
 async def test_plan_mode_reads_the_project_and_changes_nothing(agent, handoff):

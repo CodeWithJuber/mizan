@@ -1,0 +1,93 @@
+{
+  "ok": false,
+  "provenance": {
+    "base": "HEAD",
+    "changedFiles": [],
+    "untracked": [],
+    "tests": {
+      "ran": false,
+      "status": "NOT_CONFIGURED",
+      "notConfigured": {
+        "reason": "no-project",
+        "detail": "no recognizable project manifest (package.json, pyproject.toml, Cargo.toml, go.mod, \u2026)",
+        "fix": "run `forge verify` inside a project directory \u2014 or `forge init` to scaffold one"
+      }
+    },
+    "codeState": {
+      "head": "ac56338e31d25fe77b596c4eeef82043b8234d31",
+      "dirtyHash": "ca5654a9b990f3434facaec348c80f0269ebeea79a63b9ee7669d359afd17d46",
+      "gitAvailable": true,
+      "scheme": "manifest-v3"
+    },
+    "event": {
+      "v": 2,
+      "runId": "fc3cd548-c2a6-4dbf-9378-5f4845f4a362",
+      "checkout": "09baed5318f6a59a",
+      "verifier": "forge verify",
+      "verifierVersion": "1.26.0",
+      "startedAt": "2026-11-28T18:23:47.245Z",
+      "finishedAt": "2026-11-28T18:23:47.302Z",
+      "status": "NOT_CONFIGURED",
+      "testIntegrity": {
+        "status": "clear",
+        "reason": "No changed test files were identified",
+        "findings": [],
+        "scannedFiles": 0,
+        "baseline": "ac56338e31d25fe77b596c4eeef82043b8234d31"
+      },
+      "suites": [],
+      "notExecuted": [],
+      "coverage": null,
+      "pre": {
+        "scheme": "manifest-v3",
+        "head": "ac56338e31d25fe77b596c4eeef82043b8234d31",
+        "dirtyHash": "ca5654a9b990f3434facaec348c80f0269ebeea79a63b9ee7669d359afd17d46"
+      },
+      "post": {
+        "head": "ac56338e31d25fe77b596c4eeef82043b8234d31",
+        "dirtyHash": "ca5654a9b990f3434facaec348c80f0269ebeea79a63b9ee7669d359afd17d46"
+      },
+      "environment": {
+        "node": "v22.23.5",
+        "platform": "linux",
+        "arch": "x64",
+        "digest": "687a1a5f3cdd1692"
+      }
+    },
+    "symbolsChecked": 0,
+    "unknownSymbols": [],
+    "duplicates": {
+      "label": "jscpd new clones",
+      "status": "OFF",
+      "reason": "Set verify.duplicates to true to enable jscpd",
+      "findings": []
+    },
+    "signature": "9e65d279a0410866cdac3cef1af1c5d3b8bb788f84f622c399a98bd535990f7b",
+    "signer": "d4940ce9d8b2a379"
+  },
+  "unknown": [],
+  "tests": {
+    "ran": false,
+    "status": "NOT_CONFIGURED",
+    "notConfigured": {
+      "reason": "no-project",
+      "detail": "no recognizable project manifest (package.json, pyproject.toml, Cargo.toml, go.mod, \u2026)",
+      "fix": "run `forge verify` inside a project directory \u2014 or `forge init` to scaffold one"
+    }
+  },
+  "changedFiles": [],
+  "added": "",
+  "duplicates": {
+    "label": "jscpd new clones",
+    "status": "OFF",
+    "reason": "Set verify.duplicates to true to enable jscpd",
+    "findings": []
+  },
+  "testIntegrity": {
+    "status": "clear",
+    "reason": "No changed test files were identified",
+    "findings": [],
+    "scannedFiles": 0,
+    "baseline": "ac56338e31d25fe77b596c4eeef82043b8234d31"
+  }
+}

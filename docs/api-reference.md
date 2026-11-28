@@ -611,7 +611,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | PATCH | `/api/workspaces/{workspace_id}` | user | Rename a project. |
 | POST | `/api/workspaces/{workspace_id}/artifact` | user | Artifact |
 | POST | `/api/workspaces/{workspace_id}/checkpoint` | user | Checkpoint |
-| GET | `/api/workspaces/{workspace_id}/checkpoints` | user | Checkpoints |
+| GET | `/api/workspaces/{workspace_id}/checkpoints` | user | The project's checkpoints and its ForgeKit verification (stale once files change). |
 | GET | `/api/workspaces/{workspace_id}/checkpoints/{checkpoint_id}/file` | user | One file as it was in a checkpoint. |
 | POST | `/api/workspaces/{workspace_id}/checkpoints/{checkpoint_id}/restore` | user | Bring files back to a checkpoint (all, or ``paths``); the current state is saved first. |
 | GET | `/api/workspaces/{workspace_id}/diff` | user | Diff |
