@@ -10,6 +10,8 @@ export interface Project {
   created_at?: string;
   updated_at?: string;
   reserved?: boolean;
+  /** Niyyah: what the project is for ("" or absent: its chat's first request). */
+  goal?: string;
 }
 
 export interface Capabilities {
@@ -96,8 +98,8 @@ export function useProjectActions() {
     onSuccess: refresh,
   });
   const rename = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) =>
-      workspaceApi<Project>(`/${encodeURIComponent(id)}`, jsonBody("PATCH", { name })),
+    mutationFn: ({ id, name, goal }: { id: string; name: string; goal?: string }) =>
+      workspaceApi<Project>(`/${encodeURIComponent(id)}`, jsonBody("PATCH", { name, ...(goal === undefined ? {} : { goal }) })),
     onSuccess: refresh,
   });
   const remove = useMutation({

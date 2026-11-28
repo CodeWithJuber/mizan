@@ -1,6 +1,6 @@
 /** Daftar: everything MIZAN keeps about the user, with where it came from. */
 
-export type EntryKind = "note" | "preference" | "summary" | "learned";
+export type EntryKind = "note" | "preference" | "summary" | "learned" | "decision" | "handoff";
 
 export interface DaftarEntry {
   id: string;
@@ -14,6 +14,8 @@ export interface DaftarEntry {
   uses?: number;
   expires: string;
   editable: boolean;
+  /** Not editable but can be forgotten one by one (decisions, hand-off notes). */
+  forgettable?: boolean;
 }
 
 export interface Ledger {
@@ -27,7 +29,18 @@ export const KINDS: { key: EntryKind | ""; label: string }[] = [
   { key: "preference", label: "Preferences" },
   { key: "summary", label: "Chat summaries" },
   { key: "learned", label: "Learned" },
+  { key: "decision", label: "Decisions" },
+  { key: "handoff", label: "Hand-off notes" },
 ];
+
+/** A decision reads "what — why"; the ledger keeps them in the order they were made. */
+export function decisionParts(entry: DaftarEntry): { what: string; why: string } {
+  const [what, ...rest] = entry.content.split(" — ");
+  return { what: what ?? entry.content, why: rest.join(" — ") };
+}
+
+/** Whether an entry can be forgotten from the ledger (edited ones too). */
+export const forgettable = (entry: DaftarEntry): boolean => entry.editable || entry.forgettable === true;
 
 export function isLedger(value: unknown): value is Ledger {
   return !!value && typeof value === "object" && Array.isArray((value as Ledger).entries);

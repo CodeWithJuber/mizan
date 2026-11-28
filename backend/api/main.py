@@ -2215,16 +2215,43 @@ async def chat_context(
         item["key"] == "cross_chat_recall" and str(item["value"]).strip().lower() == "off"
         for item in preferences
     )
+    history = await chat_history(session_id, session, agent, task)
+    # 'Azm: a new chat on a project (or with an agent) starts where the last one left
+    # it; carried across chats like recall, so off with it (docs/azm.md).
+    handoff = None
+    from memory import azm
+
+    # learning: off keeps nothing for the person, and so starts them from nothing kept.
+    learning_off = not stateless.learns() or any(
+        item["key"] == "learning" and str(item["value"]).strip().lower() == "off"
+        for item in preferences
+    )
+    if not history and not recall_off and not learning_off and azm.kept_for(user.user_id):
+        try:
+            handoff = await asyncio.to_thread(
+                azm.opening,
+                user.user_id,
+                chat_id=session_id,
+                workspace_id=workspace_id
+                or await memory.session_workspace(user.user_id, session_id),
+                agent_id=str(
+                    getattr(agent, "_template_id", None) or getattr(agent, "id", "") or ""
+                ),
+                task=task,
+            )
+        except Exception:  # noqa: BLE001 - a hand-off never stops a chat
+            logger.warning("Hand-off unavailable for a new chat", exc_info=True)
     return {
         "session_id": session_id,
         **({"workspace_id": workspace_id} if workspace_id else {}),
-        "history": await chat_history(session_id, session, agent, task),
+        "history": history,
         # Your own words from other chats; shown under the answer when used,
         # and off when you set the preference cross_chat_recall: off.
         "conversation_memory": []
         if recall_off
         else await memory.recall_conversations(user.user_id, task, exclude_session=session_id),
         "user_preferences": preferences,
+        **({"handoff": handoff} if handoff else {}),
     }
 
 
@@ -2914,7 +2941,7 @@ async def stream_chat(
                 turn_checkpoint = await _turn_checkpoint(
                     channel, user.user_id, workspace_id, req.session_id, request_id
                 )
-            await memory.save_message(
+            user_message_id = await memory.save_message(
                 req.session_id,
                 "user",
                 req.content,
@@ -3018,6 +3045,8 @@ async def stream_chat(
                             context = await chat_context(
                                 user, req.session_id, session, agent, req.content, workspace_id
                             )
+                        # The person's message this run answers ('Azm's decisions name it).
+                        context["message_id"] = user_message_id
                         await phase_cb("queued")
                         with (
                             stateless.bind(req.stateless),
@@ -3635,6 +3664,8 @@ class ElicitationAnswer(BaseModel):
 
     action: str = Field(..., pattern=r"^(accept|decline|cancel)$")
     content: dict[str, Any] | None = Field(default=None, max_length=100)
+    # The chat the answer is given in: given, it must be the chat that asked.
+    session_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 @app.post("/api/chat/elicitations/{elicitation_id}")
@@ -3649,7 +3680,11 @@ async def answer_chat_elicitation(
     from connectors.elicitation import broker as elicitations
 
     if not re.fullmatch(r"[0-9a-f]{32}", elicitation_id) or not elicitations.resolve(
-        user.user_id, elicitation_id, body.action, body.content if body.action == "accept" else None
+        user.user_id,
+        elicitation_id,
+        body.action,
+        body.content if body.action == "accept" else None,
+        session_id=body.session_id,
     ):
         raise HTTPException(404, "No pending question with that id")
     from security import sakk
@@ -4095,7 +4130,7 @@ async def set_user_spending_limits(
 @app.get("/api/daftar")
 async def daftar_ledger(
     query: str = Query("", max_length=200),
-    kind: str = Query("", pattern=r"^(|note|preference|summary|learned)$"),
+    kind: str = Query("", pattern=r"^(|note|preference|summary|learned|decision|handoff)$"),
     user: TokenPayload = Depends(require_auth),
 ):
     from memory import daftar
@@ -4170,14 +4205,18 @@ async def daftar_forget(req: DaftarForget, user: TokenPayload = Depends(require_
         ids += [entry["id"] for entry in matches]
     if not ids:
         return {"forgotten": {"note": 0, "preference": 0}}
-    from memory import mahw
+    from memory import azm, mahw
 
+    planning = [entry for entry in ids if entry.startswith(("decision:", "handoff:"))]
+    ids = [entry for entry in ids if entry not in planning]
     notes = [entry.partition(":")[2] for entry in ids if entry.startswith("note:")]
     others = [entry for entry in ids if not entry.startswith("note:")]
     chosen = {item["key"] for item in await memory.get_chat_preferences(user.user_id)}
     forgotten = await daftar.forget(
         notes_store=notes_store, memory=memory, owner_id=user.user_id, ids=others
     )
+    if planning:
+        forgotten.update(await asyncio.to_thread(azm.forget_entries, user.user_id, planning))
     for key in CONSENT_KEYS:
         if key in chosen and f"preference:{key}" in others:
             _consent_receipt(user.user_id, key, "default")
@@ -4237,6 +4276,129 @@ async def daftar_import(data: dict, user: TokenPayload = Depends(require_auth)):
         }
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+# === 'AZM (عزم): the person's decisions and where the work stands ===
+
+
+class DecisionCreate(BaseModel):
+    """A decision, in the person's own words; scoped to a chat, a project or an agent."""
+
+    decision: str = Field(..., min_length=1, max_length=500)
+    why: str = Field("", max_length=500)
+    session_id: str | None = Field(None, min_length=1, max_length=100)
+    workspace_id: str | None = Field(None, min_length=1, max_length=100)
+    agent_id: str | None = Field(None, min_length=1, max_length=100)
+    # The message of the chat it was decided in.
+    message_id: str | None = Field(None, min_length=1, max_length=100)
+
+
+async def _azm_scope(
+    user: TokenPayload,
+    session_id: str | None,
+    workspace_id: str | None,
+    agent_id: str | None,
+) -> None:
+    """Every id a caller names must be theirs (404 otherwise, never a hint)."""
+    if session_id:
+        await authorize_session(session_id, user)
+    if workspace_id:
+        from workspace.store import WorkspaceStore
+
+        await asyncio.to_thread(WorkspaceStore(user.user_id).project, workspace_id)
+    if agent_id:
+        _visible_agent(user, agent_id)
+
+
+@app.get("/api/azm/decisions")
+async def list_decisions(
+    session_id: str | None = Query(None, max_length=100),
+    workspace_id: str | None = Query(None, max_length=100),
+    agent_id: str | None = Query(None, max_length=100),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: TokenPayload = Depends(require_auth),
+):
+    """Your decisions, oldest first, narrowed to one of your chats, projects or agents."""
+    from memory import azm
+
+    if session_id:
+        await authorize_session(session_id, user)
+    found = await asyncio.to_thread(
+        azm.decisions,
+        user.user_id,
+        chat_id=session_id,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        limit=limit,
+        offset=offset,
+    )
+    return {"decisions": found, "limit": limit, "offset": offset}
+
+
+@app.post("/api/azm/decisions")
+async def add_decision(req: DecisionCreate, user: TokenPayload = Depends(require_auth)):
+    """Record a decision of yours. It is never edited: a changed decision is a new one."""
+    from memory import azm
+
+    await _azm_scope(user, req.session_id, req.workspace_id, req.agent_id)
+    if req.message_id:
+        if not req.session_id:
+            raise HTTPException(422, "A message is named together with its chat")
+        messages = await memory.get_messages(req.session_id, limit=1000)
+        if not any(str(item.get("id")) == req.message_id for item in messages):
+            raise HTTPException(404, "No such message in that chat")
+    try:
+        decision = await asyncio.to_thread(
+            azm.record,
+            user.user_id,
+            req.decision,
+            req.why,
+            chat_id=req.session_id or "",
+            workspace_id=req.workspace_id or "",
+            agent_id=req.agent_id or "",
+            message_id=req.message_id or "",
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except azm.Unavailable as exc:
+        raise HTTPException(503, "Decisions cannot be kept right now") from exc
+    return {"decision": decision}
+
+
+@app.delete("/api/azm/decisions/{decision_id}")
+async def delete_decision(decision_id: int, user: TokenPayload = Depends(require_auth)):
+    """Forget one of your decisions."""
+    from memory import azm
+
+    if not await asyncio.to_thread(azm.forget_decision, user.user_id, decision_id):
+        raise HTTPException(404, "No such decision")
+    return {"deleted": decision_id}
+
+
+@app.get("/api/azm/handoff")
+async def read_handoff(
+    session_id: str | None = Query(None, max_length=100),
+    workspace_id: str | None = Query(None, max_length=100),
+    agent_id: str | None = Query(None, max_length=100),
+    user: TokenPayload = Depends(require_auth),
+):
+    """The hand-off snapshot of one of your chats, projects or agents."""
+    from memory import azm
+
+    named = [
+        (kind, value)
+        for kind, value in (("chat", session_id), ("project", workspace_id), ("agent", agent_id))
+        if value
+    ]
+    if len(named) != 1:
+        raise HTTPException(422, "Name one chat, project or agent")
+    await _azm_scope(user, session_id, workspace_id, agent_id)
+    kind, value = named[0]
+    found = await asyncio.to_thread(azm.handoff, user.user_id, f"{kind}:{value}")
+    if found is None:
+        raise HTTPException(404, "No hand-off yet")
+    return {"handoff": found}
 
 
 # === MURAQABAH (مراقبة): watchers that judge when to interrupt ===
@@ -4323,7 +4485,12 @@ async def _watcher_task(owner_id: str, task: str) -> str:
             result = await agent.execute(task, {"session_id": session})
     finally:
         reset_principal(binding)
-    return str(result.get("result") or "")
+    from tadbir import niyyah
+
+    # Niyyah: a watcher whose runs drift from its goal says so in its notice.
+    drifted = niyyah.summary_line((result.get("usage") or {}).get("niyyah"))
+    text = str(result.get("result") or "")
+    return f"{text}\n\n{drifted}" if text and drifted else text
 
 
 async def _watcher_page(owner_id: str, url: str) -> str | None:
@@ -4827,6 +4994,8 @@ class WatcherRequest(BaseModel):
     priority: str = Field(default="judge", pattern=r"^(judge|always)$")
     # The agent that runs the task (one you may use); none: your default agent.
     agent_id: str | None = Field(None, max_length=100)
+    # Niyyah: what its work is for; none: its task is its goal.
+    goal: str | None = Field(None, max_length=1000)
 
 
 class WatcherUpdate(BaseModel):
@@ -4837,6 +5006,8 @@ class WatcherUpdate(BaseModel):
     enabled: bool | None = None
     # "" clears it (the default agent runs the task).
     agent_id: str | None = Field(None, max_length=100)
+    # Niyyah: "" clears it (the task is the goal again).
+    goal: str | None = Field(None, max_length=1000)
 
 
 class NoticeFeedback(BaseModel):
@@ -4919,9 +5090,13 @@ async def add_watcher(req: WatcherRequest, user: TokenPayload = Depends(require_
     if req.agent_id:
         _visible_agent(user, req.agent_id)
     try:
-        return _muraqabah_store().add(
+        store = _muraqabah_store()
+        made = store.add(
             user.user_id, req.title, req.trigger, req.task, req.priority, agent_id=req.agent_id
         )
+        if req.goal and made:
+            made = store.update(user.user_id, made["id"], goal=req.goal) or made
+        return made
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

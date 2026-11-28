@@ -2,11 +2,12 @@
  * Everything MIZAN knows about where an answer came from, in one quiet row
  * under it: the Isnad grades of its claims, what the Truth Gate (Sidq)
  * corrected, which sources were asked (Ahl al-Dhikr), what was recalled from
- * other chats, any injected instruction Amanah ignored, and the model's
- * usage. One click opens the details; nothing is hidden, only folded.
+ * other chats, any injected instruction Amanah ignored, whether the work
+ * drifted from its project's or watcher's goal (Niyyah, a note only), and the
+ * model's usage. One click opens the details; nothing is hidden, only folded.
  */
 import { useState } from "react";
-import { BookOpen, ChevronRight, History, Scale, ShieldAlert } from "lucide-react";
+import { BookOpen, ChevronRight, Compass, History, Scale, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CognitiveMetadata, MessageUsageMeta } from "../../types";
 import { amanahHeadline, isAmanah, kindLabels } from "../../utils/amanah.ts";
@@ -14,6 +15,7 @@ import { GRADES, gradeTerms, isIsnad, plainHeadline, segments } from "../../util
 import { isSidq, sidqHeadline, sidqLines } from "../../utils/sidq.ts";
 import { ahlHeadline, ahlLines, isAhl } from "../../utils/ahl.ts";
 import { recalledHeadline, recalledLines } from "../../utils/recalled.ts";
+import { goalSource, isNiyyah, niyyahHeadline } from "../../utils/niyyah.ts";
 import { cognitiveMetrics, fmtCost, fmtTokens, usageMetrics } from "../../utils/responseMetrics.ts";
 import IsnadView from "../../components/IsnadView";
 
@@ -53,6 +55,8 @@ export function SourcesAndChecks({ meta, cognitive, debug = false }: Props) {
   const sidq = isSidq(meta?.sidq) ? meta.sidq : null;
   const ahl = isAhl(meta?.ahl) ? meta.ahl : null;
   const amanah = isAmanah(meta?.amanah) ? meta.amanah : null;
+  // Niyyah speaks only when the drift alarm is on: steady work needs no note.
+  const niyyah = isNiyyah(meta?.niyyah) && meta.niyyah.alarm ? meta.niyyah : null;
   const usage = usageMetrics(meta);
   const diagnostics = debug && cognitive ? cognitiveMetrics(cognitive) : null;
   const tokens = [
@@ -62,7 +66,7 @@ export function SourcesAndChecks({ meta, cognitive, debug = false }: Props) {
   const cost = meta?.cost_usd != null && Number.isFinite(meta.cost_usd) && meta.cost_usd >= 0
     ? fmtCost(meta.cost_usd, meta.cost_estimated) : "";
 
-  if (!isnad && !sidq && !ahl && !amanah && !recalled.length && !usage.parts.length && !diagnostics) return null;
+  if (!isnad && !sidq && !ahl && !amanah && !niyyah && !recalled.length && !usage.parts.length && !diagnostics) return null;
 
   return (
     <div className="mt-2 text-xs">
@@ -110,12 +114,18 @@ export function SourcesAndChecks({ meta, cognitive, debug = false }: Props) {
             {amanah.ignored === 1 ? "1 injected instruction ignored" : `${amanah.ignored} injected instructions ignored`}
           </Chip>
         )}
+        {niyyah && (
+          <Chip tone="warning">
+            <Compass className="size-3" />
+            {niyyahHeadline(niyyah)}
+          </Chip>
+        )}
         {(meta?.model || tokens || cost) && (
           <Chip>
             <span className="font-mono">{[meta?.model, tokens, cost].filter(Boolean).join(" · ")}</span>
           </Chip>
         )}
-        {!isnad && !sidq && !ahl && !amanah && !recalled.length && !meta?.model && !tokens && !cost && (
+        {!isnad && !sidq && !ahl && !amanah && !niyyah && !recalled.length && !meta?.model && !tokens && !cost && (
           <Chip>Details</Chip>
         )}
         <ChevronRight className={cn("size-3 text-muted-foreground transition-transform", open && "rotate-90")} />
@@ -180,6 +190,20 @@ export function SourcesAndChecks({ meta, cognitive, debug = false }: Props) {
               {amanah.examples.length > 0 && (
                 <ul className="space-y-0.5 font-mono text-[11px]">
                   {amanah.examples.map((example) => <li key={example} className="break-words">“{example}”</li>)}
+                </ul>
+              )}
+            </Section>
+          )}
+          {niyyah && (
+            <Section title={niyyahHeadline(niyyah)} tooltip="Niyyah: each run's work read against the goal">
+              <p>
+                The last few answers' work does not match {goalSource(niyyah)}: “{niyyah.goal}”. This is only a
+                note; nothing was stopped. If the goal has changed, set the new one on the{" "}
+                {niyyah.scope === "watcher" ? "watcher" : "project"}.
+              </p>
+              {niyyah.off_goal.length > 0 && (
+                <ul className="space-y-0.5 font-mono text-[11px]">
+                  {niyyah.off_goal.map((item) => <li key={item} className="break-words">{item}</li>)}
                 </ul>
               )}
             </Section>

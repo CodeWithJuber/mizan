@@ -62,15 +62,17 @@ class CheckpointRestore(BaseModel):
 
 
 class WorkspaceUpdate(BaseModel):
-    """A new name and/or the project's protected paths (an empty list protects nothing)."""
+    """A new name, goal and/or the project's protected paths (an empty list protects nothing)."""
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
+    # Niyyah: what the project is for; "" clears it (the chat's first request is the goal).
+    goal: str | None = Field(default=None, max_length=1000)
     protected_paths: list[str] | None = Field(default=None, max_length=MAX_PROTECTED)
 
     @model_validator(mode="after")
     def one_change(self) -> WorkspaceUpdate:
-        if self.name is None and self.protected_paths is None:
-            raise ValueError("Send a name or protected_paths")
+        if self.name is None and self.protected_paths is None and self.goal is None:
+            raise ValueError("Send a name, a goal or protected_paths")
         return self
 
 
@@ -149,14 +151,18 @@ def create_workspace(body: WorkspaceCreate, user: TokenPayload = Depends(require
 def update_workspace(
     workspace_id: str, body: WorkspaceUpdate, user: TokenPayload = Depends(require_editor)
 ) -> dict:
-    """Rename a project or set its protected paths: a change the agent makes to one of
-    them asks the person in every permission mode (docs/coding-workspaces.md)."""
-    return cast(
-        dict,
-        WorkspaceStore(user.user_id).update_project(
+    """Rename a project, set its goal (Niyyah: each run's work is read against it) or
+    its protected paths: a change the agent makes to one of them asks the person in
+    every permission mode (docs/coding-workspaces.md)."""
+    store = WorkspaceStore(user.user_id)
+    metadata: dict = {}
+    if body.name is not None or body.protected_paths is not None:
+        metadata = store.update_project(
             workspace_id, name=body.name, protected_paths=body.protected_paths
-        ),
-    )
+        )
+    if body.goal is not None:
+        metadata = store.set_goal(workspace_id, body.goal)
+    return {"goal": "", **metadata}
 
 
 @router.delete("/{workspace_id}")

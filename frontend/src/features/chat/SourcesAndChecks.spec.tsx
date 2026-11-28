@@ -33,6 +33,24 @@ describe("SourcesAndChecks", () => {
     expect(screen.queryByText("Raw metadata (debug)")).toBeNull();
   });
 
+  it("notes drift from the project's goal only when the alarm is on, and stops nothing", () => {
+    const niyyah = {
+      scope: "project", goal: "A todo list app", goal_source: "stated", work: 2, drift: 1, cusum: 1.3,
+      alarm: true, off_goal: ["workspace_write billing/invoice.py"],
+    };
+    render(<SourcesAndChecks meta={{ niyyah } as unknown as MessageUsageMeta} />);
+    const row = screen.getByRole("button", { expanded: false });
+    expect(row.textContent).toContain("Off the project's goal?");
+    fireEvent.click(row);
+    expect(screen.getByText(/the goal you set: “A todo list app”/)).toBeTruthy();
+    expect(screen.getByText("workspace_write billing/invoice.py")).toBeTruthy();
+    cleanup();
+    const { container } = render(
+      <SourcesAndChecks meta={{ niyyah: { ...niyyah, alarm: false } } as unknown as MessageUsageMeta} />,
+    );
+    expect(container.innerHTML).toBe("");
+  });
+
   it("shows the raw metadata only in debug mode", () => {
     render(<SourcesAndChecks meta={{ model: "m-1" } as MessageUsageMeta} debug />);
     fireEvent.click(screen.getByRole("button"));

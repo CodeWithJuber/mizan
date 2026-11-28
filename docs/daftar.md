@@ -11,6 +11,8 @@ Personal agents remember things about their users. Few let the user see all of i
 | **Chat summary** | MIZAN's running summary of a long chat | That chat | Read (it follows the chat) |
 | **Learned** | Phrasings, verified programs and repair lessons from your verified work | Your verified requests | Manage in **Agents → Majlis → Learning** |
 | **Episodes** (a count) | How many things you said MIZAN keeps as episodes, and how many came up again; not yet used in answers ([episodic memory](episodic-memory.md)) | Your chats, while learning is on | Delete the chat to erase its episodes (Mahw) |
+| **Decision** | What you decided and why, in your words, append-only ([azm.md](azm.md)) | You added it, or you said it in a chat and your agent recorded it (MIZAN checks your words say it) | Forget (never edited: a changed decision is a new one) |
+| **Hand-off note** | Where a chat, project or agent left the work: goal, open items, last decisions, last request ([azm.md](azm.md)) | Rewritten after each answer | Read, forget |
 
 Every entry shows:
 - where it came from (a chat by its title, "you added it", "imported", or a knowledge source)
@@ -47,8 +49,8 @@ When the model answers, it may be shown up to five things you wrote in your othe
 ## Taking it with you
 
 - **Export Markdown:** a readable list grouped by kind, with provenance for each entry.
-- **Export JSON:** a portable `mizan-daftar/1` file with notes and preferences.
-- **Import:** brings notes and preferences into another MIZAN account. Imported notes are marked "imported". An entry that carries instructions aimed at the AI is skipped ([Amanah](amanah.md)), so an import cannot plant a prompt injection in memory.
+- **Export JSON:** a portable `mizan-daftar/1` file with notes, preferences and decisions.
+- **Import:** brings notes, preferences and decisions into another MIZAN account (hand-off notes, summaries and learned items are MIZAN's own state and are skipped). Imported notes are marked "imported". An entry that carries instructions aimed at the AI is skipped ([Amanah](amanah.md)), so an import cannot plant a prompt injection in memory.
 
 A note never keeps a secret: a key, token or password in a note (one you add, edit, import or say "remember" in a chat) is stored as `[redacted:<kind>]` and the rest of its words as written ([Satr](satr.md)).
 
@@ -58,10 +60,10 @@ All routes act on the signed-in user's own ledger.
 
 | Route | Purpose |
 |---|---|
-| `GET /api/daftar?query=&kind=` | The ledger and counts per kind |
+| `GET /api/daftar?query=&kind=` | The ledger and counts per kind (`note`, `preference`, `summary`, `learned`, `decision`, `handoff`) |
 | `POST /api/daftar` | Add a note (`content`, `tags`, `expires`) |
 | `PATCH /api/daftar/{id}` | Edit a note (`content`, `tags`, `expires`) or a preference (`content`) |
-| `POST /api/daftar/forget` | `{ids}` to forget entries; `{topic}` to preview; `{topic, confirm: true}` to forget the topic. Forgetting notes returns Mahw's `receipt` |
+| `POST /api/daftar/forget` | `{ids}` to forget entries (`decision:<id>` and `handoff:<scope>` too); `{topic}` to preview; `{topic, confirm: true}` to forget the topic. Forgetting notes returns Mahw's `receipt` |
 | `GET /api/daftar/receipts` | Receipts of what you asked MIZAN to forget, newest first |
 | `GET /api/daftar/export?format=md\|json` | Download the ledger |
 | `POST /api/daftar/import` | Import a `mizan-daftar/1` JSON export |

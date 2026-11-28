@@ -51,6 +51,8 @@ READ_ONLY_TOOLS = frozenset(
         "disambiguate_sense",
         "compact_context",
         "todo_write",
+        # 'Azm: writes only MIZAN's own record of what the person decided.
+        "record_decision",
         "web_browse",
         "web_search",
         "workspace_list",

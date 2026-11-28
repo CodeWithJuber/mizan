@@ -4,6 +4,7 @@
  */
 
 import type { AmanahSummary } from "./utils/amanah.ts";
+import type { NiyyahNote } from "./utils/niyyah.ts";
 import type { IsnadSummary } from "./utils/isnad.ts";
 import type { SidqReport } from "./utils/sidq.ts";
 import type { AhlReport } from "./utils/ahl.ts";
@@ -318,6 +319,10 @@ export interface MessageUsageMeta {
   ahl?: AhlReport;
   /** Your own words from other chats that the model was shown for this answer. */
   recalled?: { session_id: string; created_at: string; content: string }[];
+  /** How this run's work stood against its project's or watcher's goal (Niyyah; a note only). */
+  niyyah?: NiyyahNote;
+  /** The one question MIZAN asked before acting on a guess (Tabayyun). */
+  tabayyun?: { asked: number; tool: string; argument: string; outcome: string };
   task_verified?: boolean;
   answer_delivered?: boolean;
   error_code?: string;

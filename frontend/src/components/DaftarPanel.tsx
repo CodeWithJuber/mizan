@@ -12,13 +12,17 @@ import { authFetch } from "../utils/authFetch";
 import { useToast } from "./Toast";
 import { checkLine, isReceipt } from "../utils/mahw.ts";
 import { confirmDialog } from "./ui/confirm";
-import { KINDS, expiryIn, isLedger, provenance, type DaftarEntry, type EntryKind, type Ledger } from "../utils/daftar.ts";
+import {
+  KINDS, decisionParts, expiryIn, forgettable, isLedger, provenance, type DaftarEntry, type EntryKind, type Ledger,
+} from "../utils/daftar.ts";
 
 const KIND_BADGE: Record<EntryKind, { label: string; style: string }> = {
   note: { label: "Note", style: "badge-info" },
   preference: { label: "Preference", style: "badge-gold" },
   summary: { label: "Chat summary", style: "badge-success" },
   learned: { label: "Learned", style: "badge-warning" },
+  decision: { label: "Decision", style: "badge-gold" },
+  handoff: { label: "Hand-off", style: "badge-info" },
 };
 
 export default function DaftarPanel({ api }: { api: ApiClient }) {
@@ -248,7 +252,11 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
       <ul className="space-y-2">
         {ledger.entries.length === 0 && (
           <li className="text-sm text-muted-foreground/80 text-center py-6">
-            {query ? "Nothing about that." : "MIZAN keeps nothing about you yet."}
+            {query
+              ? "Nothing about that."
+              : kind === "decision"
+                ? "No decisions yet. Tell MIZAN in a chat what you decided and why, and it keeps it here."
+                : "MIZAN keeps nothing about you yet."}
           </li>
         )}
         {ledger.entries.map((entry) => (
@@ -279,6 +287,13 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
                   </button>
                 </div>
               </div>
+            ) : entry.kind === "decision" ? (
+              <p className="text-sm text-foreground wrap-break-word">
+                <span className="font-medium">{decisionParts(entry).what}</span>
+                {decisionParts(entry).why && (
+                  <span className="text-muted-foreground"> because {decisionParts(entry).why}</span>
+                )}
+              </p>
             ) : (
               <p className="text-sm text-foreground whitespace-pre-wrap wrap-break-word line-clamp-6">
                 {entry.content}
@@ -288,14 +303,14 @@ export default function DaftarPanel({ api }: { api: ApiClient }) {
               <span className="text-micro text-muted-foreground/80">{provenance(entry)}</span>
               <span className="flex-1" />
               {entry.editable && editing?.id !== entry.id && (
-                <>
-                  <button className="btn-ghost btn-sm" onClick={() => setEditing({ id: entry.id, text: entry.content })}>
-                    Edit
-                  </button>
-                  <button className="btn-ghost btn-sm" disabled={busy} onClick={() => forgetOne(entry)}>
-                    Forget
-                  </button>
-                </>
+                <button className="btn-ghost btn-sm" onClick={() => setEditing({ id: entry.id, text: entry.content })}>
+                  Edit
+                </button>
+              )}
+              {forgettable(entry) && editing?.id !== entry.id && (
+                <button className="btn-ghost btn-sm" disabled={busy} onClick={() => forgetOne(entry)}>
+                  Forget
+                </button>
               )}
               {entry.kind === "learned" && <span className="text-micro text-gray-400">Manage in Majlis → Learning</span>}
             </div>

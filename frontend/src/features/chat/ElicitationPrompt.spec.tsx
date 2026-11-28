@@ -45,6 +45,40 @@ describe("ElicitationPrompt", () => {
     expect(onAnswer).toHaveBeenCalledWith("e1", "accept", { tags: ["a"] });
   });
 
+  it("asks MIZAN's one question before acting; the guess is named, never filled in", async () => {
+    const onAnswer = vi.fn();
+    const question = {
+      id: "q1",
+      server: "MIZAN",
+      kind: "question" as const,
+      tool: "send_email",
+      argument: "to",
+      message: "Before send_email runs: which to do you mean? You have not said it. Did you mean “bob@example.com”? Type it to confirm, or write the right one.",
+      schema: {
+        type: "object",
+        properties: { answer: { type: "string", title: "to", minLength: 1, maxLength: 500 } },
+        required: ["answer"],
+      },
+    };
+    render(<ul><ElicitationPrompt request={question} onAnswer={onAnswer} /></ul>);
+    expect(screen.getByText("MIZAN asks before acting")).toBeTruthy();
+    expect(screen.getByText(/read as your own words for send_email/)).toBeTruthy();
+    expect(screen.getByText(/Did you mean “bob@example.com”/)).toBeTruthy();
+    expect((screen.getByLabelText(/to/) as HTMLInputElement).value).toBe("");
+    // An empty Send is no yes.
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Required.")).toBeTruthy();
+    expect(onAnswer).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/to/), { target: { value: "bilal@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(onAnswer).toHaveBeenCalledWith("q1", "accept", { answer: "bilal@example.com" });
+  });
+
+  it("names MIZAN's question once it is answered", () => {
+    render(<ul><ElicitationPrompt request={{ ...request, server: "MIZAN", kind: "question", decision: "accept" }} /></ul>);
+    expect(screen.getByText("MIZAN's question before acting answered")).toBeTruthy();
+  });
+
   it("shows only the outcome once answered", () => {
     render(<ul><ElicitationPrompt request={{ ...request, decision: "decline" }} /></ul>);
     expect(screen.getByText("github's question declined")).toBeTruthy();

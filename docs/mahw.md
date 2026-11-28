@@ -12,6 +12,7 @@ Deleting a chat, or forgetting a note, removes it from every place MIZAN keeps i
 | Learning record | The chat's notes in the live learning record (Sijill, Agents → Majlis → Learning now) and the failure signatures it gave the instruction harness (Tajdid) |
 | Lessons, earned skills, replays | In your `learning.db`: the chat's answers and every lesson from corrections that drew on them (Islah; one also confirmed in another chat goes too), the verified runs it counted toward a skill and any skill they earned (Itqan, removed from your skills), and its runs in replay families, whose evidence is then counted afresh (Athar) ([automatic learning](automatic-learning.md#where-they-live)) |
 | Episodic memory | The chat's episodes (what you said in it, kept as weak traces) and every strengthening it gave an episode from another chat ([episodic memory](episodic-memory.md)) |
+| Decisions and hand-off ('Azm) | The chat's decisions, every hand-off note it wrote (its own, its project's, its agent's) and any hand-off another chat wrote that quotes one of its decisions ([azm.md](azm.md)). A Niyyah drift chart holds no words and stays |
 | Learner | Training candidates captured from the chat, with their reviews |
 | Language reader | A version of MIZAN's own language reader that learned the chat's reviewed words while resting is dropped, and the newest version that did not becomes the current one (weights cannot have one text subtracted; [Ruh reader](ruh-reader.md)) |
 | Debug mode | Saved comparison runs of the chat's requests |
@@ -34,6 +35,7 @@ After erasing, Mahw cuts every erased text (messages, summary, notes) into 20-ch
 - the knowledge graph
 - learner rows
 - debug runs
+- decisions and hand-off notes
 
 It also asks the vector store whether the erased notes' vectors are gone.
 

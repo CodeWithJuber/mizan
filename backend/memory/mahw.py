@@ -431,6 +431,18 @@ def _owner_places(
             "SELECT COUNT(*) FROM episodes WHERE instr(text, ?) > 0",
             (),
         ),
+        (
+            "decisions",
+            str(Path(learner).parent / "azm.sqlite3") if learner else "",
+            "SELECT COUNT(*) FROM decisions WHERE instr(text, ?) > 0 OR instr(why, ?) > 0",
+            (),
+        ),
+        (
+            "hand-off notes",
+            str(Path(learner).parent / "azm.sqlite3") if learner else "",
+            "SELECT COUNT(*) FROM handoffs WHERE instr(text, ?) > 0 OR instr(about, ?) > 0",
+            (),
+        ),
     ]
 
 
@@ -643,6 +655,12 @@ def _erase_chat_rows(
     erased = episodic.forget_chat(owner, session_id)
     removed["episodes"] = erased["episodes"]
     removed["episode repeats"] = erased["repeats"]
+    # The chat's decisions, the hand-offs it wrote and any that quote them ('Azm).
+    from memory import azm
+
+    planned = azm.forget_chat(owner, session_id)
+    removed["decisions"] = planned["decisions"]
+    removed["hand-off notes"] = planned["handoffs"]
     removed["debug runs"] = _delete_in(folder / "debug_runs.db", "debug_runs", "prompt", asked)
     kept = [
         "Action receipts (Sakk) stay: which tool ran and how it ended, with keyed "
