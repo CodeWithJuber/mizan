@@ -29,7 +29,7 @@ bcrypt>=5.0.0,<6
 cryptography>=50.0.2,<51
 
 # Automation
-croniter>=6.2.4,<7
+croniter>=6.2.4,<8
 hijridate>=2.6.0,<3  # Umm al-Qura Hijri calendar (Tadbir dates)
 adhanpy>=1.0.5,<2  # Prayer times computed locally (Muraqabah quiet windows), MIT
 fsrs>=6.3.3,<7  # Memory strength (Tadhkir): the FSRS-6 model of human recall, MIT
