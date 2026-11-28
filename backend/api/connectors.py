@@ -300,12 +300,9 @@ _CALLBACK_SCRIPT = """
   let token = null;
   try { token = localStorage.getItem("mizan_token"); } catch (e) {}
   if (!token) {
-    if (window.opener) {
-      window.opener.postMessage({type: "mizan:connector-oauth-code", ...body}, "*");
-      say(true, "Return to MIZAN to finish connecting.");
-    } else {
-      say(false, "Open this link in the browser where you are signed in to MIZAN, then connect again.");
-    }
+    // The app opens this window with no opener, so the code is never handed on: the
+    // sign-in finishes only here, in the browser where the person is signed in.
+    say(false, "Open this link in the browser where you are signed in to MIZAN, then connect again.");
     return;
   }
   try {

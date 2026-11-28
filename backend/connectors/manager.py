@@ -35,6 +35,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -779,6 +780,33 @@ async def list_all_tools(client: Any) -> list[Any]:
     return tools
 
 
+# What a connector's own process or server might print that is a credential: an
+# Authorization header, a bearer token, a key=value pair named like a secret.
+_SECRET_LINE = re.compile(
+    r"(?i)(authorization\s*[:=]\s*)(\S+(?:\s+\S+)?)"
+    r"|(bearer\s+)([A-Za-z0-9._~+/=-]{8,})"
+    r"|((?:access_token|refresh_token|id_token|client_secret|api[_-]?key|apikey|token|"
+    r"secret|password|passwd)[\"']?\s*[:=]\s*[\"']?)([^\s\"'&,;]{4,})"
+)
+
+
+def redact(line: str, known: tuple[str, ...] = ()) -> str:
+    """A log line with credentials replaced by [redacted]: the connector's own sealed
+    header and env values (exactly) and anything shaped like a credential."""
+    for value in known:
+        if value and len(value) >= 6:
+            line = line.replace(value, "[redacted]")
+
+    def scrub(match: re.Match) -> str:
+        if match.group(1) is not None:
+            return f"{match.group(1)}[redacted]"
+        if match.group(3) is not None:
+            return f"{match.group(3)}[redacted]"
+        return f"{match.group(5)}[redacted]"
+
+    return _SECRET_LINE.sub(scrub, line)
+
+
 class _StderrTap:
     """A host process's stderr into the connector's log (last 200 lines)."""
 
@@ -804,6 +832,7 @@ class _StderrTap:
 class Connection:
     def __init__(self, manager: ConnectorManager, user_id: str, server: dict, interactive: bool):
         self.manager, self.user_id, self.server = manager, user_id, server
+        self.known_secrets: tuple[str, ...] = ()
         self.interactive = interactive
         self.limits = store.timeouts(server)
         self.client: Any = None
@@ -834,7 +863,7 @@ class Connection:
         return self.client is not None and not self.closing.is_set() and not self.dead
 
     def log(self, line: str) -> None:
-        self.manager.log(self.user_id, self.server["id"], line)
+        self.manager.log(self.user_id, self.server["id"], redact(line, self.known_secrets))
 
     def start(self) -> None:
         self.task = asyncio.create_task(self._owner(), name=f"mcp:{self.server['slug']}")
@@ -1119,7 +1148,7 @@ class ConnectorManager:
         buffer = self.logs.get((user_id, server_id))
         if buffer is None:
             buffer = self.logs[(user_id, server_id)] = collections.deque(maxlen=LOG_LINES)
-        buffer.append(f"{_now_iso()} {line}")
+        buffer.append(f"{_now_iso()} {redact(line)}")
 
     def log_lines(self, user_id: str, server_id: str) -> list[str]:
         return list(self.logs.get((user_id, server_id)) or [])
@@ -1199,6 +1228,10 @@ class ConnectorManager:
             headers, env, _oauth = store.secrets_of(server)
         except secrets.SecretsUnreadable as exc:
             raise ConnectorError(str(exc), code=exc.code) from None
+        # The log never repeats a value this connector was given in secret.
+        connection.known_secrets = tuple(
+            str(value) for value in [*(headers or {}).values(), *(env or {}).values()] if value
+        )
         info = Implementation(name="mizan", version="3")
         options = {
             "read_timeout_seconds": connection.limits["call_s"],

@@ -77,8 +77,8 @@ page shows **Connected** only after MIZAN has exchanged the code for tokens;
 otherwise it shows why. `GET /api/connectors/{id}/oauth/status` answers
 `pending`, `connected` or `error` for the sign-in window. When the page cannot
 read the person's credential (another browser, a different origin in
-development), it hands the code to the window that opened it
-(`mizan:connector-oauth-code` message) to complete.
+development), it says to open the link in the browser where they are signed in:
+the app opens the window with no opener, so the code is never handed on.
 
 Tokens are sealed with their absolute expiry (`auth.expires_at` in the API),
 and with the authorization server's metadata. A connection opened after the
@@ -169,6 +169,9 @@ Each (user, server) pair has one owner task that holds the SDK session.
 on the current one), lists the tools and pings: `{ok, latency_ms, tools,
 error?}`. **Logs** (`GET /{id}/logs`) are the last 200 lines: connections and
 errors, the server's own log messages, and what a host process wrote to stderr.
+Every line is redacted first (`manager.redact`): the connector's own sealed header and
+env values, and anything shaped like a credential (`Authorization:`, `Bearer …`,
+`token=`, `api_key=`, `secret=`, `password=`), read `[redacted]`.
 
 ## Limits and errors
 
