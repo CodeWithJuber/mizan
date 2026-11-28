@@ -77,9 +77,19 @@ EDIT_TOOLS = frozenset(
 )
 
 
-# Send something to a site on the user's behalf (a form, an order): a person
-# decides each time, whatever the chat's mode, and never with no one to ask.
-ALWAYS_ASK_TOOLS = frozenset({"shahid_submit"})
+def always_ask_tools() -> frozenset[str]:
+    """Tools a person decides each time, whatever the chat's mode, and never with no
+    one to ask (``MIZAN_ALWAYS_ASK_TOOLS``, comma-separated; empty by default: the
+    permission mode decides for every tool)."""
+    raw = os.getenv("MIZAN_ALWAYS_ASK_TOOLS", "")
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
+def default_mode() -> str:
+    """The permission mode of a chat that sends none (``MIZAN_DEFAULT_PERMISSION_MODE``)."""
+    mode = os.getenv("MIZAN_DEFAULT_PERMISSION_MODE", "auto").strip().lower()
+    return mode if mode in MODES else "auto"
+
 
 # Runs inside MIZAN's isolated sandbox (no host access, egress allowlist):
 # unattended runs may use it without a person present.
@@ -141,7 +151,7 @@ class ApprovalContext:
         self, tool_name: str, read_only_hint: bool = False, params: dict | None = None
     ) -> bool:
         category = tool_category(tool_name, read_only_hint, params)
-        if tool_name in ALWAYS_ASK_TOOLS:
+        if tool_name in always_ask_tools():
             return True
         if category == "read" or always_key(tool_name, params) in self.always:
             return False

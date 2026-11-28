@@ -219,18 +219,37 @@ Greeting preferences remain independent. Custom role defaults and heuristic
 observations cannot override the current request's language, tone or format.
 
 Each execution builds a tool catalogue from available handlers, enabled skills,
-loaded plugins, the selected workspace, and existing permission/developmental
-gates. It ranks current-request relevance against the tools' names and metadata.
+loaded plugins, the selected workspace, the permission gates and the agent's own
+tool, connector and skill lists (the Nafs level no longer hides tools). It ranks current-request relevance against the tools' names and metadata.
 A bounded discovery tool makes the other permitted tools reachable without
 sending every schema on every message. Discovery does not execute an action or
 consume an approval; an actual call still passes the normal authorization and
 argument checks. This is runtime selection, not learned model training.
 
-The schema window defaults to eight definitions and 12,288 UTF-8 bytes. Set
-`MIZAN_CHAT_TOOL_SCHEMA_LIMIT` (2–32) and `MIZAN_CHAT_TOOL_SCHEMA_BYTES`
-(4,096–65,536), or the agent's `tool_schema_limit` and `tool_schema_bytes`.
+The schema window defaults to 16 definitions and 32,768 UTF-8 bytes. Set
+`MIZAN_TOOL_CATALOG_LIMIT` (2–32) and `MIZAN_TOOL_CATALOG_BYTES` (4,096–65,536; the
+older `MIZAN_CHAT_TOOL_SCHEMA_LIMIT` and `_BYTES` still work when the new names are
+unset), or the agent's `tool_schema_limit` and `tool_schema_bytes`. An ordinary chat
+still sends only the discovery tool: the window holds what the request names.
 Generation temperature uses the explicit agent `temperature` or
-`MIZAN_CHAT_TEMPERATURE` (default 0.5, bounded 0–1). Qalb oscillation no longer
+`MIZAN_CHAT_TEMPERATURE` (default 0.5, bounded 0–1).
+
+### Rates and per-agent settings
+
+| Setting | Default | What it bounds |
+|---------|---------|----------------|
+| `MIZAN_CHAT_PER_MINUTE` | 60 | Chat messages per signed-in user per minute (429 with `Retry-After` past it). |
+| `MIZAN_TOOL_CALLS_PER_MINUTE` | 120 | Calls of one tool by one agent per minute (Izn). |
+| `MIZAN_DEFAULT_PERMISSION_MODE` | `auto` | The permission mode of a chat that sends none. |
+| `MIZAN_ALWAYS_ASK_TOOLS` | empty | Tools that ask a person in every mode. |
+
+Each agent's own `settings` ([personal-agents.md](personal-agents.md)) win over the
+server's values for that agent's runs: `temperature` (other providers only: Claude
+requests never send it), `effort` (instead of `MIZAN_CHAT_EFFORT`), `max_steps`
+(instead of `MIZAN_CHAT_MAX_STEPS`), `max_output_tokens` (instead of
+`MIZAN_CHAT_MAX_OUTPUT_TOKENS`), `orchestration` (instead of `MIZAN_ORCHESTRATION`)
+and `permission_mode` (instead of `MIZAN_DEFAULT_PERMISSION_MODE`). `null` means the
+server's value. Qalb oscillation no longer
 changes it. Deterministic self-checks report diagnostics without appending
 canned English caveats or rewriting text after it has streamed.
 

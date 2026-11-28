@@ -34,7 +34,7 @@ def isolated_provider_mode(monkeypatch):
     monkeypatch.setenv("MIZAN_MODEL_LIMITS_REFRESH", "false")
     monkeypatch.setenv("MIZAN_MEMORY_MAINTENANCE", "false")
     # Legacy suites test the model-driven agent loop; tests/test_tadbir.py
-    # covers MIZAN's own orchestration (the production default).
+    # covers MIZAN's own orchestration (mizan and hybrid, the production default).
     monkeypatch.setenv("MIZAN_ORCHESTRATION", "llm")
     monkeypatch.setenv("MIZAN_LOCKED_EVAL", "off")  # tests never download the locked eval
     monkeypatch.setenv("MIZAN_HADITH_INDEX", "off")  # nor the six books' text

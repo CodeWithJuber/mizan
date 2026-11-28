@@ -9,6 +9,6 @@
 - ``calc``, ``quran``, ``hadith``, ``waqt``, ``project``: MIZAN's own knowledge and checks
 """
 
-from .engine import MODES, Tadbir, full_orchestration, orchestration_mode
+from .engine import MODES, Tadbir, bind_mode, full_orchestration, orchestration_mode
 
-__all__ = ["MODES", "Tadbir", "full_orchestration", "orchestration_mode"]
+__all__ = ["MODES", "Tadbir", "bind_mode", "full_orchestration", "orchestration_mode"]

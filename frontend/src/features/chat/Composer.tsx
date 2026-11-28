@@ -21,12 +21,14 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ChatAttachments } from "../../components/ChatAttachments";
 import { VoiceInput } from "../../components/VoiceInput";
-import { PERMISSION_LABELS, savePermissionMode } from "../../components/PermissionModeSwitch";
+import { PERMISSION_LABELS } from "../../components/PermissionModeSwitch";
 import { addToast } from "../../components/Toast";
 import { useApi } from "../../hooks/useApi";
 import { withHeard } from "../../utils/voice.ts";
 import { CHAT_INPUT_LIMIT } from "../../utils/chatRecovery.ts";
 import { allowedLabel, PERMISSION_MODES, type PermissionMode } from "../../utils/agentActivity";
+import { agentStarterPrompts } from "../../utils/agentSettings.ts";
+import { useSelectedAgent } from "../agents/agents";
 import { useChatActions, useChatState } from "./ChatProvider";
 import { PlanApproval, useAllowedAlways } from "./ChatControls";
 
@@ -87,6 +89,9 @@ export function Composer() {
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const { input, streaming, attachedFiles, recovery } = state;
+  // A new chat with an agent that has starter prompts offers them, one tap each.
+  const agent = useSelectedAgent();
+  const starters = state.messages.length === 0 && !streaming && !state.historyLoading ? agentStarterPrompts(agent) : [];
   const { allowed, revoke } = useAllowedAlways();
 
   useEffect(() => {
@@ -166,12 +171,10 @@ export function Composer() {
       <Chip key="deep" icon={Telescope} label={state.deepResearchConfirmed ? "Deep research" : "Deep research · confirm cost in +"}
         onRemove={() => actions.setAgentMode("single")} />
     ),
-    state.permissionMode !== "auto_edits" && (
-      <Chip key="mode" icon={ShieldCheck} label={PERMISSION_LABELS[state.permissionMode].title}
-        onRemove={() => {
-          savePermissionMode("auto_edits");
-          actions.setPermissionMode("auto_edits");
-        }} />
+    state.permissionMode !== state.defaultPermissionMode && (
+      <Chip key="mode" icon={ShieldCheck}
+        label={`${PERMISSION_LABELS[state.permissionMode].title}${state.permissionSource === "agent" ? " · set by the agent" : ""}`}
+        onRemove={actions.resetPermissionMode} />
     ),
     state.debugAllowed && state.debugOn && (
       <Chip key="debug" icon={Bug} label="Debug compare" onRemove={actions.toggleDebug} />
@@ -193,6 +196,26 @@ export function Composer() {
     <div className="bg-background px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
       <div className="mx-auto max-w-3xl">
         <PlanApproval />
+        {starters.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            <span className="sr-only">Starter prompts from {agent?.name ?? "the agent"}:</span>
+            {starters.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                title={prompt}
+                onClick={() => {
+                  actions.setInput(prompt);
+                  textareaRef.current?.focus();
+                }}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-card px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:border-ring/60 hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Sparkles className="size-3.5 shrink-0 text-brand" />
+                <span className="truncate">{prompt}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {chips.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{chips}</div>}
 
         <div
@@ -351,9 +374,7 @@ export function Composer() {
                   <RadioGroup
                     value={state.permissionMode}
                     onValueChange={(value) => {
-                      const mode = value as PermissionMode;
-                      savePermissionMode(mode);
-                      actions.setPermissionMode(mode);
+                      actions.setPermissionMode(value as PermissionMode);
                     }}
                     disabled={streaming}
                     className="gap-1.5"

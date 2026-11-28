@@ -27,8 +27,9 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# The same list as enforce_api_access in api/main.py (agent routes check ownership
+# themselves: anyone may make and change agents of their own).
 _WRITES_NEED_ADMIN = (
-    "/api/agents",
     "/api/providers",
     "/api/preferences",
     "/api/skills",

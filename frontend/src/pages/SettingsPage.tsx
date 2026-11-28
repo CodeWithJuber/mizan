@@ -52,6 +52,13 @@ interface SettingsData {
 export type SettingsSection = "system" | "spending" | "receipts" | "providers" | "channels" | "security" | "memory" | "vault";
 
 /** With `section`, one section is shown inside the Settings layout (no own header or menu). */
+/** Providers whose API key is entered here (saved as `<NAME>_API_KEY`). */
+const KEY_PROVIDERS = ["anthropic", "openrouter", "openai", "ollama", "xai", "meta"];
+const KEY_PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Anthropic", openrouter: "OpenRouter", openai: "OpenAI", ollama: "Ollama",
+  xai: "xAI (Grok)", meta: "Meta (Muse Spark)",
+};
+
 export default function SettingsPage({ api, section }: { api: ApiClient; section?: SettingsSection }) {
   const { addToast } = useToast();
   const [settings, setSettings] = useState<SettingsData | null>(null);
@@ -365,7 +372,7 @@ export default function SettingsPage({ api, section }: { api: ApiClient; section
                 rest.
               </p>
 
-              {["anthropic", "openrouter", "openai", "ollama"].map(
+              {KEY_PROVIDERS.map(
                 (provider) => {
                   const info = settings?.providers?.find(
                     (p) => p.name === provider,
@@ -375,8 +382,8 @@ export default function SettingsPage({ api, section }: { api: ApiClient; section
                     <div key={provider} className="card">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <h4 className="font-medium text-foreground capitalize">
-                            {provider}
+                          <h4 className="font-medium text-foreground">
+                            {KEY_PROVIDER_LABELS[provider] ?? provider}
                           </h4>
                           <span
                             className={`text-xs ${info?.key_set ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground/80"}`}

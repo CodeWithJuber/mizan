@@ -34,6 +34,7 @@ from typing import Any, cast
 
 import httpx
 
+from agents import agent_settings
 from agents.events import emit as emit_event
 from agents.events import summarize as summarize_event
 from agents.execution_contract import completion_metadata, prepare_tool_call, tool_result_failed
@@ -44,7 +45,7 @@ from agents.provider_limits import (
     provider_limits,
 )
 from agents.shura_council import ShuraCouncil
-from agents.tool_catalog import DISCOVER_TOOL, ToolCatalog, schema_snapshot
+from agents.tool_catalog import DISCOVER_TOOL, ToolCatalog, schema_snapshot, window_limits
 from api.iqtisad import BudgetExhausted
 
 # al-Insan faculty modules — discernment, restraint, wisdom
@@ -80,6 +81,7 @@ from core.tawbah import TawbahProtocol
 from memory.living_memory import LivingMemorySystem
 from nlp.arabic import arabic_tokens
 from providers import (
+    AGENT_EFFORT,
     DEFAULT_CLAUDE_MODEL,
     REASONING_EFFORT,
     BaseLLMProvider,
@@ -397,6 +399,26 @@ _LANGUAGE_ONLY_NOTE = (
     'how to ask for it, for example "run this code", "search the web for …", "build a … '
     'app" or "use my <connector> to …".'
 )
+# Hermes-style learned skills: an agent saves a task that worked as a skill of its user's.
+SKILL_WRITE_MAX_BYTES = 32 * 1024
+SKILL_WRITE_SCHEMA = {
+    "name": "skill_write",
+    "description": (
+        "Save a completed multi-step procedure that could recur as a SKILL.md in the "
+        "user's own skills (activate_skill loads it later). name: lowercase letters, "
+        "digits, hyphens; description: when it applies; body: Markdown steps. The same "
+        "name replaces it."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "maxLength": 64},
+            "description": {"type": "string", "maxLength": 1024},
+            "body": {"type": "string", "maxLength": 32768},
+        },
+        "required": ["name", "description", "body"],
+    },
+}
 # A coding request beyond MIZAN's recipes (tadbir/engine.py ``_workspace_agent``):
 # the model works on one project, with that project's tools and nothing else.
 _workspace_only: ContextVar[str | None] = ContextVar("mizan_workspace_only", default=None)
@@ -615,6 +637,7 @@ class BaseAgent:
             "todo_write": self._tool_todo_write,
             "activate_skill": self._tool_activate_skill,
             "read_skill_file": self._tool_read_skill_file,
+            "skill_write": self._tool_skill_write,
         }
         # Phase 2 (mizan.nlp, IP-2): native sense tool -- registered only when
         # the flag is on, so flag-off behavior stays bit-for-bit identical.
@@ -845,6 +868,9 @@ class BaseAgent:
                 },
             },
         ]
+        own = agent_settings.of(getattr(self, "config", None))
+        if own["learn_skills"] and current_user_id():
+            schemas.append(SKILL_WRITE_SCHEMA)
         # Phase 2 (mizan.nlp, IP-2): native sense tool schema -- only when the
         # flag is on, so the LLM's tool surface is unchanged when off.
         if _nlp_native_wsd_enabled():
@@ -882,7 +908,7 @@ class BaseAgent:
         # Source precedence and within-registry winners must match dispatch:
         # own tools, then skills, then plugins. Never pair one owner's schema
         # with a different owner's handler after a name collision.
-        sources = [(schemas + self._agent_skill_schemas() + self.TOOL_SCHEMAS, self.tools)]
+        sources = [(schemas + self._agent_skill_schemas(own) + self.TOOL_SCHEMAS, self.tools)]
         for registry in (self.skill_registry, self.plugin_manager):
             if registry:
                 try:
@@ -944,6 +970,7 @@ class BaseAgent:
                     callable(handler)
                     and snapshot is not None
                     and snapshot["name"] == name
+                    and agent_settings.tool_allowed(own, name)
                     and self._chat_tool_allowed(name)
                     and (
                         policy is None
@@ -1044,6 +1071,17 @@ class BaseAgent:
             "query_knowledge": BaseAgent._tool_query_knowledge,
             "disambiguate_sense": BaseAgent._tool_disambiguate_sense,
             "compact_context": BaseAgent._tool_compact_context,
+            "skill_write": BaseAgent._tool_skill_write,
+            "delegate_task": BaseAgent._tool_delegate_task,
+            # The host tools: for a non-admin each runs in their own sandbox project
+            # (commands, files) or through net_guard (HTTP), never on this host.
+            "bash": BaseAgent._tool_bash,
+            "python_exec": BaseAgent._tool_python_exec,
+            "read_file": BaseAgent._tool_read_file,
+            "write_file": BaseAgent._tool_write_file,
+            "list_files": BaseAgent._tool_list_files,
+            "http_get": BaseAgent._tool_http_get,
+            "http_post": BaseAgent._tool_http_post,
         }
         handler = self.tools.get(tool_name)
         return (
@@ -1138,11 +1176,11 @@ class BaseAgent:
         if getattr(self.ai_client, "supports_tools", True) is False:
             tool_schemas = []
 
-        # DevelopmentalGate — filter available tools to this agent's capability level
-        tool_schemas = self.dev_gate.filter_tool_schemas(tool_schemas, self.nafs_level)
+        # The Nafs level is a metric of the agent's record; it never hides a tool.
         offered = tool_schemas
         from workspace.context import bound_workspace_id
 
+        window_tools, window_bytes = window_limits()
         tool_catalog = ToolCatalog(
             tool_schemas,
             task,
@@ -1153,11 +1191,11 @@ class BaseAgent:
             else set(),
             # A coding project needs its read/edit/search/run tools together.
             max_tools=max(
-                self._bounded_generation_config("tool_schema_limit", 8, 2, 32),
+                self._config_int("tool_schema_limit", window_tools, 2, 32),
                 16 if bound_workspace_id() else 0,
             ),
             max_bytes=max(
-                self._bounded_generation_config("tool_schema_bytes", 12_288, 4096, 65_536),
+                self._config_int("tool_schema_bytes", window_bytes, 4096, 65_536),
                 32_768 if bound_workspace_id() else 0,
             ),
         )
@@ -1327,6 +1365,16 @@ class BaseAgent:
             if total <= budget:
                 break
         logger.info("[SIYAQ] Compacted in-run tool results to ~%d tokens", total)
+
+    def _config_int(self, key: str, default: int, minimum: int, maximum: int) -> int:
+        """An agent's own integer setting (its config), else ``default``, bounded."""
+        value = (getattr(self, "config", None) or {}).get(key)
+        if value in (None, "") or isinstance(value, bool):
+            return default
+        try:
+            return max(minimum, min(int(value), maximum))
+        except (TypeError, ValueError, OverflowError):
+            return default
 
     def _bounded_generation_config(self, key: str, default: int, minimum: int, maximum: int) -> int:
         value = self.config.get(key, os.getenv(f"MIZAN_CHAT_{key.upper()}", str(default)))
@@ -2406,15 +2454,28 @@ class BaseAgent:
             logger.warning("[VALIDATION] Tool input rejected: %s — %s", tool_name, validation_error)
             return {"error": f"Input validation failed: {validation_error}"}
 
-        # Fitrah — ethical axiom gate (immutable innate disposition check)
+        # Fitrah — an advisory reading of the action against its axioms. It matches
+        # words, so ordinary code trips it; it is logged and reported with the run
+        # (``result["fitrah"]``), never a gate. The gates that act are Izn, the
+        # approvals, Amanah, Hudud and the sandbox.
         fitrah_violations = self.fitrah.check_action(f"{tool_name} {json.dumps(params)[:200]}")
         critical_violations = [v for v in fitrah_violations if v["severity"] == "critical"]
         if critical_violations:
             v = critical_violations[0]
-            logger.warning(
-                "[FITRAH] Blocked tool %s: axiom=%s — %s", tool_name, v["axiom"], v["reason"]
+            logger.info(
+                "[FITRAH] Advisory on tool %s: axiom=%s — %s", tool_name, v["axiom"], v["reason"]
             )
-            return {"error": f"Fitrah violation [{v['axiom']}]: {v['principle']}"}
+            notes = getattr(self, "_fitrah_advisories", None)
+            if isinstance(notes, list) and len(notes) < 20:
+                notes.append(
+                    {
+                        "tool": tool_name,
+                        "axiom": v["axiom"],
+                        "reason": v["reason"],
+                        "advisory": True,
+                    }
+                )
+            trace.event("verify", "fitrah", tool=tool_name, axiom=v["axiom"], advisory=True)
 
         # Check Izn permissions
         perm = self._check_tool_permission(tool_name, params)
@@ -2429,27 +2490,29 @@ class BaseAgent:
             return {"error": f"Permission denied: {perm['reason']}"}
         held = False
         if _model_directed.get():
-            from perception import basar
             from tadbir import amanah
 
             # Text inside an image the user attached is outside content, like
             # a page: a change the model chooses after reading it needs a person.
-            held = bool(amanah.tainted() or basar.current()) and (
+            # Only an instruction Amanah actually found in this run (in a page, a file
+            # or the user's pasted text) holds a change the model then chooses; reading
+            # outside text, or an image the user attached, alone does not.
+            held = bool(amanah.tainted()) and (
                 tool_category(tool_name, self._read_only_hint(tool_name), params) != "read"
             )
         if held and approvals is None:
             return {
-                "error": "Amanah: content read in this run (a page, a file or an image) may "
-                "carry instructions, so MIZAN will not take this action without a person "
+                "error": "Amanah: content read in this run (a page or a file) tried to "
+                "instruct the AI, so MIZAN will not take this action without a person "
                 "confirming it",
                 "amanah_blocked": True,
             }
         # Izn in an interactive chat: plan mode refuses changes; other modes
         # ask the user (through the live chat) before acting.
-        from security.approvals import ALWAYS_ASK_TOOLS
+        from security.approvals import always_ask_tools
 
-        if approvals is None and tool_name in ALWAYS_ASK_TOOLS:
-            return {"error": "This sends something to a site, and no one is here to approve it"}
+        if approvals is None and tool_name in always_ask_tools():
+            return {"error": "This tool always asks a person, and no one is here to approve it"}
         if approvals is not None:
             read_only = self._read_only_hint(tool_name)
             if approvals.blocks(tool_name, read_only, params):
@@ -2819,11 +2882,21 @@ Match the requested depth and self-correct errors."""
                 "- If you don't know an API's URL or schema, use http_get or web_search to look it up FIRST.",
                 "- If a fact or API schema cannot be verified from supplied sources, say so.",
             )
-        if custom_prompt:
+        if (
+            not _language_only.get()
+            and current_user_id()
+            and agent_settings.of(self.config)["learn_skills"]
+        ):
             base_prompt += (
-                "\n\n[CONFIGURED ROLE INSTRUCTIONS — defaults subordinate to response preferences, "
-                "capability facts and execution restrictions above]\n"
-                + json.dumps({"instructions": custom_prompt}, ensure_ascii=False)
+                "\n\nAfter completing a multi-step task that could recur, you may save it as a "
+                "skill with skill_write."
+            )
+        if custom_prompt:
+            # The persona the agent's owner gave it: who it is and how it works. The
+            # facts above (scripture from its source, capability honesty) still hold.
+            base_prompt += (
+                f"\n\n[YOUR PERSONA AND INSTRUCTIONS — set for {self.name} by its owner; follow "
+                "them]\n" + str(custom_prompt)
             )
         if getattr(self.ai_client, "provider_name", "") == "mizan-owned":
             from mizan_owned.prompt import owned_system_prompt
@@ -3132,6 +3205,14 @@ Match the requested depth and self-correct errors."""
         session_binding = bind_chat_session((context or {}).get("session_id"))
         language_binding = _language_only.set(False)
         workspace_binding = _workspace_only.set(None)
+        # The agent's own settings for this run: who directs the work and how much
+        # a Claude model thinks (None: the server's MIZAN_ORCHESTRATION / _CHAT_EFFORT).
+        from tadbir.engine import _agent_mode
+
+        own = agent_settings.of(getattr(self, "config", None))
+        mode_binding = _agent_mode.set(own.get("orchestration"))
+        effort_binding = AGENT_EFFORT.set(own.get("effort"))
+        self._fitrah_advisories: list[dict] = []
         from tadbir import amanah
 
         # Pasted text that tries to instruct the AI is known before the model
@@ -3176,6 +3257,9 @@ Match the requested depth and self-correct errors."""
                 await self._nazm(result, task)
             if held_back and isinstance(result.get("result"), str) and result["result"]:
                 await stream_callback(result["result"])
+            if getattr(self, "_fitrah_advisories", None):
+                # Fitrah reads actions by their words: reported, never a gate.
+                result["fitrah"] = {"advisory": True, "findings": list(self._fitrah_advisories)}
             if "amanah" not in result:
                 # Always reported, "ignored": 0 included: an absent key reads as
                 # "not checked", which is never the case.
@@ -3348,6 +3432,8 @@ Match the requested depth and self-correct errors."""
             reset_chat_session(session_binding)
             _language_only.reset(language_binding)
             _workspace_only.reset(workspace_binding)
+            _agent_mode.reset(mode_binding)
+            AGENT_EFFORT.reset(effort_binding)
             _execution_stack.reset(stack_binding)
             _execution_provider.reset(binding)
 
@@ -4288,7 +4374,8 @@ Match the requested depth and self-correct errors."""
         - Uses shlex.split (no shell=True)
         """
         if not request_has_role("admin"):
-            return {"error": "bash tool requires admin role", "returncode": -1}
+            # Everyone else runs commands in their own sandbox, never on this host.
+            return await self._sandbox_exec(command, "shell", timeout)
         # Validate command
         is_safe, reason = validate_command_safe(command)
         if not is_safe:
@@ -4322,8 +4409,121 @@ Match the requested depth and self-correct errors."""
         except Exception as e:
             return {"error": str(e), "returncode": -1}
 
+    # ── Host tools for everyone: non-admins run them in their own sandbox ──
+
+    SANDBOX_UNAVAILABLE = (
+        "Sandbox runner is not available on this server; ask the admin to set it up "
+        "(docs/runner-setup.md)"
+    )
+
+    @staticmethod
+    def _sandbox_project() -> tuple[Any, str]:
+        """The signed-in user's project store and the project their host tools act in:
+        the chat's bound project, else their own Scratch project (made on first use)."""
+        from skills.builtin.coding_workspace import scratch_project
+        from workspace.context import bound_workspace_id, selected_workspace
+        from workspace.store import WorkspaceStore
+
+        user_id = current_user_id()
+        if not user_id:
+            raise PermissionError("Sign in to use the sandbox")
+        store = WorkspaceStore(user_id)
+        project = selected_workspace(None) if bound_workspace_id() else scratch_project(store)
+        return store, project
+
+    async def _sandbox_exec(self, command: str, language: str, timeout: int) -> dict:
+        """Run a command or program in the user's own sandbox session (started when it is
+        not running); never on this host."""
+        from fastapi import HTTPException
+
+        from workspace import session_client
+
+        if not session_client.available():
+            return {"error": self.SANDBOX_UNAVAILABLE, "returncode": -1}
+        try:
+            store, project = self._sandbox_project()
+            user_id = current_user_id() or ""
+            timeout = max(1, min(int(timeout or 30), 900))
+            if not await session_client.running(user_id, project):
+                try:
+                    await session_client.start(user_id, project)
+                except HTTPException:
+                    # A runner without sessions still runs one-shot isolated jobs.
+                    from workspace.execution import run_project
+
+                    result = await run_project(store, project, command, language, min(timeout, 120))
+                    return {**result, "returncode": result.get("exit_code", -1), "sandbox": "run"}
+            result = await session_client.execute(user_id, project, command, language, timeout)
+            return {**result, "returncode": result.get("exit_code", -1), "workspace_id": project}
+        except HTTPException as exc:
+            detail = str(exc.detail)
+            if exc.status_code == 503:
+                detail = f"{self.SANDBOX_UNAVAILABLE} ({detail})"
+            return {"error": detail, "returncode": -1}
+        except PermissionError as exc:
+            return {"error": str(exc), "returncode": -1}
+
+    async def _sandbox_file(self, action: str, path: str, content: str = "") -> dict:
+        """Read, write or list a file of the user's own sandbox project (the files their
+        sandbox session works on; synced both ways before and after each command)."""
+        from fastapi import HTTPException
+
+        from workspace import session_client
+
+        try:
+            store, project = self._sandbox_project()
+            user_id = current_user_id() or ""
+            relative = str(path or "").strip().lstrip("/") or "."
+            if await session_client.running(user_id, project):
+                await session_client.reconcile(user_id, project)  # what a command wrote
+            if action == "read":
+                return {**store.read(project, relative), "workspace_id": project}
+            if action == "list":
+                pattern = (
+                    relative
+                    if any(c in relative for c in "*?[")
+                    else "**/*"
+                    if relative in {".", ""}
+                    else f"{relative.rstrip('/')}/**/*"
+                )
+                return {**store.glob(project, pattern), "workspace_id": project}
+            written = store.write(project, relative, content, None)
+            if await session_client.running(user_id, project):
+                await session_client.reconcile(user_id, project)
+            return {"success": True, **written, "workspace_id": project}
+        except HTTPException as exc:
+            return {"error": str(exc.detail)}
+        except PermissionError as exc:
+            return {"error": str(exc)}
+
+    async def _guarded_http(self, method: str, url: str, **kwargs: Any) -> dict:
+        """A non-admin's HTTP request: public addresses only, every redirect checked
+        again (connectors' net_guard), so no one reaches this server's own network."""
+        from connectors import net_guard
+
+        try:
+            await net_guard.check_url(url)
+            async with httpx.AsyncClient(
+                timeout=30,
+                follow_redirects=True,
+                trust_env=False,
+                event_hooks={"request": [net_guard.request_hook]},
+            ) as client:
+                response = await client.request(method, url, **kwargs)
+        except net_guard.BlockedDestination as exc:
+            return {"error": f"URL blocked: {exc}"}
+        except Exception as exc:  # noqa: BLE001 - the receipt says what failed
+            return {"error": str(exc)}
+        return {
+            "status": response.status_code,
+            "content": response.text[:5000],
+            "headers": dict(response.headers),
+        }
+
     async def _tool_http_get(self, url: str, headers: dict | None = None) -> dict:
         """HTTP GET with SSRF prevention"""
+        if not request_has_role("admin"):
+            return await self._guarded_http("GET", url, headers=headers or {})
         is_safe, reason = validate_url(url)
         if not is_safe:
             return {"error": f"URL blocked: {reason}"}
@@ -4346,6 +4546,8 @@ Match the requested depth and self-correct errors."""
         self, url: str, data: dict | None = None, headers: dict | None = None
     ) -> dict:
         """HTTP POST with SSRF prevention"""
+        if not request_has_role("admin"):
+            return await self._guarded_http("POST", url, json=data or {}, headers=headers or {})
         is_safe, reason = validate_url(url)
         if not is_safe:
             return {"error": f"URL blocked: {reason}"}
@@ -4365,6 +4567,8 @@ Match the requested depth and self-correct errors."""
 
     async def _tool_read_file(self, path: str) -> dict:
         """Read file with path traversal prevention"""
+        if not request_has_role("admin"):
+            return await self._sandbox_file("read", path)
         resolved = sanitize_path(path)
 
         if self.wali and not self.wali.validate_file_path(resolved, mode="read"):
@@ -4379,6 +4583,8 @@ Match the requested depth and self-correct errors."""
 
     async def _tool_write_file(self, path: str, content: str) -> dict:
         """Write file with sandbox enforcement"""
+        if not request_has_role("admin"):
+            return await self._sandbox_file("write", path, content)
         resolved = sanitize_path(path)
 
         if self.wali and not self.wali.validate_file_path(resolved, mode="write"):
@@ -4402,6 +4608,8 @@ Match the requested depth and self-correct errors."""
         """List files in directory"""
         import glob
 
+        if not request_has_role("admin"):
+            return await self._sandbox_file("list", pattern if pattern != "*" else path)
         resolved = sanitize_path(path)
 
         if self.wali and not self.wali.validate_file_path(resolved, mode="read"):
@@ -4419,10 +4627,10 @@ Match the requested depth and self-correct errors."""
         Replaces unsafe exec() with subprocess isolation.
         Requires admin role on the requesting principal (fail closed).
         """
-        if not request_has_role("admin"):
-            return {"error": "python_exec tool requires admin role"}
         if len(code) > 50000:
             return {"error": "Code exceeds 50KB limit"}
+        if not request_has_role("admin"):
+            return await self._sandbox_exec(code, "python", 30)
 
         try:
             result = await asyncio.to_thread(
@@ -4553,13 +4761,24 @@ Match the requested depth and self-correct errors."""
     _PRESERVE_RECENT = 10  # keep last N messages intact
 
     @staticmethod
-    def _agent_skill_schemas() -> list[dict]:
-        """activate_skill/read_skill_file for this user's skills (none when there are none)."""
+    def _agent_skill_schemas(settings: dict | None = None) -> list[dict]:
+        """activate_skill/read_skill_file for this user's skills (none when there are
+        none), only the skills the agent's own ``skills`` setting names when it names any."""
         try:
             from agent_skills.tools import tool_schemas
             from workspace.context import bound_workspace_id
 
-            return cast(list[dict], tool_schemas(current_user_id() or "", bound_workspace_id()))
+            only = (settings or {}).get("skills") or None
+            return cast(
+                list[dict],
+                tool_schemas(
+                    current_user_id() or "",
+                    bound_workspace_id(),
+                    only=(lambda name: agent_settings.skill_allowed(settings or {}, name))
+                    if only
+                    else None,
+                ),
+            )
         except Exception:  # noqa: BLE001 - a broken skill folder must not block chat
             logger.warning("Agent skills unavailable", exc_info=True)
             return []
@@ -4568,6 +4787,8 @@ Match the requested depth and self-correct errors."""
         """Load a skill's SKILL.md instructions (kept for the rest of this chat)."""
         from agent_skills.tools import activate
 
+        if not agent_settings.skill_allowed(agent_settings.of(self.config), str(name)):
+            return {"error": f"This agent is not set to use the skill {name!r}"}
         result = cast(dict, activate(name))
         if "skill" in result:
             await emit_event("skill", {"name": result["skill"], "scope": result["scope"]})
@@ -4576,7 +4797,56 @@ Match the requested depth and self-correct errors."""
     async def _tool_read_skill_file(self, name: str = "", path: str = "") -> dict:
         from agent_skills.tools import read_file
 
+        if not agent_settings.skill_allowed(agent_settings.of(self.config), str(name)):
+            return {"error": f"This agent is not set to use the skill {name!r}"}
         return cast(dict, read_file(name, path))
+
+    async def _tool_skill_write(
+        self, name: str = "", description: str = "", body: str = ""
+    ) -> dict:
+        """Save what worked as a skill (SKILL.md) in the signed-in user's own skills, so a
+        later chat can load it with activate_skill. Checked like any skill: name, size
+        and Amanah (a skill whose words instruct the AI against the user is refused)."""
+        from agent_skills import installer
+        from tadbir import amanah
+
+        user_id = current_user_id()
+        if not user_id:
+            return {"error": "Skills are saved for a signed-in user"}
+        if not agent_settings.of(self.config)["learn_skills"]:
+            return {"error": "This agent is set not to save skills"}
+        name = str(name or "").strip().lower()
+        text = f"{description}\n{body}"
+        if len(text.encode("utf-8")) > SKILL_WRITE_MAX_BYTES:
+            return {"error": f"A skill written here is at most {SKILL_WRITE_MAX_BYTES // 1024} KB"}
+        if not str(body or "").strip():
+            return {"error": "The skill needs its instructions (body)"}
+        findings = amanah.beyond_instructions(text, f"skill:{name}")
+        if findings:
+            return {
+                "error": "Amanah: these instructions try to override MIZAN's rules, hide "
+                "something from the user or send their data away, so they were not saved",
+                "amanah": amanah.summary(findings),
+            }
+        try:
+            saved = installer.write_skill(
+                user_id, name, str(description), str(body), overwrite=True
+            )
+        except installer.InstallError as exc:
+            return {"error": str(exc)}
+        from agent_skills import loader
+
+        for skill in loader.user_skills(user_id):
+            if skill.name == saved["name"] and skill.findings():
+                # Plain instructions are what a skill is; this one the agent wrote for
+                # its user, so it is not held for their trust (pinned to this content).
+                loader.trust(user_id, skill)
+        await emit_event("skill", {"name": saved["name"], "scope": "user", "saved": True})
+        return {
+            "saved": saved["name"],
+            "scope": "user",
+            "note": "Load it later with activate_skill.",
+        }
 
     async def _tool_todo_write(self, todos: list | None = None) -> dict:
         """Replace this chat's todo list; the UI shows it live and later turns see it."""
@@ -4751,12 +5021,6 @@ Match the requested depth and self-correct errors."""
         """Delegate a task to another agent via the federation."""
         if not self._agent_registry:
             return {"error": "No agent registry available for delegation"}
-
-        if not self.can_delegate:
-            return {
-                "error": f"Delegation requires Nafs level 3+ (current: {self.nafs_level} - {self.NAFS_NAMES.get(self.nafs_level, 'Ammara')}). "
-                "Complete more tasks successfully to evolve."
-            }
 
         # Map role preference to agent type
         role_map = {
@@ -4972,4 +5236,30 @@ Match the requested depth and self-correct errors."""
             "model": self.ai_model,
             "provider": self.ai_client.provider_name if self.ai_client else None,
             "system_prompt": self.config.get("system_prompt", "") if self.config else "",
+            # Personal agents (docs/personal-agents.md): who owns it, whether everyone
+            # sees it, its own settings, and the tools its model is actually offered.
+            "owner_id": getattr(self, "owner_id", None),
+            "shared": bool(getattr(self, "shared", True)),
+            "settings": agent_settings.of(self.config),
+            "effective_tools": self.effective_tools(),
+            "provider_warning": getattr(self, "provider_warning", None),
         }
+
+    def effective_tools(self) -> list[str]:
+        """The tools this agent's model is offered for the signed-in caller, after Izn,
+        role, orchestration and the agent's own allow/deny lists. In ``mizan`` mode the
+        model is offered none: MIZAN runs every tool itself."""
+        from tadbir.engine import _agent_mode, orchestration_mode
+
+        token = _agent_mode.set(agent_settings.of(self.config).get("orchestration"))
+        try:
+            if orchestration_mode() == "mizan":
+                return []
+            return sorted(
+                {str(schema.get("name", "")) for schema in self.get_tool_schemas()} - {""}
+            )
+        except Exception:  # noqa: BLE001 - a listing must not fail on one broken source
+            logger.warning("Effective tools unavailable for %s", self.name, exc_info=True)
+            return []
+        finally:
+            _agent_mode.reset(token)

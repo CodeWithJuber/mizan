@@ -41,26 +41,52 @@ Project limits can be raised with `MIZAN_WORKSPACE_MAX_FILE_BYTES` (max 8 MiB),
 
 ## Permission modes (Izn approvals)
 
-The chat request carries `permission_mode`. The UI's **Mode** selector sets it.
+The chat request carries `permission_mode`. The UI's **Mode** selector sets it. A chat
+that sends none (an older client, the WebSocket chat) gets its agent's own
+`settings.permission_mode`, else the server's default, `MIZAN_DEFAULT_PERMISSION_MODE`
+(`auto` unless an administrator changes it; `GET /api/auth/me` returns it as
+`default_permission_mode`, so the UI starts there). Every web and WebSocket chat now
+binds an interactive approval context, so a tool that asks is asked, not refused.
 
 | Mode | Behaviour |
 |------|-----------|
-| `auto_edits` (UI default) | Project edits run. Commands, external writes and unknown tools wait for you. |
+| `auto` (default) | Every permitted tool runs without prompts. |
+| `auto_edits` | Project edits run. Commands, external writes and unknown tools wait for you. |
 | `ask` | Every tool that changes something waits for you. |
 | `plan` | Read-only tools only. The agent proposes changes instead of making them. |
-| `auto` | Every permitted tool runs without prompts. |
 
 Two kinds of action ask in every mode, `auto` included, even after an
 `always`:
 
-- `shahid_submit`, which sends something to a site on your behalf
-  ([Shahid](shahid.md));
-- a change the model chooses after Amanah found instructions in outside
-  content the run read (a page, a file, a tool result), or in a turn with an
-  attached image ([Amanah](amanah.md), [Basar](basar.md)).
+- a tool an administrator named in `MIZAN_ALWAYS_ASK_TOOLS` (empty by default;
+  `shahid_submit`, which sends something to a site on your behalf, is the
+  usual one to name: [Shahid](shahid.md));
+- a change the model chooses after Amanah **found** instructions aimed at the AI in
+  outside content the run read (a page, a file, a tool result, pasted text):
+  [Amanah](amanah.md). Reading outside content, or attaching an image, with no
+  finding asks nothing extra.
 
-With no approval context (a REST call without `permission_mode`), both are
-refused instead of asked.
+With no approval context (an internal caller that binds none), both are refused
+instead of asked.
+
+### Host tools for everyone, in their own sandbox
+
+`bash`, `python_exec`, `read_file`, `write_file`, `list_files`, `http_get` and
+`http_post` are offered to every signed-in user, not only administrators. For an
+administrator they act on the backend host as before. For everyone else they never
+touch the host:
+
+- `bash` and `python_exec` run in the user's own sandbox session
+  (`workspace.session_client`): the chat's project, or their private Scratch project
+  when the chat has none, started when it is not running. A runner without
+  sessions runs them as one-shot isolated jobs. With no runner the tool says
+  "Sandbox runner is not available on this server; ask the admin to set it up
+  (docs/runner-setup.md)".
+- `read_file`, `write_file` and `list_files` work on that project's files (synced with
+  a running session before and after).
+- `http_get` and `http_post` go through the connectors' `net_guard`: public
+  addresses only, every redirect checked again, so no one reaches this server's own
+  network (other containers, metadata services, `connectors.key`).
 
 A tool that waits for you emits an `approval_request` event. Answer it with
 `POST /api/chat/approvals/{id}` and `{"decision": "allow" | "deny" | "always"}`.
@@ -80,7 +106,8 @@ same way instead of failing.
   the request carries `preview {path, diff, truncated, new_file}`, the diff the
   change would make, worked out without writing anything.
 
-Requests without `permission_mode` from an interactive caller (REST) behave as before.
+Requests without `permission_mode` from an interactive caller get the default mode
+described above.
 
 ### Runs no one is watching
 

@@ -1,5 +1,7 @@
-import { agentCatalogSource, agentCatalogSources, agentCreatePayload, agentFormData, agentModelChange,
-  agentModelOptions, agentModelValue, agentSettingsScope, loadAgentModels, saveAgentEdits } from "./agentSettings.ts";
+import { agentCatalogSource, agentCatalogSources, agentCreatePayload, agentExportFilename, agentFormData, agentModelChange,
+  agentModelOptions, agentModelValue, agentSettingsChanges, agentSettingsFrom, agentSettingsProblem, agentSettingsScope,
+  agentStarterPrompts, agentToolCatalog, agentTools, cycleTool, DEFAULT_AGENT_SETTINGS, isClaudeModel, loadAgentModels,
+  parseAgentImport, parseSettingNumber, saveAgentEdits, toolChoice } from "./agentSettings.ts";
 import type { ApiClient } from "../types.ts";
 
 let checks = 0;
@@ -121,4 +123,79 @@ token = "account-A";
 const catalogScope = agentSettingsScope(readToken, readEpoch);
 await loadAgentModels(async () => { token = "account-B"; epoch++; return { models: [{ id: "old-account-model", name: "Old" }] }; }, "openrouter");
 check("catalog response after account change cannot be applied by its owning scope", !catalogScope());
+
+// ===== Agent builder settings =====
+const oldServer = agentSettingsFrom(undefined);
+check("an older server's agent (no settings) reads as every default", JSON.stringify(oldServer) === JSON.stringify(DEFAULT_AGENT_SETTINGS));
+check("defaults mean the server decides: nulls, empty lists, learning skills on (the server's default)",
+  oldServer.temperature === null && oldServer.orchestration === null && oldServer.permission_mode === null
+  && oldServer.tools_allow.length === 0 && oldServer.starter_prompts.length === 0 && oldServer.learn_skills === true);
+check("a saved learn_skills choice is kept", agentSettingsFrom({ learn_skills: false }).learn_skills === false);
+const partial = agentSettingsFrom({ temperature: 0.4, effort: "turbo", permission_mode: "auto", tools_allow: ["bash", 3, "", "bash"], avatar: "  ", starter_prompts: ["a", "", "b", "c", "d", "e", "f", "g"] });
+check("known values are kept, unknown choices fall back to the default", partial.temperature === 0.4 && partial.effort === null && partial.permission_mode === "auto");
+check("lists keep only distinct non-empty names", JSON.stringify(partial.tools_allow) === JSON.stringify(["bash"]));
+check("a blank avatar is no avatar", partial.avatar === null);
+check("at most six starter prompts are read", partial.starter_prompts.length === 6 && partial.starter_prompts[0] === "a" && partial.starter_prompts[1] === "b");
+check("a missing key in a partial payload still reads as its default", partial.max_steps === null && partial.connectors.length === 0);
+check("an old agent's form carries default settings and is not shared", JSON.stringify(agentFormData(agent).settings) === JSON.stringify(DEFAULT_AGENT_SETTINGS) && agentFormData(agent).shared === false);
+
+const before = agentSettingsFrom({ temperature: 0.7, effort: "high", tools_deny: ["bash"], starter_prompts: ["Hi"] });
+const longAvatar = agentSettingsFrom({ avatar: "https://example.org/a.png" });
+check("a saved value the server holds never blocks an edit of another key", agentSettingsProblem({ ...longAvatar, effort: "low" }, longAvatar) === null
+  && agentSettingsProblem({ ...longAvatar, effort: "low" })?.field === "avatar");
+check("temperature and output tokens follow the server's ranges", agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, temperature: 1.5 })?.field === "temperature"
+  && agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, max_output_tokens: 100 })?.field === "max_output_tokens"
+  && agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, temperature: 1, max_output_tokens: 128_000 }) === null);
+check("a starter prompt is one line", agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, starter_prompts: ["two\nlines"] })?.field === "starter_prompts");
+check("no change gives no settings keys", Object.keys(agentSettingsChanges(before, { ...before })).length === 0);
+const diff = agentSettingsChanges(before, { ...before, temperature: null, effort: "high", tools_deny: [], learn_skills: false });
+check("only changed keys are sent, a reset as null", JSON.stringify(diff) === JSON.stringify({ temperature: null, tools_deny: [], learn_skills: false }));
+check("reordering starter prompts is a change", "starter_prompts" in agentSettingsChanges(agentSettingsFrom({ starter_prompts: ["a", "b"] }), agentSettingsFrom({ starter_prompts: ["b", "a"] })));
+
+calls.length = 0;
+const withSettings = { ...agent, settings: { orchestration: "mizan", starter_prompts: ["Hello"] } };
+const editForm = agentFormData(withSettings);
+await saveAgentEdits(api, withSettings, editForm, current);
+check("an agent with settings saved untouched sends nothing", calls.length === 0);
+await saveAgentEdits(api, withSettings, { ...editForm, settings: { ...editForm.settings, orchestration: "hybrid", permission_mode: "ask" } }, current);
+check("a settings edit is one PUT with only the changed settings keys", calls.length === 1 && calls[0].method === "PUT"
+  && JSON.stringify(calls[0].body) === JSON.stringify({ settings: { orchestration: "hybrid", permission_mode: "ask" } }));
+calls.length = 0;
+let badSettings = "";
+try { await saveAgentEdits(api, withSettings, { ...editForm, settings: { ...editForm.settings, temperature: 3 } }, current); }
+catch (error) { badSettings = (error as Error).message; }
+check("out-of-range settings fail in words before any request", badSettings.includes("Temperature") && calls.length === 0);
+
+const created = agentCreatePayload({ ...chosen, shared: true, settings: { ...DEFAULT_AGENT_SETTINGS, avatar: "🤖", starter_prompts: ["Plan my day"] } });
+check("creation sends every settings key and sharing only when chosen", JSON.stringify(Object.keys(created.settings as object)) === JSON.stringify(Object.keys(DEFAULT_AGENT_SETTINGS)) && created.shared === true);
+check("a private agent's create body says so (an admin's agent is shared unless told otherwise)", agentCreatePayload(chosen).shared === false);
+check("an emoji avatar counts as one character", agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, avatar: "👩‍💻👩‍💻" }) === null
+  && agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, avatar: "123456789" })?.field === "avatar");
+check("steps must be whole", agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, max_steps: 2.5 })?.field === "max_steps");
+check("seven starter prompts are refused", agentSettingsProblem({ ...DEFAULT_AGENT_SETTINGS, starter_prompts: Array(7).fill("x") })?.field === "starter_prompts");
+check("an empty number field is the server's default; text is invalid", parseSettingNumber(" ").value === null && parseSettingNumber(" ").valid && !parseSettingNumber("abc").valid && parseSettingNumber("0.5").value === 0.5);
+check("Claude models are known by provider or model id", isClaudeModel("anthropic", "x") && isClaudeModel("openrouter", "anthropic/claude-opus-5-5") && !isClaudeModel("xai", "grok-5"));
+
+let tools = { tools_allow: [] as string[], tools_deny: [] as string[] };
+tools = cycleTool(tools, "bash");
+check("first click: only these tools", toolChoice(tools, "bash") === "allow");
+tools = cycleTool(tools, "bash");
+check("second click: never", toolChoice(tools, "bash") === "deny" && !tools.tools_allow.includes("bash"));
+tools = cycleTool(tools, "bash");
+check("third click: back to available", toolChoice(tools, "bash") === "default" && tools.tools_deny.length === 0);
+check("the card shows the server's effective tools, else the old tool table", agentTools({ tools: ["a", "b"], effective_tools: ["a"] }).join() === "a"
+  && agentTools({ tools: ["a", "b"] }).join() === "a,b" && agentTools({ tools: ["a"], effective_tools: [] }).length === 0);
+check("the tool catalog joins every agent's tools and the settings' names, sorted", agentToolCatalog([{ tools: ["web", "bash"] }, { effective_tools: ["bash", "code"] }], { tools_allow: [], tools_deny: ["gone"] }).join() === "bash,code,gone,web");
+check("starter prompts come from the agent's settings", agentStarterPrompts({ settings: { starter_prompts: ["Hi"] } }).join() === "Hi" && agentStarterPrompts(null).length === 0 && agentStarterPrompts({}).length === 0);
+
+check("export file is named after the agent", agentExportFilename("Research Assistant") === "Research Assistant.mizan-agent.json");
+check("export names drop path and control characters", agentExportFilename("a/b\\c:\u0007d") === "a b c d.mizan-agent.json" && agentExportFilename("///") === "agent.mizan-agent.json");
+const exportFile = { format: "mizan-agent/1", agent: { name: "Katib", type: "katib", provider: "anthropic", model: "claude-haiku-5-5", system_prompt: "", settings: { avatar: "✍️" } } };
+const imported = parseAgentImport(JSON.stringify(exportFile));
+check("an exported agent file imports as the same body", JSON.stringify(imported) === JSON.stringify(exportFile));
+const importError = (text: string) => { try { parseAgentImport(text); return ""; } catch (error) { return (error as Error).message; } };
+check("a file that is not JSON is refused in words", importError("{not json").includes("not JSON"));
+check("another format is refused", importError(JSON.stringify({ format: "mizan-daftar/1", agent: { name: "x" } })).includes("mizan-agent/1"));
+check("an agent with no name is refused", importError(JSON.stringify({ format: "mizan-agent/1", agent: { name: " " } })).includes("no name"));
+
 console.log(`${checks} agent settings/catalog checks passed`);

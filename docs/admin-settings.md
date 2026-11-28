@@ -3,13 +3,20 @@
 Administrators manage server settings in **Settings → Developer → System settings**. The
 groups (`backend/runtime_settings.py`) are:
 
-- Model: who directs the work (`MIZAN_ORCHESTRATION`), the feature switches
+- Model: who directs the work (`MIZAN_ORCHESTRATION`, `hybrid` by default), the feature switches
   (debug mode, Ta'lim, Muhasaba, Truth Gate, Ahl al-Dhikr, Amanah, Muraqabah,
   Tajdid, Tadqiq and its audit rate), spending limits, Lisan's models, provider and default model, chat
   effort and output limits, owned-model-only mode, projects per user
-- API keys: Anthropic, OpenRouter, OpenAI, the hybrid base model, Hugging Face,
-  ARC
-- Chat limits
+- Agents: the default permission mode of a chat that sends none
+  (`MIZAN_DEFAULT_PERMISSION_MODE`, `auto`), tools that ask a person in every mode
+  (`MIZAN_ALWAYS_ASK_TOOLS`, empty), tool calls per minute
+  (`MIZAN_TOOL_CALLS_PER_MINUTE`, 120) and chat messages per minute
+  (`MIZAN_CHAT_PER_MINUTE`, 60). Each agent's own settings win for its runs
+  ([personal-agents.md](personal-agents.md))
+- API keys: Anthropic, OpenRouter, OpenAI, xAI (Grok, `XAI_API_KEY`), Meta (Muse
+  Spark, `META_API_KEY`), the hybrid base model, Hugging Face, ARC
+- Chat limits, including the tool schema window (`MIZAN_TOOL_CATALOG_LIMIT` 16,
+  `MIZAN_TOOL_CATALOG_BYTES` 32768)
 - Learning & memory
 - NLP & hybrid
 - Connectors & coding: public URL, local MCP servers, private connector hosts,
@@ -40,7 +47,7 @@ Each setting shows where its value comes from: **Set here**, **From server
 | Badge | Meaning |
 |-------|---------|
 | Applies immediately | The next request reads it. |
-| Switches the model now | Provider, default model, owned-only mode and the Anthropic, OpenRouter and OpenAI keys: every agent gets the new model at once. |
+| Switches the model now | Provider, default model, owned-only mode and the Anthropic, OpenRouter, OpenAI, xAI and Meta keys: every agent that follows the default gets the new model at once; an agent given its own provider and model keeps them. |
 | Needs a backend restart | Read at startup. The page lists pending restarts. |
 
 The API is `GET` / `PUT /api/settings/runtime`, administrators only.

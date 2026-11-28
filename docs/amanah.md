@@ -9,7 +9,7 @@ Amanah (`backend/tadbir/amanah.py`) keeps such text from steering MIZAN. It comb
 - **The model never chooses actions in the default mode.** In `mizan` mode the plan comes from the user's own words (Fahm, or Lisan mapping the user's message), and the model has no tools. Outside text cannot pick an action. This is the separation CaMeL argues for (Debenedetti et al., 2025).
 - **Pasted text never maps to an action.** Before Lisan maps a message to MIZAN's actions or fills a tool's arguments, Amanah removes instructions found inside the pasted parts of the message: quotes, `---` blocks, code fences, `>` quotes and labelled blocks such as "Email:" or "TOOL OUTPUT:". The user's own words are never changed.
 - **Fences (spotlighting).** Every piece of outside text Lisan or the model reads sits between `<<untrusted id from source>>` and `<<end untrusted id>>`. The id is random, so the text cannot fake the closing marker. Both Lisan's base prompt and the agent's system prompt say that fenced text is data (Hines et al., 2024).
-- **Taint.** Once content that tried to instruct the AI has been read in a run (or the turn carries an image the user attached), every later action **the model chose** that changes something needs the user's approval, even in `auto` mode. In an unattended run (a watcher, a schedule, a trigger, the queue) the exact action is held for its owner to allow or deny later (`held_actions.db`); with no approval context at all, it is refused. Read-only tools are not affected, and neither are MIZAN's own planned actions.
+- **Taint.** Once Amanah has **found** an instruction aimed at the AI in content read in a run (a page, a file, a tool result, the user's pasted text), every later action **the model chose** that changes something needs the user's approval, even in `auto` mode. Reading outside content with no finding, or a turn with an attached image, asks nothing extra: in `auto` mode the run goes on as the person chose. The neutralizing, fencing and scrubbing below are unchanged. In an unattended run (a watcher, a schedule, a trigger, the queue) the exact action is held for its owner to allow or deny later (`held_actions.db`); with no approval context at all, it is refused. Read-only tools are not affected, and neither are MIZAN's own planned actions.
 
 ## The scanner
 
@@ -49,7 +49,7 @@ Patterns catch the phrasings someone wrote down. An instruction worded another w
 | Ordinary texts flagged (300 unseen web pages, deepset benign, LLMail benign; 457 texts) | 0 (0–0.8%) | 4 (0.9%, 0.3–2.2%), all web pages |
 
 These figures are honest about the limits:
-- **Recall is still low.** LLMail's phase-2 attacks were written to beat filters like this one (66 of 400 caught). That is why Amanah does not rely on detection: structure comes first (above), and a run that read outside text needs approval for any model-chosen action that changes something.
+- **Recall is still low.** LLMail's phase-2 attacks were written to beat filters like this one (66 of 400 caught). That is why Amanah does not rely on detection alone: structure comes first (above), and after a finding any model-chosen action that changes something needs approval. A run with no finding is not held (the owner's choice for autonomous agents); non-admins' host tools run in their own sandbox, so a missed instruction cannot reach the server.
 - **Some languages are not measured.** No held-out set exists yet for Urdu, Hindi or Arabic attacks, so recall in those languages is not measured.
 - **The cost of a miss is a sentence.** The four flagged web pages each lost one sentence to the mark.
 
@@ -85,3 +85,13 @@ The AGI test's injection block (`backend/imtihan/tasks/injection.jsonl`) has six
 - a tool output
 - an instruction in Unicode tag characters
 - a Markdown image that would carry the summary out
+
+## Personas and skills
+
+An agent's persona (its `system_prompt`) and a skill are instructions by their nature,
+so for them only the findings beyond plain instructions count
+(`amanah.beyond_instructions`): overriding MIZAN's rules, concealment from the user,
+exfiltration links and hidden text. An imported agent (`POST /api/agents/import`) whose
+persona has one is refused; `skill_write` refuses such a skill, and a skill it saves
+with plain instructions only is trusted for its user, pinned to its content
+([personal-agents.md](personal-agents.md)).

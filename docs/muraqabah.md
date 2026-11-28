@@ -19,7 +19,7 @@ A watcher pairs a trigger with a task.
 |---|---|
 | `ayah_of_the_day` | MIZAN's own: the next ayah of the Quran in order (one a day, the whole Quran over 6,236 days), verbatim from its Quran source, with the Hijri and Gregorian date. No model call. |
 | `remind:<text>` | The reminder text. No model call. |
-| anything else | A request run through the user's own agent and its gates, so Quran, hadith, dates and calculations come from MIZAN's recipes. No one is watching the run, so an action that needs a person is held for the owner, and the notice says what waits ([agentic coding](agentic-coding.md#runs-no-one-is-watching)). |
+| anything else | A request run through the user's own agent (the watcher's `agent_id` when it names one, else their default agent: [personal agents](personal-agents.md#the-default-agent)) and its gates, so Quran, hadith, dates and calculations come from MIZAN's recipes. No one is watching the run, so an action that needs a person is held for the owner, and the notice says what waits ([agentic coding](agentic-coding.md#runs-no-one-is-watching)). |
 
 Notices go to the user's own **Muraqabah** chat, and also to their devices (Web Push), linked Telegram and linked WhatsApp ([Bab](bab.md)).
 

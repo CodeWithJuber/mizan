@@ -10,11 +10,37 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from collections import Counter
 from copy import deepcopy
 
 DISCOVER_TOOL = "mizan_discover_tools"
+# The schema window per request (MIZAN_TOOL_CATALOG_LIMIT / _BYTES); the older
+# MIZAN_CHAT_TOOL_SCHEMA_* names still work when the new ones are not set.
+DEFAULT_WINDOW = (16, 32_768)
+
+
+def window_limits() -> tuple[int, int]:
+    """(tools, bytes) offered per request, discovery included, from the settings."""
+
+    def read(new: str, old: str, default: int, low: int, high: int) -> int:
+        raw = os.getenv(new) or os.getenv(old) or ""
+        try:
+            return max(low, min(high, int(float(raw)))) if raw.strip() else default
+        except (TypeError, ValueError, OverflowError):
+            return default
+
+    return (
+        read("MIZAN_TOOL_CATALOG_LIMIT", "MIZAN_CHAT_TOOL_SCHEMA_LIMIT", DEFAULT_WINDOW[0], 2, 32),
+        read(
+            "MIZAN_TOOL_CATALOG_BYTES",
+            "MIZAN_CHAT_TOOL_SCHEMA_BYTES",
+            DEFAULT_WINDOW[1],
+            4096,
+            65_536,
+        ),
+    )
 
 
 def _terms(text: str) -> set[str]:

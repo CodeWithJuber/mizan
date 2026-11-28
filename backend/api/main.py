@@ -51,6 +51,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import runtime_settings
 import runtime_settings_bootstrap  # noqa: F401
 from _version import __version__
+from agents.agent_settings import AgentSettingsPatch
 from agents.federation import AgentFederation
 from agents.specialized import create_agent
 from api.chat_stream import (
@@ -87,8 +88,10 @@ from mizan_owned.schemas import (
 )
 from perception import basar
 from providers import (
+    COMPATIBLE_ENDPOINTS,
     check_provider_health,
     create_provider,
+    fetch_compatible_models,
     fetch_ollama_models,
     fetch_openrouter_models,
     get_default_model,
@@ -158,19 +161,11 @@ async def lifespan(app: FastAPI):
             agent = create_agent(
                 da["type"],
                 name=da["name"],
-                memory=memory,
                 config={"model": os.getenv("DEFAULT_MODEL", "")},
-                wali=wali,
-                izn=izn,
-                skill_registry=skill_registry,
-                plugin_manager=plugin_manager,
-                knowledge_graph=knowledge_graph,
-                context_manager=context_manager,
-                planner=planner,
+                **_agent_services(),
             )
-            active_agents[agent.id] = agent
-            balancer.register(agent.id)
-            shura.members[agent.id] = agent
+            agent.owner_id, agent.shared = None, True
+            _publish_agent(agent)
 
             await memory.save_agent_profile(
                 {
@@ -180,6 +175,8 @@ async def lifespan(app: FastAPI):
                     "nafs_level": 1,
                     "capabilities": list(agent.tools.keys()),
                     "config": {"model": os.getenv("DEFAULT_MODEL", "")},
+                    "owner_id": None,
+                    "shared": True,
                 }
             )
     else:
@@ -188,16 +185,11 @@ async def lifespan(app: FastAPI):
                 profile.get("role", "general"),
                 agent_id=profile["id"],
                 name=profile["name"],
-                memory=memory,
                 config=profile.get("config", {}),
-                wali=wali,
-                izn=izn,
-                skill_registry=skill_registry,
-                plugin_manager=plugin_manager,
-                knowledge_graph=knowledge_graph,
-                context_manager=context_manager,
-                planner=planner,
+                **_agent_services(),
             )
+            agent.owner_id = profile.get("owner_id")
+            agent.shared = bool(profile.get("shared", True))
             agent.total_tasks = profile.get("total_tasks", 0) or 0
             agent.learning_iterations = profile.get("learning_iterations", 0)
             # Restore the evidence Nafs evolution weighs, not just the count.
@@ -206,21 +198,22 @@ async def lifespan(app: FastAPI):
             )
             agent.error_count = profile.get("error_count", 0) or 0
             agent.nafs_level = max(1, min(7, int(profile.get("nafs_level") or 1)))
+            agent._created_at = profile.get("created_at")
             try:
                 agent.hikmah_count = await memory.count_hikmah(agent.id)
             except Exception:
                 agent.hikmah_count = 0
-            active_agents[agent.id] = agent
-            balancer.register(agent.id)
-            shura.members[agent.id] = agent
+            _publish_agent(agent)
+            if isinstance(agent.config.get("provider_override"), dict) and agent.ai_client is None:
+                # Its own provider cannot start (a key removed): it follows the default
+                # provider now, and says so, instead of keeping a choice that never works.
+                await _drop_stale_override(agent)
 
     logger.info(f"{len(active_agents)} agents initialized")
 
     # Inject global registry references into agents
     for agent in active_agents.values():
-        agent._agent_registry = active_agents
-        agent._balancer = balancer
-        agent._shura = shura
+        _wire_agent(agent)
 
     # Restore persisted provider/model choice
     try:
@@ -242,8 +235,11 @@ async def lifespan(app: FastAPI):
                                 override["model"], selected.provider_name
                             )
                             continue
+                        await _drop_stale_override(agent, save=False)
                     agent.ai_client, agent.ai_model = restored, restored_model
                     agent.config["model"] = restored_model
+                    if getattr(agent, "provider_warning", None):
+                        await memory.save_agent_profile(_agent_profile(agent))
                 set_active_state(restored.provider_name, restored_model)
                 logger.info(f"Restored provider: {saved_provider}/{saved_model}")
     except Exception as exc:
@@ -636,9 +632,10 @@ async def enforce_api_access(request: HTTPConnection):
     path = request.url.path
     administrative = path.startswith(_ADMIN_PREFIXES) or path == "/api/version"
     if request.scope.get("method") not in {"GET", "HEAD", "OPTIONS"}:
+        # /api/agents is not here: everyone may make agents of their own, and each
+        # agent route checks that the caller owns the agent (or is an administrator).
         administrative |= path.startswith(
             (
-                "/api/agents",
                 "/api/providers",
                 "/api/preferences",
                 "/api/skills",
@@ -897,25 +894,45 @@ async def require_auth(
 
 # ===== PYDANTIC MODELS (with validation) =====
 
-AGENT_PROVIDER_PATTERN = r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$"
+AGENT_PROVIDER_PATTERN = r"^(anthropic|openrouter|openai|xai|meta|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$"
+
+
+AGENT_TYPE_PATTERN = (
+    r"^(super|khalifah|general|browser|research|code|communication|wakil|mubashir|mundhir|"
+    r"katib|rasul)$"
+)
 
 
 class AgentCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    type: str = Field(
-        default="super",
-        pattern=r"^(super|khalifah|general|browser|research|code|communication|wakil|mubashir|mundhir|katib|rasul)$",
-    )
+    type: str = Field(default="super", pattern=AGENT_TYPE_PATTERN)
     provider: str | None = Field(default=None, pattern=AGENT_PROVIDER_PATTERN)
     model: str | None = Field(default=None, min_length=1, max_length=200)
     system_prompt: str | None = Field(None, max_length=10000)
-    capabilities: list[str] = []
+    # The tools this agent is made for: its settings.tools_allow when that is not given.
+    capabilities: list[str] = Field(default_factory=list, max_length=200)
+    settings: AgentSettingsPatch | None = None
+    # Shared with everyone (administrators only; anyone else's agent is their own).
+    shared: bool | None = None
 
 
 class AgentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=100)
     model: str | None = Field(None, max_length=200)
     system_prompt: str | None = Field(None, max_length=10000)
+    # Merged key by key; a key sent as null goes back to its default.
+    settings: AgentSettingsPatch | None = None
+
+
+class AgentExportBody(BaseModel):
+    """One agent in ``mizan-agent/1``: no keys, no memory, no record."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    type: str = Field(default="general", pattern=AGENT_TYPE_PATTERN)
+    provider: str | None = Field(default=None, pattern=AGENT_PROVIDER_PATTERN)
+    model: str | None = Field(default=None, min_length=1, max_length=200)
+    system_prompt: str | None = Field(None, max_length=10000)
+    settings: AgentSettingsPatch | None = None
 
 
 class TaskRequest(BaseModel):
@@ -1131,8 +1148,35 @@ manager = ConnectionManager(max_connections=security_config.ws_max_connections)
 # then 429 with Retry-After (a forwarded client address can be forged, the
 # account name cannot be spread). A successful sign-in costs nothing.
 _login_failures = RateLimiter(per_minute=5, burst=5)
-# Chat messages per signed-in user (each message may start model work).
-_chat_messages = RateLimiter(per_minute=30, burst=10)
+
+
+class _SettingLimiter(RateLimiter):
+    """A token bucket whose rate is an administrator's setting, read on every check."""
+
+    def __init__(self, setting: str, default: int):
+        super().__init__(per_minute=default, burst=max(10, default // 3))
+        self.setting, self.default = setting, default
+
+    def _sync(self) -> None:
+        try:
+            rate = int(float(os.getenv(self.setting, str(self.default))))
+        except (TypeError, ValueError, OverflowError):
+            rate = self.default
+        self.per_minute = max(1, min(rate, 10_000))
+        self.burst = max(10, self.per_minute // 3)
+
+    def check(self, key: str) -> bool:
+        self._sync()
+        return bool(super().check(key))
+
+    def peek(self, key: str) -> float:
+        self._sync()
+        return float(super().peek(key))
+
+
+# Chat messages per signed-in user (each message may start model work):
+# MIZAN_CHAT_PER_MINUTE, default 60.
+_chat_messages = _SettingLimiter("MIZAN_CHAT_PER_MINUTE", 60)
 
 
 def _rate_headers(limiter: RateLimiter, key: str) -> dict[str, str]:
@@ -1198,8 +1242,11 @@ async def register(req: RegisterRequest):
 
 @app.get("/api/auth/me")
 async def auth_me(user: TokenPayload = Depends(require_auth)):
-    """Who this credential belongs to, its roles, and when the token expires."""
+    """Who this credential belongs to, its roles, when the token expires, and the
+    server's default permission mode for chats."""
     from datetime import UTC, datetime
+
+    from security.approvals import default_mode as default_permission_mode
 
     def moment(value: float) -> str:
         return datetime.fromtimestamp(value, UTC).isoformat(timespec="seconds")
@@ -1212,6 +1259,8 @@ async def auth_me(user: TokenPayload = Depends(require_auth)):
         "credential": "api_key" if api_key else "token",
         "issued_at": None if api_key else moment(user.iat),
         "expires_at": None if api_key else moment(user.exp),
+        # What a chat does before an action when it sends no mode of its own.
+        "default_permission_mode": default_permission_mode(),
     }
 
 
@@ -1261,6 +1310,9 @@ async def root():
 
 
 _AGENT_SUMMARY = ("id", "name", "role", "state", "nafs_level", "current_task", "model", "load")
+# A person may keep this many agents of their own (each is a full agent in memory).
+MAX_AGENTS_PER_USER = 50
+AGENT_EXPORT_FORMAT = "mizan-agent/1"
 
 
 def _agent_summary(found: dict) -> dict:
@@ -1268,34 +1320,236 @@ def _agent_summary(found: dict) -> dict:
     return {key: found.get(key) for key in _AGENT_SUMMARY if key in found}
 
 
-@app.get("/api/agents")
-async def list_agents(
-    user: TokenPayload = Depends(require_auth),
-    detail: bool = True,
-    limit: int = Query(200, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+# ── Personal agents (docs/personal-agents.md) ─────────────────────────────
+
+
+def _agent_services(**overrides: Any) -> dict:
+    """What every agent is built with: at startup, a new agent and a user's own copy."""
+    services: dict[str, Any] = {
+        "memory": memory,
+        "wali": wali,
+        "izn": izn,
+        "skill_registry": skill_registry,
+        "plugin_manager": plugin_manager,
+        "knowledge_graph": knowledge_graph,
+        "context_manager": context_manager,
+        "planner": planner,
+    }
+    services.update(overrides)
+    return services
+
+
+def _wire_agent(agent, registry: dict | None = None):
+    """Give an agent the registry it delegates in (all agents, or a user's own team),
+    the balancer and the Shura council."""
+    agent._agent_registry = active_agents if registry is None else registry
+    agent._balancer = balancer
+    agent._shura = shura
+    return agent
+
+
+def _publish_agent(agent) -> None:
+    active_agents[agent.id] = agent
+    balancer.register(agent.id)
+    shura.members[agent.id] = agent
+    _wire_agent(agent)
+
+
+def _agent_profile(agent) -> dict:
+    """The agent as saved: its live record too, so an edit never resets its counters."""
+    return {
+        "id": agent.id,
+        "name": agent.name,
+        "role": agent.role,
+        "nafs_level": agent.nafs_level,
+        "capabilities": list(agent.tools),
+        "config": agent.config,
+        "created_at": getattr(agent, "_created_at", None),
+        "total_tasks": agent.total_tasks,
+        "success_rate": agent.success_rate,
+        "error_count": agent.error_count,
+        "learning_iterations": agent.learning_iterations,
+        "owner_id": getattr(agent, "owner_id", None),
+        "shared": bool(getattr(agent, "shared", True)),
+    }
+
+
+async def _drop_stale_override(agent, *, save: bool = True) -> None:
+    """An agent whose own provider cannot start follows the default one, and says so."""
+    override = agent.config.pop("provider_override", None) or {}
+    name = str(override.get("provider") or "its provider")
+    agent.provider_warning = (
+        f"{name} could not start (check its API key in Settings), so this agent now uses "
+        "the default provider. Choose a model for it again to set its own."
+    )
+    if agent.ai_client is None:
+        agent.ai_client = create_provider()
+        if agent.ai_client is not None:
+            agent.ai_model = get_default_model(agent.ai_client.provider_name)
+            agent.config["model"] = agent.ai_model
+    agent._config_revision = getattr(agent, "_config_revision", 0) + 1
+    logger.warning("Agent %s: %s", agent.name, agent.provider_warning)
+    if save:
+        await memory.save_agent_profile(_agent_profile(agent))
+
+
+def _permission_mode(agent) -> str:
+    """The permission mode of a chat that sends none: the agent's own, else the
+    server's default (MIZAN_DEFAULT_PERMISSION_MODE)."""
+    from agents import agent_settings
+    from security.approvals import default_mode
+
+    own = agent_settings.of(getattr(agent, "config", None)).get("permission_mode")
+    return str(own) if own in agent_settings.PERMISSION_MODES else default_mode()
+
+
+def _broadcast_view(agent) -> dict:
+    """What every open WebSocket is told of an agent: a shared agent without its
+    persona, someone's own agent by its id and name only."""
+    if not getattr(agent, "shared", True):
+        return {"id": agent.id, "name": agent.name, "shared": False}
+    data: dict = dict(agent.to_dict())
+    data.pop("system_prompt", None)
+    return data
+
+
+def _caller(user: Any) -> TokenPayload | None:
+    """The signed-in caller; None for an internal call (never from a request: every
+    agent route requires a credential)."""
+    return user if isinstance(user, TokenPayload) else None
+
+
+def _agent_admin(user: Any) -> bool:
+    caller = _caller(user)
+    return caller is None or caller.has_role("admin")
+
+
+def _agent_visible(user: Any, agent) -> bool:
+    """Administrators see every agent; everyone else the shared ones and their own."""
+    caller = _caller(user)
+    if caller is None or caller.has_role("admin"):
+        return True
+    return bool(getattr(agent, "shared", True)) or getattr(agent, "owner_id", None) == (
+        caller.user_id
+    )
+
+
+def _agent_editable(user: Any, agent) -> bool:
+    caller = _caller(user)
+    if caller is None or caller.has_role("admin"):
+        return True
+    return bool(getattr(agent, "owner_id", None) == caller.user_id)
+
+
+def _visible_agents(user: Any) -> dict:
+    """The agents this caller may see, by id (slash commands list only these)."""
+    return {key: agent for key, agent in active_agents.items() if _agent_visible(user, agent)}
+
+
+def _visible_agent(user: Any, agent_id: str):
+    agent = active_agents.get(agent_id)
+    if agent is None or not _agent_visible(user, agent):
+        raise HTTPException(404, "Agent not found")
+    return agent
+
+
+def _editable_agent(user: Any, agent_id: str):
+    agent = _visible_agent(user, agent_id)
+    if not _agent_editable(user, agent):
+        raise HTTPException(403, "Only this agent's owner or an administrator may change it")
+    return agent
+
+
+def _default_agent_key(user_id: str) -> str:
+    return f"default_agent:{user_id}"
+
+
+async def _default_agent_id(user_id: str) -> str | None:
+    """The person's own default agent, when it still exists and they may use it."""
+    if not user_id:
+        return None
+    try:
+        chosen = await memory.get_preference(_default_agent_key(user_id))
+    except Exception:  # noqa: BLE001 - a preference read must not stop a chat
+        return None
+    agent = active_agents.get(chosen) if chosen else None
+    if agent is None:
+        return None
+    if not getattr(agent, "shared", True) and getattr(agent, "owner_id", None) != user_id:
+        principal = _owner_token(user_id)
+        if principal is None or not principal.has_role("admin"):
+            return None  # no longer theirs to use
+    return str(chosen)
+
+
+async def _default_agent_for(user_id: str):
+    """The agent channels (Telegram, email, WhatsApp) and watchers use for this person:
+    their default agent, else Khalifah."""
+    chosen = await _default_agent_id(user_id)
+    return active_agents.get(chosen) if chosen else _tadbir_coordinator()
+
+
+_UNSET: Any = object()
+
+
+async def _agent_view(user: Any, agent, *, template=None, default_id: Any = _UNSET) -> dict:
+    """An agent as this caller sees it: whether they may change it, whether it is their
+    default, and its persona only when they may change it."""
+    template = template or agent
+    data: dict = dict(agent.to_dict())
+    data["id"] = template.id
+    data["owner_id"] = getattr(template, "owner_id", None)
+    data["shared"] = bool(getattr(template, "shared", True))
+    data["provider_warning"] = getattr(template, "provider_warning", None)
+    editable = _agent_editable(user, template)
+    data["editable"] = editable
+    caller = _caller(user)
+    if default_id is _UNSET:
+        default_id = await _default_agent_id(caller.user_id) if caller is not None else None
+    data["is_default"] = bool(default_id and default_id == template.id)
+    if not editable:
+        data.pop("system_prompt", None)
+    return data
+
+
+def _new_agent_config(
+    model: str, system_prompt: str | None, settings: dict | None, capabilities: list[str]
+) -> dict[str, Any]:
+    from agents import agent_settings
+
+    config: dict[str, Any] = {"model": model, "system_prompt": system_prompt}
+    patch = dict(settings or {})
+    if capabilities and not patch.get("tools_allow"):
+        # AgentCreate.capabilities: the tools this agent is made for.
+        patch["tools_allow"] = list(capabilities)
+    agent_settings.apply(config, agent_settings.merge({}, patch))
+    return config
+
+
+async def _build_agent(
+    user: Any,
+    *,
+    name: str,
+    agent_type: str,
+    provider: str | None,
+    model: str | None,
+    system_prompt: str | None,
+    settings: dict | None,
+    capabilities: list[str] | None = None,
+    shared: bool | None = None,
 ):
-    """List all agents with their Nafs profile; ``detail=false`` gives each in a
-    few fields, and ``limit``/``offset`` page through them."""
-    agents_data = []
-    for agent in list(active_agents.values())[offset : offset + limit]:
-        if user.has_role("admin"):
-            d = agent.to_dict()
-            d["load"] = balancer.load_weights.get(agent.id, 0)
-        else:
-            private = await chat_agent_for(user, agent)
-            d = private.to_dict()
-            d["id"] = agent.id
-            d.pop("system_prompt", None)
-        agents_data.append(d if detail else _agent_summary(d))
-    return {"agents": agents_data, "total": len(active_agents), "offset": offset}
-
-
-@app.post("/api/agents")
-async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends(get_current_user)):
-    """Resolve a provider once and persist the validated agent before publishing it."""
-    selected_provider = req.provider
-    selected_model = req.model
+    """Resolve a provider once, then persist the validated agent before publishing it."""
+    caller = _caller(user)
+    if caller is not None and not caller.has_role("admin"):
+        owned = sum(
+            1
+            for agent in active_agents.values()
+            if getattr(agent, "owner_id", None) == caller.user_id
+        )
+        if owned >= MAX_AGENTS_PER_USER:
+            raise HTTPException(413, f"You have {owned} agents; delete one to make another")
+    selected_provider = provider
+    selected_model = model
     if selected_provider is None or selected_model is None:
         runtime = get_provider_status()
         selected_provider = selected_provider or runtime.get("active")
@@ -1318,27 +1572,14 @@ async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends
                 )
     if not selected_provider or not selected_model or not selected_model.strip():
         raise HTTPException(400, "Select a configured provider and a model")
-    config: dict[str, Any] = {
-        "model": selected_model,
-        "system_prompt": req.system_prompt,
-    }
-    if selected_provider:
-        config["provider_override"] = {"provider": selected_provider, "model": selected_model}
+    config = _new_agent_config(selected_model, system_prompt, settings, capabilities or [])
+    config["provider_override"] = {"provider": selected_provider, "model": selected_model}
 
     # BaseAgent invokes the shared factory, including its owned-only guard.
     # Building privately avoids a second provider initialization or a partial
     # agent becoming visible when that factory rejects the selection.
     try:
-        agent = create_agent(
-            req.type,
-            name=req.name,
-            memory=memory,
-            config=config,
-            wali=wali,
-            izn=izn,
-            skill_registry=skill_registry,
-            plugin_manager=plugin_manager,
-        )
+        agent = create_agent(agent_type, name=name, config=config, **_agent_services())
     except Exception as exc:
         logger.warning("Agent initialization unavailable (%s)", type(exc).__name__)
         raise HTTPException(400, "Cannot initialize the requested provider") from exc
@@ -1349,54 +1590,217 @@ async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends
         "provider": agent.ai_client.provider_name,
         "model": agent.ai_model,
     }
+    # Administrators make agents for everyone unless they say otherwise; anyone
+    # else's agent is their own.
+    admin = caller is None or caller.has_role("admin")
+    agent.owner_id = caller.user_id if caller is not None else None
+    agent.shared = (True if shared is None else bool(shared)) if admin else False
+    agent._created_at = datetime.now(UTC).isoformat()
 
-    await memory.save_agent_profile(
-        {
-            "id": agent.id,
-            "name": agent.name,
-            "role": req.type,
-            "nafs_level": agent.nafs_level,
-            "capabilities": list(agent.tools.keys()),
-            "config": config,
-        }
-    )
-    active_agents[agent.id] = agent
-    balancer.register(agent.id)
-    shura.members[agent.id] = agent
+    await memory.save_agent_profile({**_agent_profile(agent), "role": agent_type})
+    _publish_agent(agent)
 
-    await manager.broadcast(
-        {
-            "type": "agent_created",
-            "agent": agent.to_dict(),
-        }
-    )
+    await manager.broadcast({"type": "agent_created", "agent": _broadcast_view(agent)})
 
-    wali.audit.log("agent_created", {"agent_id": agent.id, "name": agent.name, "type": req.type})
+    wali.audit.log("agent_created", {"agent_id": agent.id, "name": agent.name, "type": agent_type})
     await event_bus.emit(
-        "agent.created", {"agent_id": agent.id, "name": agent.name, "type": req.type}
+        "agent.created", {"agent_id": agent.id, "name": agent.name, "type": agent_type}
     )
-    return agent.to_dict()
+    return agent
+
+
+@app.get("/api/agents")
+async def list_agents(
+    user: TokenPayload = Depends(require_auth),
+    detail: bool = True,
+    limit: int = Query(200, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """The agents you may use (shared ones and your own; administrators see all) with
+    their Nafs profile and settings; ``detail=false`` gives each in a few fields, and
+    ``limit``/``offset`` page through them."""
+    visible = [agent for agent in active_agents.values() if _agent_visible(user, agent)]
+    default_id = await _default_agent_id(user.user_id)
+    agents_data = []
+    for agent in visible[offset : offset + limit]:
+        if user.has_role("admin"):
+            d = await _agent_view(user, agent, default_id=default_id)
+            d["load"] = balancer.load_weights.get(agent.id, 0)
+        else:
+            private = await chat_agent_for(user, agent)
+            d = await _agent_view(user, private, template=agent, default_id=default_id)
+        agents_data.append(d if detail else _agent_summary(d))
+    return {"agents": agents_data, "total": len(visible), "offset": offset}
+
+
+@app.post("/api/agents")
+async def create_new_agent(req: AgentCreate, user: TokenPayload | None = Depends(get_current_user)):
+    """A new agent: an administrator's is shared with everyone unless ``shared`` is
+    false; anyone else's is their own, seen and changed by them alone."""
+    agent = await _build_agent(
+        user,
+        name=req.name,
+        agent_type=req.type,
+        provider=req.provider,
+        model=req.model,
+        system_prompt=req.system_prompt,
+        settings=req.settings.model_dump(exclude_unset=True) if req.settings else None,
+        capabilities=req.capabilities,
+        shared=req.shared,
+    )
+    return await _agent_view(user, agent)
+
+
+class DefaultAgent(BaseModel):
+    agent_id: str | None = Field(None, max_length=100)
+
+
+@app.get("/api/agents/default")
+async def get_default_agent(user: TokenPayload = Depends(require_auth)) -> DefaultAgent:
+    """Your default agent: it answers your chats that name none, your Telegram, email
+    and WhatsApp messages and your watchers' tasks (None: Khalifah)."""
+    return DefaultAgent(agent_id=await _default_agent_id(user.user_id))
+
+
+@app.put("/api/agents/default")
+async def set_default_agent(
+    req: DefaultAgent, user: TokenPayload = Depends(require_auth)
+) -> DefaultAgent:
+    """Choose your default agent (one you may use); null goes back to Khalifah."""
+    if req.agent_id is not None:
+        _visible_agent(user, req.agent_id)
+    await memory.set_preference(_default_agent_key(user.user_id), req.agent_id or "")
+    return DefaultAgent(agent_id=await _default_agent_id(user.user_id))
+
+
+class AgentImport(BaseModel):
+    format: Literal["mizan-agent/1"]
+    agent: AgentExportBody
+
+
+@app.post("/api/agents/import")
+async def import_agent(req: AgentImport, user: TokenPayload = Depends(require_auth)):
+    """An agent exported with GET /api/agents/{id}/export, made again as yours. Its
+    persona is read by Amanah first: one that tries to override MIZAN's rules, hide
+    something from the user or send their data away is refused."""
+    from tadbir import amanah
+
+    body = req.agent
+    findings = amanah.beyond_instructions(body.system_prompt or "", "agent import")
+    if findings:
+        raise HTTPException(
+            422,
+            {
+                "message": "This agent's instructions try to override MIZAN's rules, hide "
+                "something from you or send your data away, so it was not imported",
+                "amanah": amanah.summary(findings),
+            },
+        )
+    provider = body.provider
+    if provider is not None and not _provider_startable(provider):
+        provider = None  # this server has no key for it: the default provider instead
+    agent = await _build_agent(
+        user,
+        name=body.name,
+        agent_type=body.type,
+        provider=provider,
+        model=body.model if provider else None,
+        system_prompt=body.system_prompt,
+        settings=body.settings.model_dump(exclude_unset=True) if body.settings else None,
+        shared=False,
+    )
+    return await _agent_view(user, agent)
+
+
+def _provider_startable(provider: str) -> bool:
+    status = get_provider_status()
+    return any(
+        item.get("name") == provider and item.get("configured") for item in status["providers"]
+    )
 
 
 @app.get("/api/agents/{agent_id}")
 async def get_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
-    if agent_id not in active_agents:
-        raise HTTPException(404, "Agent not found")
-    agent = await chat_agent_for(user, active_agents[agent_id])
-    data = agent.to_dict()
-    data["id"] = agent_id
-    if not user.has_role("admin"):
-        data.pop("system_prompt", None)
-    return data
+    """One agent you may use, with its settings and the tools its model is offered."""
+    template = _visible_agent(user, agent_id)
+    agent = await chat_agent_for(user, template)
+    return await _agent_view(user, agent, template=template)
+
+
+@app.post("/api/agents/{agent_id}/clone")
+async def clone_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
+    """A copy of an agent you may use, as your own ("<name> (copy)"). The persona is
+    copied only when you may see it."""
+    from agents import agent_settings
+
+    template = _visible_agent(user, agent_id)
+    override = template.config.get("provider_override") or {}
+    provider = override.get("provider") or getattr(template.ai_client, "provider_name", None)
+    if provider is not None and not _provider_startable(provider):
+        provider = None  # its provider cannot start now: the default provider instead
+    agent = await _build_agent(
+        user,
+        name=f"{template.name} (copy)"[:100],
+        agent_type=_agent_type(template),
+        provider=provider,
+        model=(override.get("model") or template.ai_model) if provider else None,
+        system_prompt=template.config.get("system_prompt")
+        if _agent_editable(user, template)
+        else None,
+        settings=agent_settings.of(template.config),
+        shared=False if not _agent_admin(user) else None,
+    )
+    return await _agent_view(user, agent)
+
+
+def _agent_type(agent) -> str:
+    """The AgentCreate type that builds this agent again."""
+    role = str(getattr(agent, "role", "") or "general")
+    return role if role in _AGENT_TYPES else "general"
+
+
+_AGENT_TYPES = frozenset(
+    {"super", "khalifah", "general", "browser", "research", "code", "communication", "wakil",
+     "mubashir", "mundhir", "katib", "rasul"}
+)  # fmt: skip
+
+
+@app.get("/api/agents/{agent_id}/export")
+async def export_agent(agent_id: str, user: TokenPayload = Depends(require_auth)):
+    """The agent as ``mizan-agent/1`` JSON, for POST /api/agents/import here or on
+    another server (no keys, no memory, no record). The persona is included only when
+    you may see it."""
+    from agents import agent_settings
+
+    agent = _visible_agent(user, agent_id)
+    override = agent.config.get("provider_override") or {}
+    return {
+        "format": AGENT_EXPORT_FORMAT,
+        "agent": {
+            "name": agent.name,
+            "type": _agent_type(agent),
+            "provider": override.get("provider") or getattr(agent.ai_client, "provider_name", None),
+            "model": override.get("model") or agent.ai_model,
+            "system_prompt": (agent.config.get("system_prompt") or "")
+            if _agent_editable(user, agent)
+            else "",
+            "settings": agent_settings.of(agent.config),
+        },
+    }
 
 
 @app.delete("/api/agents/{agent_id}")
 async def delete_agent(agent_id: str, user: TokenPayload | None = Depends(get_current_user)):
-    if agent_id not in active_agents:
-        raise HTTPException(404, "Agent not found")
+    """Delete an agent you own (administrators: any); its saved profile goes too."""
+    _editable_agent(user, agent_id)
     del active_agents[agent_id]
     balancer.agents.pop(agent_id, None)
     shura.members.pop(agent_id, None)
+    # Its profile goes too, so it does not come back at the next start.
+    await memory.delete_agent_profile(agent_id)
+    for key in [key for key in _user_agents if key[1] == agent_id]:
+        copy = _user_agents.pop(key)
+        _user_teams.get(key[0], {}).pop(copy.id, None)
     wali.audit.log("agent_deleted", {"agent_id": agent_id})
     await event_bus.emit("agent.deleted", {"agent_id": agent_id})
     return {"deleted": agent_id}
@@ -1408,10 +1812,14 @@ async def update_agent(
     req: AgentUpdate,
     user: TokenPayload | None = Depends(get_current_user),
 ):
-    """Update an existing agent's name, model, or system prompt."""
+    """Change an agent's name, model, persona or settings (each setting merged on its
+    own; null resets it). Its record (tasks, success, Nafs) is kept."""
+    from agents import agent_settings
+
     agent = active_agents.get(agent_id)
     if not agent:
         raise HTTPException(404, "Agent not found")
+    _editable_agent(user, agent_id)
 
     provider_obj = None
     if req.model is not None:
@@ -1423,6 +1831,12 @@ async def update_agent(
             agent.name = req.name
         if req.system_prompt is not None:
             agent.config["system_prompt"] = req.system_prompt
+        if req.settings is not None:
+            current = agent_settings.of(agent.config)
+            agent_settings.apply(
+                agent.config,
+                agent_settings.merge(current, req.settings.model_dump(exclude_unset=True)),
+            )
         if provider_obj is not None and req.model is not None:
             agent.ai_client = provider_obj
             agent.ai_model = normalize_model_for_provider(req.model, provider_obj.provider_name)
@@ -1431,21 +1845,13 @@ async def update_agent(
                 "provider": provider_obj.provider_name,
                 "model": agent.ai_model,
             }
+            agent.provider_warning = None
         agent._config_revision = getattr(agent, "_config_revision", 0) + 1
 
-    await memory.save_agent_profile(
-        {
-            "id": agent.id,
-            "name": agent.name,
-            "role": agent.role,
-            "nafs_level": agent.nafs_level,
-            "capabilities": list(agent.tools.keys()),
-            "config": agent.config,
-        }
-    )
+    await memory.save_agent_profile(_agent_profile(agent))
 
-    await manager.broadcast({"type": "agent_updated", "agent": agent.to_dict()})
-    return agent.to_dict()
+    await manager.broadcast({"type": "agent_updated", "agent": _broadcast_view(agent)})
+    return await _agent_view(user, agent)
 
 
 class AgentModelRequest(BaseModel):
@@ -1462,10 +1868,11 @@ async def set_agent_model(
     req: AgentModelRequest,
     user: TokenPayload | None = Depends(get_current_user),
 ):
-    """Set model for a specific agent (does not affect other agents)."""
+    """Set the model of an agent you own (administrators: any); others keep theirs."""
     agent = active_agents.get(agent_id)
     if not agent:
         raise HTTPException(404, f"Agent '{agent_id}' not found")
+    _editable_agent(user, agent_id)
 
     provider = create_provider(provider=req.provider, model=req.model)
     if not provider:
@@ -1478,17 +1885,9 @@ async def set_agent_model(
         agent.ai_model = req.model
         agent.config["model"] = req.model
         agent.config["provider_override"] = {"provider": req.provider, "model": req.model}
+        agent.provider_warning = None
         agent._config_revision = getattr(agent, "_config_revision", 0) + 1
-    await memory.save_agent_profile(
-        {
-            "id": agent.id,
-            "name": agent.name,
-            "role": agent.role,
-            "nafs_level": agent.nafs_level,
-            "capabilities": list(agent.tools),
-            "config": agent.config,
-        }
-    )
+    await memory.save_agent_profile(_agent_profile(agent))
 
     await manager.broadcast(
         {
@@ -1631,6 +2030,15 @@ def _private_memory(user: TokenPayload) -> DhikrMemorySystem:
     return _private_memories[key]
 
 
+def _from_template(instance, template) -> None:
+    """What a user's copy takes from its agent: who owns it, whether it is shared, its
+    provider warning and its Nafs level (the record is the agent's own)."""
+    instance.owner_id = getattr(template, "owner_id", None)
+    instance.shared = bool(getattr(template, "shared", True))
+    instance.provider_warning = getattr(template, "provider_warning", None)
+    instance.nafs_level = max(instance.nafs_level, getattr(template, "nafs_level", 1) or 1)
+
+
 def _private_agent(user: TokenPayload, template):
     """This user's own instance of an agent, with private memory and learning."""
     key = (user.user_id, template.id)
@@ -1639,36 +2047,39 @@ def _private_agent(user: TokenPayload, template):
         instance = create_agent(
             template.role,
             name=template.name,
-            memory=private_memory,
-            knowledge_graph=private_memory.knowledge_graph,
             config=deepcopy(template.config),
-            wali=wali,
-            izn=izn,
-            skill_registry=skill_registry,
-            plugin_manager=None,
+            **_agent_services(
+                memory=private_memory, knowledge_graph=private_memory.knowledge_graph
+            ),
         )
         instance.ai_model, instance.ai_client = template.ai_model, template.ai_client
         instance._template_revision = getattr(template, "_config_revision", 0)
         instance._template_id = template.id
+        _from_template(instance, template)
         _user_agents[key] = instance
     instance = _user_agents[key]
     # The user's agents form their own Majlis: each knows the others, so
     # MIZAN can give each part of a request to the agent that fits it.
     team = _user_teams.setdefault(user.user_id, {})
     team[instance.id] = instance
-    instance._agent_registry = team
+    _wire_agent(instance, team)
     return instance
 
 
 async def chat_agent_for(user: TokenPayload, template):
+    if not _agent_visible(user, template):
+        # Someone else's own agent: this person is answered by the shared one.
+        template = _tadbir_coordinator() or template
     if user.has_role("admin"):
         return template
     for other in active_agents.values():
-        _private_agent(user, other)
+        if _agent_visible(user, other):
+            _private_agent(user, other)
     team = _user_teams.get(user.user_id, {})
     for member_id, member in list(team.items()):
-        if getattr(member, "_template_id", None) not in active_agents:
-            team.pop(member_id, None)  # its agent was removed
+        found = active_agents.get(getattr(member, "_template_id", None) or "")
+        if found is None or not _agent_visible(user, found):
+            team.pop(member_id, None)  # its agent was removed or is no longer theirs
     instance = _private_agent(user, template)
     if instance._template_revision != getattr(template, "_config_revision", 0):
         async with agent_settings_lock(instance):
@@ -1676,6 +2087,7 @@ async def chat_agent_for(user: TokenPayload, template):
             instance.config = deepcopy(template.config)
             instance.ai_model, instance.ai_client = template.ai_model, template.ai_client
             instance._template_revision = getattr(template, "_config_revision", 0)
+            _from_template(instance, template)
     return instance
 
 
@@ -2180,7 +2592,9 @@ async def stream_chat(
             # The chat's project was deleted: the chat goes on without one.
             await memory.bind_session_workspace(user.user_id, req.session_id, None)
             workspace_id, workspace_context = None, None
-    agent_id = req.agent_id or next(iter(active_agents), None)
+    agent_id = (
+        req.agent_id or await _default_agent_id(user.user_id) or next(iter(active_agents), None)
+    )
     if agent_id not in active_agents and not req.content.startswith("/"):
         raise HTTPException(503, "No agents available")
     agent = (
@@ -2522,7 +2936,7 @@ async def stream_chat(
                     session_id=req.session_id,
                     sessions=active_sessions,
                     memory=memory,
-                    active_agents=active_agents,
+                    active_agents=_visible_agents(user),
                 )
             if cmd_result.get("is_command"):
                 result = {"success": True, "result": cmd_result["response"], "usage": {}}
@@ -2555,10 +2969,10 @@ async def stream_chat(
 
                 # A person reads this chat: they are asked, and what they allowed
                 # "always" in it earlier still holds.
-                approval_context = (
-                    approvals_for_chat(user.user_id, req.session_id, req.permission_mode)
-                    if req.permission_mode
-                    else None
+                # A chat that sends no mode gets its agent's own, else the server's
+                # default (MIZAN_DEFAULT_PERMISSION_MODE, auto).
+                approval_context = approvals_for_chat(
+                    user.user_id, req.session_id, req.permission_mode or _permission_mode(agent)
                 )
                 if approval_context is not None and (req.plan_approved or req.fix):
                     # What the person pressed, for Tadbir to act on (never their words).
@@ -2848,7 +3262,7 @@ async def chat(
         session_id=req.session_id,
         sessions=active_sessions,
         memory=memory,
-        active_agents=active_agents,
+        active_agents=_visible_agents(user),
     )
     if cmd_result.get("is_command"):
         await manager.broadcast(
@@ -3818,12 +4232,19 @@ async def _run_unattended(agent, task: str, owner_id: str | None, origin: str) -
 async def _watcher_task(owner_id: str, task: str) -> str:
     """Run a watcher's task as its owner, through their own agent and its gates;
     actions that need a person are held for the owner (no one is watching)."""
-    user = _owner_token(owner_id)
-    template = _tadbir_coordinator()
-    if user is None or template is None:
-        return ""
     from automation import muraqabah
     from security import approvals
+
+    user = _owner_token(owner_id)
+    # The watcher's own agent when it names one the owner may use, else their default.
+    chosen = active_agents.get(muraqabah.current_watcher_agent() or "")
+    template = (
+        chosen
+        if chosen is not None and user is not None and _agent_visible(user, chosen)
+        else await _default_agent_for(owner_id)
+    )
+    if user is None or template is None:
+        return ""
 
     agent = await chat_agent_for(user, template)
     binding = bind_principal(user)
@@ -3897,7 +4318,8 @@ async def _bab_turn(
     from tadbir import waqt
 
     user = _owner_token(owner_id)
-    template = _tadbir_coordinator()
+    # The person's default agent answers their channels (Khalifah when they chose none).
+    template = await _default_agent_for(owner_id)
     if user is None or template is None:
         return "MIZAN cannot answer right now: no agent is running.", []
     await memory.authorize_session(session_id, owner_id, create=True)
@@ -4338,6 +4760,8 @@ class WatcherRequest(BaseModel):
     trigger: dict
     task: str = Field(..., min_length=1, max_length=1000)
     priority: str = Field(default="judge", pattern=r"^(judge|always)$")
+    # The agent that runs the task (one you may use); none: your default agent.
+    agent_id: str | None = Field(None, max_length=100)
 
 
 class WatcherUpdate(BaseModel):
@@ -4346,6 +4770,8 @@ class WatcherUpdate(BaseModel):
     task: str | None = Field(None, min_length=1, max_length=1000)
     priority: str | None = Field(None, pattern=r"^(judge|always)$")
     enabled: bool | None = None
+    # "" clears it (the default agent runs the task).
+    agent_id: str | None = Field(None, max_length=100)
 
 
 class NoticeFeedback(BaseModel):
@@ -4425,8 +4851,12 @@ async def muraqabah_place(req: PlaceRequest, user: TokenPayload = Depends(requir
 
 @app.post("/api/muraqabah/watchers")
 async def add_watcher(req: WatcherRequest, user: TokenPayload = Depends(require_auth)):
+    if req.agent_id:
+        _visible_agent(user, req.agent_id)
     try:
-        return _muraqabah_store().add(user.user_id, req.title, req.trigger, req.task, req.priority)
+        return _muraqabah_store().add(
+            user.user_id, req.title, req.trigger, req.task, req.priority, agent_id=req.agent_id
+        )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
@@ -4435,6 +4865,8 @@ async def add_watcher(req: WatcherRequest, user: TokenPayload = Depends(require_
 async def update_watcher(
     watcher_id: str, req: WatcherUpdate, user: TokenPayload = Depends(require_auth)
 ):
+    if req.agent_id:
+        _visible_agent(user, req.agent_id)
     try:
         updated = _muraqabah_store().update(
             user.user_id, watcher_id, **req.model_dump(exclude_none=True)
@@ -4763,6 +5195,17 @@ async def list_provider_models(
     elif provider_name == "ollama":
         models = await fetch_ollama_models()
         return {"provider": "ollama", "models": models}
+    elif provider_name in COMPATIBLE_ENDPOINTS:
+        # xAI (Grok) and Meta (Muse Spark): the provider's own live list.
+        models = await fetch_compatible_models(provider_name)
+        if search:
+            needle = search.lower()
+            models = [m for m in models if needle in f"{m['id']} {m['name']}".lower()]
+        return {
+            "provider": provider_name,
+            "models": models[offset : offset + limit],
+            "total": len(models),
+        }
     else:
         from providers import PROVIDER_MODELS
 
@@ -4790,10 +5233,7 @@ async def provider_health(provider_name: str):
 
 
 class ProviderSwitchRequest(BaseModel):
-    provider: str = Field(
-        ...,
-        pattern=r"^(anthropic|openrouter|openai|ollama|ruh|ruh-remote|qwen3|mizan-hybrid|mizan-owned|mizan-minimind)$",
-    )
+    provider: str = Field(..., pattern=AGENT_PROVIDER_PATTERN)
     model: str = Field(..., min_length=1, max_length=200)
 
 
@@ -4802,7 +5242,8 @@ async def switch_provider(
     req: ProviderSwitchRequest, user: TokenPayload | None = Depends(get_current_user)
 ):
     """
-    Switch the active LLM provider and model for all agents.
+    Switch the default LLM provider and model: every agent that follows the default
+    moves; an agent given its own provider and model keeps them.
     Persists choice to database so it survives restarts.
     """
     provider = create_provider(provider=req.provider, model=req.model)
@@ -4816,27 +5257,18 @@ async def _switch_all_agents(provider: Any, model: str, requested: str = "") -> 
     provider_name = str(getattr(provider, "provider_name", requested) or requested)
     model = normalize_model_for_provider(model, provider_name)
 
-    # Update all active agents
+    # Move every agent that follows the default; an agent given its own provider and
+    # model (provider_override) keeps them.
     switched = 0
     for agent in active_agents.values():
+        if isinstance(getattr(agent, "config", {}).get("provider_override"), dict):
+            continue
         async with agent_settings_lock(agent):
             agent.ai_client = provider
             agent.ai_model = model
             agent._config_revision = getattr(agent, "_config_revision", 0) + 1
             if hasattr(agent, "config"):
-                had_override = agent.config.pop("provider_override", None) is not None
                 agent.config["model"] = model
-                if had_override:
-                    await memory.save_agent_profile(
-                        {
-                            "id": agent.id,
-                            "name": agent.name,
-                            "role": agent.role,
-                            "nafs_level": agent.nafs_level,
-                            "capabilities": list(agent.tools),
-                            "config": agent.config,
-                        }
-                    )
         switched += 1
 
     set_active_state(provider_name, model)
@@ -5430,9 +5862,13 @@ async def get_settings(user: TokenPayload | None = Depends(get_current_user)):
 
     # Build providers list
     providers = []
-    for name in ["anthropic", "openrouter", "openai", "ollama"]:
-        env_key = f"{name.upper()}_API_KEY"
-        key_set = bool(os.getenv(env_key))
+    from providers import COMPATIBLE_ENDPOINTS, compatible_key
+
+    for name in ["anthropic", "openrouter", "openai", *COMPATIBLE_ENDPOINTS, "ollama"]:
+        if name in COMPATIBLE_ENDPOINTS:
+            key_set = bool(compatible_key(name))
+        else:
+            key_set = bool(os.getenv(f"{name.upper()}_API_KEY"))
         healthy = False
         try:
             health = await check_provider_health(name)
@@ -8052,7 +8488,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                     session_id=session_id,
                     sessions=active_sessions,
                     memory=memory,
-                    active_agents=active_agents,
+                    active_agents=_visible_agents(user),
                 )
                 if cmd_result.get("is_command"):
                     await manager.send_required(
@@ -8069,7 +8505,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                 if agent_id and agent_id in active_agents:
                     agent = active_agents[agent_id]
                 elif active_agents:
-                    agent = list(active_agents.values())[0]
+                    agent = await _default_agent_for(user.user_id)
 
                 if agent:
                     agent = await chat_agent_for(user, agent)
@@ -8158,14 +8594,36 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, token: str | 
                             },
                         )
 
+                    from agents.events import bind_event_sink
+                    from security.approvals import MODES as PERMISSION_MODES
+                    from security.approvals import bind_approvals
+                    from security.approvals import chat_context as approvals_for_chat
                     from tadbir.waqt import bind_timezone
 
+                    async def ws_activity(
+                        kind: str, payload: dict, _sid=session_id, _mid=message_id
+                    ):
+                        # Tool, plan and approval frames; an approval is answered with
+                        # POST /api/chat/approvals/{approval_id}, as in the web chat.
+                        await manager.send_required(
+                            client_id,
+                            {"type": kind, **payload, "session_id": _sid, "message_id": _mid},
+                        )
+
+                    asked = data.get("permission_mode")
+                    ws_approvals = approvals_for_chat(
+                        user.user_id,
+                        session_id,
+                        asked if asked in PERMISSION_MODES else _permission_mode(agent),
+                    )
                     zone = data.get("timezone")
                     try:
                         with (
                             bind_timezone(
                                 zone if isinstance(zone, str) and len(zone) <= 64 else None
                             ),
+                            bind_event_sink(ws_activity),
+                            bind_approvals(ws_approvals),
                             await owner_consent(user.user_id),
                         ):
                             result = await agent.execute(

@@ -50,8 +50,9 @@ in words, looking at the image. Both kinds are seeds in
 ## Text inside an image is outside content
 
 A picture can carry written instructions ("ignore your rules and…"). MIZAN
-treats it like a web page: in a turn with an image, an action the model
-chooses that changes something needs a person's approval (Amanah).
+treats it like outside content, but an image alone no longer holds an action:
+as for a page, a model-chosen change needs a person's approval only after Amanah
+found an instruction in what the run read ([amanah.md](amanah.md)).
 
 ## Limits
 

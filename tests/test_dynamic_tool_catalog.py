@@ -413,7 +413,7 @@ async def test_quoted_flagged_phrase_is_diagnostic_and_does_not_override_request
     assert agent._faculty_guidance == ""
 
 
-async def test_offered_action_still_passes_critical_fitrah_gate(runtime, monkeypatch):
+async def test_a_critical_fitrah_reading_is_advisory_and_never_blocks(runtime, monkeypatch):
     agent, _, skill = runtime
     monkeypatch.setattr(
         agent.fitrah,
@@ -428,13 +428,15 @@ async def test_offered_action_still_passes_critical_fitrah_gate(runtime, monkeyp
         ],
     )
     agent.ai_client = ScriptedProvider(
-        [call("orbit_render", {"value": "blocked"}), answer("The action was blocked")]
+        [call("orbit_render", {"value": "ran"}), answer("The action ran")]
     )
     result = await agent.execute("orbit_render")
     assert result["success"]
-    assert skill.calls == []
-    assert "Fitrah violation" in agent._last_tool_results[-1]["result"]["error"]
-    assert agent.izn._call_counts == {}
+    # Fitrah reads actions by their words: it reports, the gates that act decide.
+    assert skill.calls == ["ran"]
+    assert result["fitrah"]["advisory"] is True
+    assert result["fitrah"]["findings"][0]["axiom"] == "fixture_axiom"
+    assert len(agent.izn._call_counts[f"{agent.id}:orbit_render"]) == 1
 
 
 async def test_permission_revocation_after_discovery_still_blocks_execution(runtime):
@@ -463,7 +465,8 @@ def test_owner_and_selected_workspace_filter_also_limits_discovery(runtime):
         catalog = ToolCatalog(agent.get_tool_schemas(), "")
         assert "workspace_create" not in catalog._schemas
         assert "orbit_render" not in catalog._schemas
-        assert "bash" not in catalog._schemas
+        # The host tools are offered to everyone: a non-admin's run in their sandbox.
+        assert "bash" in catalog._schemas
         assert "workspace_read" in catalog._schemas
         assert catalog.discover({"names": ["orbit_render"]})["loaded_for_next_turn"] == []
     finally:

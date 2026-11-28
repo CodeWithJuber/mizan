@@ -101,8 +101,8 @@ async def test_hosted_request_keeps_language_source_distinct_from_saved_defaults
     assert '"value": "Namaste"' in defaults
     assert "SAVED REPLY DEFAULTS" in defaults
     assert content == f"{CURRENT_REQUEST_START}\n{task}\n{CURRENT_REQUEST_END}"
-    assert system.index(RESPONSE_POLICY) < system.index("CONFIGURED ROLE INSTRUCTIONS")
-    assert "defaults subordinate to response preferences" in system
+    assert system.index(RESPONSE_POLICY) < system.index("YOUR PERSONA AND INSTRUCTIONS")
+    assert "subordinate" not in system
     assert context == before
 
 

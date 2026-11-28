@@ -19,6 +19,8 @@ const PROVIDER_ICONS: Record<string, string> = {
   openrouter: "R",
   openai: "O",
   ollama: "L",
+  xai: "X",
+  meta: "M",
 };
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -39,7 +41,8 @@ const PROVIDER_ACCENT: Record<string, string> = {
   ollama: "text-blue-600 dark:text-blue-400",
 };
 
-const DYNAMIC_PROVIDERS = new Set(["openrouter", "ollama"]);
+// Their model lists come live from the provider through /providers/<name>/models.
+const DYNAMIC_PROVIDERS = new Set(["openrouter", "ollama", "xai", "meta"]);
 const MODEL_PAGE_SIZE = 50;
 
 export default function ProvidersPage({ api }: PageProps) {
