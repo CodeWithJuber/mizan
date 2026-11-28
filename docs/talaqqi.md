@@ -11,7 +11,8 @@ When the language model answers a question about the world (Qasd's `fact` facet)
 - every claim Ahl al-Dhikr checked was **supported** by a source, and none was contradicted or left unknown;
 - the Truth Gate corrected or removed nothing, and no claim is graded mawdu';
 - the question **opened its chat**. A question that leans on earlier messages, such as "who founded it?", could name another topic in the same words;
-- the question is not about the deen. A ruling, or an answer citing the Quran or hadith, is never kept: deen answers come from the Quran, hadith and scholars, never from a model's words.
+- the question is not about the deen. A ruling, or an answer citing the Quran or hadith, is never kept: deen answers come from the Quran, hadith and scholars, never from a model's words;
+- neither the answer nor a source sentence holds anything shaped like a secret (a key, a token, a password: [Satr](satr.md)). Such an answer is not kept at all, since covering it would hand out the placeholder when it is given again.
 
 The kept answer carries its sanad: the question's words, the teacher model, how it was received (`sama`, heard from the teacher), and for each claim the sentence, title, link and date of the source that confirmed it.
 

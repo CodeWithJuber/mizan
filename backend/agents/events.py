@@ -10,11 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
+
+from security.satr import SECRET_KEY, cover_text
 
 logger = logging.getLogger("mizan.events")
 
@@ -25,7 +26,6 @@ _sink: ContextVar[EventSink | None] = ContextVar("mizan_agent_event_sink", defau
 # Frames stay well below the transport's per-event limit.
 MAX_EVENT_BYTES = 96 * 1024
 MAX_TEXT_CHARS = 32 * 1024
-_SECRET_KEY = re.compile(r"(api[_-]?key|token|secret|password|authorization|cookie)", re.I)
 
 
 @contextmanager
@@ -48,21 +48,23 @@ def current_sink() -> EventSink | None:
 
 
 def bounded(value: Any, depth: int = 0) -> Any:
-    """JSON-safe copy with secret-looking keys redacted and long text trimmed."""
+    """JSON-safe copy with secret-looking keys redacted, secrets inside text covered
+    (Satr) and long text trimmed."""
     if depth > 6:
         return "…"
     if isinstance(value, dict):
         return {
-            str(key)[:80]: "[redacted]"
-            if _SECRET_KEY.search(str(key))
-            else bounded(item, depth + 1)
+            str(key)[:80]: "[redacted]" if SECRET_KEY.search(str(key)) else bounded(item, depth + 1)
             for key, item in list(value.items())[:100]
         }
     if isinstance(value, (list, tuple)):
         items = [bounded(item, depth + 1) for item in list(value)[:200]]
         return items + (["…"] if len(value) > 200 else [])
     if isinstance(value, str):
-        return value if len(value) <= MAX_TEXT_CHARS else value[:MAX_TEXT_CHARS] + "…"
+        # Satr: a credential inside a value (``curl -H "Authorization: Bearer …"`` in a
+        # command) is covered too, not only a value under a secret-named key.
+        text = value if len(value) <= MAX_TEXT_CHARS else value[:MAX_TEXT_CHARS] + "…"
+        return cover_text(text)
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)[:2000]

@@ -77,6 +77,16 @@ def choose(task: str, attempt: int, default: str | None, rng: random.Random | No
     return candidates[min(start + max(0, attempt), len(candidates) - 1)]
 
 
+def stronger(model: str | None) -> str | None:
+    """The next stronger listed model after this one, or None when Wazn does not
+    route it (no list, a model not on it) or it is already the strongest."""
+    candidates = _candidates()
+    if not model or model not in candidates:
+        return None
+    index = candidates.index(model)
+    return candidates[index + 1] if index + 1 < len(candidates) else None
+
+
 def record(task: str, model: str | None, worked: bool) -> None:
     if not model or model not in models():
         return

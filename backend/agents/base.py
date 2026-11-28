@@ -75,7 +75,7 @@ from core.ruh_engine import RuhEngine
 from core.sabr import SabrEngine
 from core.self_healing import LawwamaHealingSystem
 from core.shukr import ShukrSystem
-from core.tawbah import TawbahProtocol
+from core.tawbah import TawbahLoop, TawbahProtocol
 
 # Living Memory + 24/7 Multi-Agent Collaboration
 from memory.living_memory import LivingMemorySystem
@@ -427,12 +427,14 @@ _workspace_only: ContextVar[str | None] = ContextVar("mizan_workspace_only", def
 WORKSPACE_AGENT_TOOLS = frozenset(
     {"workspace_tree", "workspace_read", "workspace_glob", "workspace_grep", "workspace_edit",
      "workspace_write", "workspace_run", "workspace_sandbox", "workspace_git", "workspace_diff",
-     "workspace_checkpoint", "workspace_artifact", "todo_write"}
+     "workspace_checkpoint", "workspace_artifact", "todo_write",
+     "workspace_verify", "workspace_impact", "workspace_docs_check"}
 )  # fmt: skip
 # Their results are the project's text (files, program output): data, never instructions.
 _WORKSPACE_READS = frozenset(
     {"workspace_tree", "workspace_read", "workspace_glob", "workspace_grep", "workspace_run",
-     "workspace_sandbox", "workspace_git", "workspace_diff"}
+     "workspace_sandbox", "workspace_git", "workspace_diff",
+     "workspace_verify", "workspace_impact", "workspace_docs_check"}
 )  # fmt: skip
 _WORKSPACE_ONLY_NOTE = (
     "\n\nMIZAN gave you this coding task in the user's project. Use only its workspace tools: "
@@ -1032,6 +1034,10 @@ class BaseAgent:
 
     @staticmethod
     def _read_only_hint(tool_name: str) -> bool:
+        from skills.builtin.coding_workspace import FORGEKIT_READS
+
+        if tool_name in FORGEKIT_READS:
+            return True  # ForgeKit's reads of a project observe, like git status
         if not tool_name.startswith("mcp__"):
             return False
         from connectors.tools import read_only_hint
@@ -1193,18 +1199,22 @@ class BaseAgent:
         from workspace.context import bound_workspace_id
 
         window_tools, window_bytes = window_limits()
+        project_tools = (
+            {s["name"] for s in tool_schemas if s["name"].startswith("workspace_")}
+            if bound_workspace_id()
+            else set()
+        )
         tool_catalog = ToolCatalog(
             tool_schemas,
             task,
             # activate_skill carries the skill catalog in its description, so
             # the ranking offers it when a request matches a skill.
-            context_names={s["name"] for s in tool_schemas if s["name"].startswith("workspace_")}
-            if bound_workspace_id()
-            else set(),
-            # A coding project needs its read/edit/search/run tools together.
+            context_names=project_tools,
+            # A coding project needs its read/edit/search/run tools together: all of
+            # them, discovery and one more fit the window.
             max_tools=max(
                 self._config_int("tool_schema_limit", window_tools, 2, 32),
-                16 if bound_workspace_id() else 0,
+                max(16, len(project_tools) + 2) if bound_workspace_id() else 0,
             ),
             max_bytes=max(
                 self._config_int("tool_schema_bytes", window_bytes, 4096, 65_536),
@@ -1534,6 +1544,8 @@ class BaseAgent:
         self._last_tool_results = []
         # Results from the latest tool turn, for the end-of-run Furqan check.
         last_tool_results: list = []
+        # Tawbah: the same failure THRASH_K times closes that path for this run.
+        loop_guard = TawbahLoop()
         # Guarded auto-continuation when a turn is cut off by max_tokens
         continuations = 0
         # Agent config or MIZAN_CHAT_MAX_CONTINUATIONS / MIZAN_CHAT_TOOL_RESULT_CHARS.
@@ -1725,6 +1737,11 @@ class BaseAgent:
 
                 tool_results = []
                 for block, tool_result in zip(tool_blocks, tool_results_raw, strict=True):
+                    diagnosis = loop_guard.observe(block.name, tool_result)
+                    if diagnosis is not None:
+                        tool_result = loop_guard.stop_note(tool_result, diagnosis)
+                        if diagnosis["first"]:
+                            self._tawbah_loop(diagnosis, original_task)
                     self._last_tool_results.append({"name": block.name, "result": tool_result})
                     yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
 
@@ -2414,16 +2431,56 @@ class BaseAgent:
         # or turn the preceding tool preamble into a successful final answer.
         self._require_answer_progress(response)
 
+    def _tawbah_loop(self, diagnosis: dict, task: str) -> None:
+        """A path failed THRASH_K times the same way: record the diagnosis, and where
+        Wazn routes this run's model, give the rest of the run one tier stronger."""
+        from tadbir import trace, wazn
+
+        try:
+            self.tawbah.loop(self.id, task, diagnosis)
+        except Exception:  # noqa: BLE001 - a record must never break the run
+            logger.debug("Tawbah record not kept", exc_info=True)
+        client = self.ai_client
+        stronger = wazn.stronger(self.ai_model)
+        if stronger:
+            # Undone with the run's own binding when the run ends (_execute_run).
+            _execution_provider.set((id(self), stronger, client))
+            diagnosis["escalated_to"] = stronger
+        logger.info(
+            "[TAWBAH] %s failed %d times the same way (%s)%s",
+            diagnosis["tool"],
+            diagnosis["count"],
+            diagnosis["error_class"],
+            f"; model now {stronger}" if stronger else "",
+        )
+        trace.event(
+            "verify",
+            "tawbah_loop",
+            tool=diagnosis["tool"],
+            signature=diagnosis["signature"],
+            count=diagnosis["count"],
+            escalated_to=stronger or "",
+        )
+        loops = getattr(self, "_tawbah_loops", None)
+        if isinstance(loops, list) and len(loops) < 20:
+            loops.append(dict(diagnosis))
+
     async def _execute_tool_safe(self, tool_name: str, params: dict) -> Any:
         """Execute a tool through every check, then write its Sakk receipt.
 
         The receipt (tool, outcome, keyed digests of the parameters and the
         result, linked to the owner's previous receipt) is written whatever
         happened: done, held, declined, refused or raised.
+
+        Satr: a secret in the result is covered here, the one place every tool
+        result passes, before it reaches the model, the history, the live events
+        or the receipt.
         """
+        from security import satr
+
         result: Any = {"error": "raised"}
         try:
-            result = await self._execute_tool_checked(tool_name, params)
+            result = satr.cover(await self._execute_tool_checked(tool_name, params))
             return result
         finally:
             if not _evaluation_only.get() and not _language_only.get():
@@ -2539,8 +2596,21 @@ class BaseAgent:
                 "here to approve it",
                 "approval_required": True,
             }
+        # Doubt asks a person in every mode and is held when no one is watching: a
+        # package Wara' doubts, a change to one of the project's protected paths.
+        # First-hand evidence of harm (an invented or malicious package) refuses.
+        read_only = self._read_only_hint(tool_name) if approvals is not None else False
+        doubt, wara_note = "", None
+        if approvals is None or not approvals.blocks(tool_name, read_only, params):
+            refusal, doubt, wara_note = await self._doubt(tool_name, params)
+            if refusal is not None:
+                return refusal
+        if approvals is None and doubt:
+            return {
+                "error": f"{doubt} No one is here to confirm it.",
+                "approval_required": True,
+            }
         if approvals is not None:
-            read_only = self._read_only_hint(tool_name)
             if approvals.blocks(tool_name, read_only, params):
                 return {
                     "error": "Plan mode is read-only: describe this step in the plan instead",
@@ -2548,12 +2618,20 @@ class BaseAgent:
                 }
             if approvals.was_granted(tool_name, params):
                 pass  # the owner allowed exactly this call when it was held
-            elif izn_asks or held or asks or approvals.needs_approval(tool_name, read_only, params):
+            elif (
+                izn_asks
+                or held
+                or doubt
+                or asks
+                or approvals.needs_approval(tool_name, read_only, params)
+            ):
                 reason = (
                     perm.get("reason", "")
                     if izn_asks
                     else _AMANAH_REASON
                     if held
+                    else doubt
+                    if doubt
                     else "You set this connector tool to ask before each call"
                     if asks
                     else ""
@@ -2578,6 +2656,118 @@ class BaseAgent:
                 if decision == "deny":
                     return {"error": "The user declined this action", "declined": True}
 
+        result = await self._dispatch_tool(tool_name, params)
+        if wara_note and isinstance(result, dict):
+            # Allowed with what could not be checked (or a mild doubt) said on the receipt.
+            result = {**result, "wara": wara_note}
+        return result
+
+    async def _doubt(self, tool_name: str, params: dict) -> tuple[dict | None, str, dict | None]:
+        """What gives doubt about this call: (a refusal, a reason to ask a person,
+        Wara's note for the result). Missing evidence never refuses or asks."""
+        refusal = self._covered_write(tool_name, params)
+        if refusal is not None:
+            return refusal, "", None
+        reasons = [self._protected_reason(tool_name, params)]
+        note = None
+        from security import wara
+
+        install = wara.tool_install(tool_name, params) if wara.enabled() else wara.Install()
+        if install.checked or install.elsewhere:
+            verdict = await wara.vet(install.checked, elsewhere=install.elsewhere)
+            if verdict.decision == "refuse":
+                logger.warning("[WARA] %s refused: %s", tool_name, verdict.reason)
+                return {"error": verdict.reason, "wara": wara.summary(verdict)}, "", None
+            if verdict.decision == "ask":
+                reasons.append(verdict.reason)
+            elif verdict.notes:
+                note = wara.summary(verdict)
+        return None, " ".join(reason for reason in reasons if reason), note
+
+    @staticmethod
+    def _protected_reason(tool_name: str, params: dict) -> str:
+        """Why a project write or edit asks: its path is one the project protects, or
+        the project's list could not be read (asked, never assumed empty)."""
+        if tool_name not in {"workspace_write", "workspace_edit"}:
+            return ""
+        path = str(params.get("path") or "")
+        from fastapi import HTTPException
+
+        from workspace.context import selected_workspace
+        from workspace.store import GIT_DIR, WorkspaceStore, parts, protected_match
+
+        try:
+            if parts(path)[0] == GIT_DIR:
+                return ""  # the store refuses .git outright
+            workspace_id = selected_workspace(params.get("workspace_id"))
+            store = WorkspaceStore(current_user_id() or "")
+        except HTTPException:
+            # A bad path, no signed-in user, no project or not theirs: the tool itself
+            # refuses this call with the same check, so nothing could change.
+            return ""
+        unreadable = (
+            f"MIZAN could not read the project's protected paths, so this change to "
+            f"{path} asks you first."
+        )
+        try:
+            pattern = protected_match(path, store.protected_paths(workspace_id))
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                return ""  # no such project: the tool refuses it too
+            logger.warning("Protected paths unreadable for %s; asking", workspace_id)
+            return unreadable
+        except Exception:  # noqa: BLE001 - fail closed: an unreadable list asks
+            logger.warning("Protected paths unreadable for %s; asking", workspace_id)
+            return unreadable
+        if not pattern:
+            return ""
+        return (
+            f"{path} is a protected path of this project ({pattern}): a change to it "
+            "always asks you first."
+        )
+
+    @staticmethod
+    def _covered_write(tool_name: str, params: dict) -> dict | None:
+        """A refusal when a project write would put a ``[redacted:…]`` placeholder where
+        an existing file holds a secret: writing Satr's covered view back would replace
+        the secret itself. A placeholder in a new file, or where no secret was, is text."""
+        from security import satr
+
+        if tool_name == "workspace_edit":
+            new_text = str(params.get("new_string") or "")
+            if satr.markers(new_text) <= satr.markers(str(params.get("old_string") or "")):
+                return None
+            # The edit replaces old_string, which matches the file exactly.
+            replaced = satr.secrets_in(str(params.get("old_string") or ""))
+        elif tool_name == "workspace_write":
+            new_text = str(params.get("content") or "")
+            if not satr.markers(new_text):
+                return None
+            try:
+                from workspace.context import selected_workspace
+                from workspace.store import WorkspaceStore
+
+                before = WorkspaceStore(current_user_id() or "").read(
+                    selected_workspace(params.get("workspace_id")),
+                    str(params.get("path") or ""),
+                )["content"]
+            except Exception:  # noqa: BLE001 - a new (or unreadable) file holds no secret
+                return None
+            replaced = satr.secrets_in(before)
+        else:
+            return None
+        if not any(secret not in new_text for secret in replaced):
+            return None
+        return {
+            "error": "This change writes a [redacted:…] placeholder where the file holds a "
+            "secret MIZAN covered when it was read, so it would replace the secret itself. "
+            "Change the file with workspace_edit around the secret's line instead of "
+            "writing it back."
+        }
+
+    async def _dispatch_tool(self, tool_name: str, params: dict) -> Any:
+        """Run a tool that passed every check: connectors, the agent's own tools,
+        skills, then plugins."""
         # 0. The user's own MCP connectors (reserved prefix)
         if tool_name.startswith("mcp__"):
             from connectors.tools import call
@@ -3156,6 +3346,7 @@ Match the requested depth and self-correct errors."""
         "_last_tool_results",
         "_faculty_guidance",
         "_runtime_state_note",
+        "_tawbah_loops",
     )
 
     def _run_copy(self) -> Any:
@@ -3247,6 +3438,7 @@ Match the requested depth and self-correct errors."""
         mode_binding = _agent_mode.set(own.get("orchestration"))
         effort_binding = AGENT_EFFORT.set(own.get("effort"))
         self._fitrah_advisories: list[dict] = []
+        self._tawbah_loops: list[dict] = []
         from tadbir import amanah
 
         # Pasted text that tries to instruct the AI is known before the model
@@ -3300,6 +3492,9 @@ Match the requested depth and self-correct errors."""
             if getattr(self, "_fitrah_advisories", None):
                 # Fitrah reads actions by their words: reported, never a gate.
                 result["fitrah"] = {"advisory": True, "findings": list(self._fitrah_advisories)}
+            if getattr(self, "_tawbah_loops", None):
+                # Paths that failed the same way three times: closed, and why.
+                result["tawbah_loops"] = list(self._tawbah_loops)
             if "amanah" not in result:
                 # Always reported, "ignored": 0 included: an absent key reads as
                 # "not checked", which is never the case.

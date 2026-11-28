@@ -618,6 +618,33 @@ class TestRealRuntime:
         )  # fmt: skip
         assert failed["exit_code"] == 1 and "bad.ts" in failed["stderr"]
 
+    def test_the_runtime_carries_the_pinned_forgekit_and_verifies_a_project(self):
+        import secrets
+
+        from workspace import forgekit
+
+        version = execute({"language": "shell", "command": "forge --version", "timeout_s": 30,
+                           "files": {}})  # fmt: skip
+        assert f"v{forgekit.FORGEKIT_VERSION}" in version["stdout"], version["stderr"]
+        files = {
+            "package.json": b'{"name": "tiny", "type": "module", "scripts": {"test": "node --test"}}',
+            "sum.js": b"export function sum(a, b) { return a + b; }\n",
+            "test/sum.test.js": b'import { test } from "node:test";\nimport assert from '
+            b'"node:assert/strict";\nimport { sum } from "../sum.js";\n'
+            b'test("sum", () => { assert.equal(sum(2, 3), 5); });\n',
+        }
+        mark = secrets.token_hex(16)
+        result = execute(
+            {"language": "shell", "command": forgekit.command(["verify"], mark, git="snapshot"),
+             "timeout_s": 120,
+             "files": {p: base64.b64encode(c).decode() for p, c in files.items()}}
+        )  # fmt: skip
+        data, _code, baseline = forgekit.read(result["stdout"], mark)
+        found = forgekit.verification(data)
+        assert baseline == "snapshot" and found["verdict"] == "PASS", found["detail"]
+        # ForgeKit's state was put back: the job's files are the project's, no more.
+        assert set(result["files"]) == set(files)
+
     def test_generated_file_and_no_keys_network_host_mounts(self):
         code = "import os,socket,pathlib\nassert not os.getenv('MIZAN_WORKSPACE_RUNNER_TOKEN')\nassert not pathlib.Path('/var/run/docker.sock').exists()\nassert not pathlib.Path('/data/mizan.db').exists()\ntry:\n socket.create_connection(('1.1.1.1',443),timeout=1)\n raise AssertionError('network unexpectedly available')\nexcept OSError: pass\npathlib.Path('result.txt').write_text('saved')\nprint('isolated')"
         result = execute({"language": "python", "command": code, "timeout_s": 10, "files": {}})

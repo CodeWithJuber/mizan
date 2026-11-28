@@ -15,6 +15,7 @@ import stat
 import threading
 import uuid
 import zipfile
+from collections.abc import Iterable
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,6 +52,10 @@ MAX_CHECKPOINT_BYTES = _limit(
     "MIZAN_WORKSPACE_MAX_CHECKPOINT_BYTES", 50 * 1024 * 1024, 1024 * 1024 * 1024
 )
 CHECKPOINT_KINDS = ("manual", "agent", "turn", "restore")
+# ForgeKit verifications of the project's files, keyed by their tree digest (beside the
+# files, never among them: a verification is not part of what it verifies).
+VERIFICATIONS = "verifications.json"
+_DIGEST = re.compile(r"[0-9a-f]{64}")
 # Git keeps its own history in the project; the file tools, quota and checkpoints
 # leave it alone, and only runs (where git itself works) see it.
 GIT_DIR = ".git"
@@ -118,6 +123,86 @@ def entry_paths(path: str) -> set[str]:
     return {"/".join(components[:index]) for index in range(1, len(components) + 1)}
 
 
+# Protected paths: a change to one of these asks the person in every permission mode
+# (and is held when no one is watching); each project may keep its own list. A pattern
+# with no "/" matches a file's name at any depth (".env" is also "config/.env"); one with
+# "/" matches from the project's root, except ".git/…", which matches git's own folder at
+# any depth (a nested repository or submodule). A pattern starting "!" exempts what it
+# matches. ".git" at the root stays refused outright (``user_path``).
+DEFAULT_PROTECTED = (
+    ".env",
+    ".env.*",
+    # Templates of an .env are meant to be committed and shared.
+    "!.env.example",
+    "!.env.sample",
+    "!.env.template",
+    "*.pem",
+    "*.key",
+    "id_rsa*",
+    ".git/**",
+    ".github/workflows/**",
+)
+MAX_PROTECTED = 100
+
+
+def _pattern_matches(pattern: str, path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    if "/" not in pattern.rstrip("/"):
+        return bool(glob_regex(pattern).match(name))
+    matcher = glob_regex(pattern)
+    if matcher.match(path):
+        return True
+    if pattern.startswith(GIT_DIR + "/"):
+        segments = path.split("/")
+        return any(
+            segment == GIT_DIR and matcher.match("/".join(segments[index:]))
+            for index, segment in enumerate(segments)
+        )
+    return False
+
+
+def protected_match(path: str, patterns: Iterable[str]) -> str | None:
+    """The first pattern that protects this project path, or None (also when a "!"
+    pattern exempts it)."""
+    found: str | None = None
+    for pattern in patterns:
+        exempt = pattern.startswith("!")
+        try:
+            hit = _pattern_matches(pattern[1:] if exempt else pattern, path)
+        except HTTPException:
+            continue
+        if hit and exempt:
+            return None
+        if hit and found is None:
+            found = pattern
+    return found
+
+
+def protected_patterns(patterns: Any) -> builtins.list[str]:
+    """A project's list as given, checked: relative glob patterns, no traversal."""
+    if not isinstance(patterns, builtins.list) or len(patterns) > MAX_PROTECTED:
+        raise HTTPException(422, f"protected_paths must be a list of at most {MAX_PROTECTED}")
+    kept: builtins.list[str] = []
+    for pattern in patterns:
+        text = pattern.strip() if isinstance(pattern, str) else ""
+        body = text[1:] if text.startswith("!") else text
+        if (
+            not body
+            or len(text) > 200
+            or body.startswith("/")
+            or "\\" in text
+            or "\x00" in text
+            or ".." in body.split("/")
+        ):
+            raise HTTPException(
+                422, "Each protected path is a relative pattern of 1..200 characters"
+            )
+        glob_regex(body)
+        if text not in kept:
+            kept.append(text)
+    return kept
+
+
 def user_path(path: str) -> builtins.list[str]:
     """A path the file tools may change: anything but git's own folder."""
     components = parts(path)
@@ -168,6 +253,11 @@ def _tree_digest(files: dict[str, str]) -> str:
     return _sha(json.dumps(files, sort_keys=True, separators=(",", ":")).encode())
 
 
+def _verdict_of(record: dict) -> dict:
+    """What a checkpoint shows of its files' verification."""
+    return {key: record.get(key) for key in ("verdict", "passed", "checked_at")}
+
+
 def _when(value: str) -> datetime:
     try:
         return datetime.fromisoformat(value)
@@ -203,16 +293,45 @@ class WorkspaceStore:
             shutil.rmtree(self.project(workspace_id))
 
     def rename_project(self, workspace_id: str, name: str) -> dict:
-        name = (name or "").strip()
-        if not name or len(name) > 100:
-            raise HTTPException(422, "Project name must be 1..100 characters")
+        return self.update_project(workspace_id, name=name)
+
+    def update_project(
+        self,
+        workspace_id: str,
+        *,
+        name: str | None = None,
+        protected_paths: builtins.list[str] | None = None,
+    ) -> dict:
+        """Rename a project and/or set its protected paths (an empty list protects
+        nothing). The project's record, with its protected paths, comes back."""
+        if name is not None:
+            name = name.strip()
+            if not name or len(name) > 100:
+                raise HTTPException(422, "Project name must be 1..100 characters")
+        patterns = protected_patterns(protected_paths) if protected_paths is not None else None
         with _LOCK:
             project = self.project(workspace_id)
             metadata = self._metadata(project)
-            metadata["name"] = name
+            if name is not None:
+                metadata["name"] = name
+            if patterns is not None:
+                metadata["protected_paths"] = patterns
             metadata["updated_at"] = now()
             self._atomic_json(project / "metadata.json", metadata)
-            return metadata
+            return self._public(metadata)
+
+    def protected_paths(self, workspace_id: str) -> builtins.list[str]:
+        """The project's protected paths: its own list, else the defaults."""
+        return cast(
+            builtins.list[str],
+            self._public(self._metadata(self.project(workspace_id)))["protected_paths"],
+        )
+
+    @staticmethod
+    def _public(metadata: dict) -> dict:
+        kept = metadata.get("protected_paths")
+        patterns = kept if isinstance(kept, builtins.list) else builtins.list(DEFAULT_PROTECTED)
+        return {**metadata, "protected_paths": patterns}
 
     def export_zip(self, workspace_id: str) -> tuple[str, bytes]:
         """The project's files (not git's folder) as a zip, with the project's name."""
@@ -231,7 +350,7 @@ class WorkspaceStore:
             result = []
             for path in self.root.iterdir():
                 if _ID.fullmatch(path.name) and path.is_dir() and not path.is_symlink():
-                    result.append(self._metadata(path))
+                    result.append(self._public(self._metadata(path)))
             return sorted(result, key=lambda item: item["updated_at"], reverse=True)
 
     def create(self, name: str, *, reserved: bool = False) -> dict:
@@ -812,8 +931,94 @@ class WorkspaceStore:
             return {**self._summary(manifest), "reused": False}
 
     def checkpoints(self, workspace_id: str) -> builtins.list[dict]:
+        """Newest first; a checkpoint whose files were verified says how (``verification``)."""
         with _LOCK:
-            return [self._summary(item) for item in self._manifests(workspace_id)]
+            records = self._verifications(workspace_id)
+            return [
+                {
+                    **self._summary(item),
+                    **(
+                        {"verification": _verdict_of(records[item["tree"]])}
+                        if item.get("tree") in records
+                        else {}
+                    ),
+                }
+                for item in self._manifests(workspace_id)
+            ]
+
+    # --- verification: ForgeKit's verdict, bound to the files it tested -----
+
+    def content_tree(self, workspace_id: str) -> tuple[str, dict[str, str]]:
+        """The project's files as {path: sha256} and their one digest: the ``tree`` a
+        checkpoint of these files records. Git's folder is not part of it."""
+        with _LOCK:
+            digests = {path: _sha(data) for path, data in self.files(workspace_id).items()}
+        return _tree_digest(digests), digests
+
+    def _verifications(self, workspace_id: str) -> dict[str, dict]:
+        path = self.project(workspace_id) / VERIFICATIONS
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            return {}
+        with os.fdopen(fd) as handle:
+            try:
+                data = json.load(handle)
+            except ValueError:
+                return {}
+        records = data.get("records") if isinstance(data, dict) else None
+        if not isinstance(records, dict):
+            return {}
+        return {
+            tree: record
+            for tree, record in records.items()
+            if _DIGEST.fullmatch(str(tree)) and isinstance(record, dict)
+        }
+
+    def record_verification(self, workspace_id: str, record: dict) -> dict:
+        """Keep a verification under the digest of the files it tested (``record["tree"]``):
+        one per tree, the newest ``MAX_CHECKPOINTS`` trees. Restoring files brings their
+        verification back, because the same files have the same digest."""
+        tree = str(record.get("tree") or "")
+        if not _DIGEST.fullmatch(tree):
+            raise HTTPException(422, "A verification needs the digest of the files it tested")
+        with _LOCK:
+            records = self._verifications(workspace_id)
+            records.pop(tree, None)
+            records[tree] = dict(record)
+            kept = sorted(records.items(), key=lambda item: str(item[1].get("checked_at") or ""))
+            self._atomic_json(
+                self.project(workspace_id) / VERIFICATIONS,
+                {"version": 1, "records": dict(kept[-MAX_CHECKPOINTS:])},
+            )
+        return dict(record)
+
+    def verification(self, workspace_id: str) -> dict | None:
+        """The verification of the project's current files when there is one, else the
+        newest, marked ``stale`` (the files changed since: a new tree), with the
+        checkpoint that holds the files it tested (``checkpoint_id``, None when none)."""
+        with _LOCK:
+            records = self._verifications(workspace_id)
+            if not records:
+                return None
+            current, _digests = self.content_tree(workspace_id)
+            record = records.get(current) or max(
+                records.values(), key=lambda item: str(item.get("checked_at") or "")
+            )
+            checkpoint = next(
+                (
+                    manifest["id"]
+                    for manifest in self._manifests(workspace_id)
+                    if manifest.get("tree") == record.get("tree")
+                ),
+                None,
+            )
+        return {
+            **record,
+            "stale": record.get("tree") != current,
+            "current_tree": current,
+            "checkpoint_id": checkpoint,
+        }
 
     def file_at(self, workspace_id: str, checkpoint_id: str, path: str) -> dict:
         """One file as it was in a checkpoint."""

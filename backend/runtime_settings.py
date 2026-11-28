@@ -82,6 +82,14 @@ SETTINGS: tuple[Setting, ...] = (
             "Comma-separated tool names that wait for a person in every permission mode (and "
             "are held when no one is watching), for example shahid_submit. Empty: the chat's "
             "permission mode decides for every tool.", ""),
+    Setting("MIZAN_WARA", "Agents", "Package check before installs (Wara')", "choice",
+            "on: before a command installs a package from PyPI or npm, MIZAN asks the "
+            "package's registry whether it exists and how old it is, OSV whether it is "
+            "listed as malicious, and compares its name with popular packages. A name no "
+            "registry has, or a malicious one, is refused; a new package one slip from a "
+            "popular name asks a person, in every permission mode. A registry that cannot "
+            "be reached never blocks an install. off checks nothing.",
+            "on", ("on", "off")),
     Setting("MIZAN_TOOL_CALLS_PER_MINUTE", "Agents", "Tool calls per minute", "int",
             "How often one agent may call the same tool per minute.", "120", (), 1, 10000),
     Setting("MIZAN_CHAT_PER_MINUTE", "Agents", "Chat messages per minute", "int",

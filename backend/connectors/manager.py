@@ -35,7 +35,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import threading
 import time
 from collections.abc import Callable
@@ -780,31 +779,16 @@ async def list_all_tools(client: Any) -> list[Any]:
     return tools
 
 
-# What a connector's own process or server might print that is a credential: an
-# Authorization header, a bearer token, a key=value pair named like a secret.
-_SECRET_LINE = re.compile(
-    r"(?i)(authorization\s*[:=]\s*)(\S+(?:\s+\S+)?)"
-    r"|(bearer\s+)([A-Za-z0-9._~+/=-]{8,})"
-    r"|((?:access_token|refresh_token|id_token|client_secret|api[_-]?key|apikey|token|"
-    r"secret|password|passwd)[\"']?\s*[:=]\s*[\"']?)([^\s\"'&,;]{4,})"
-)
-
-
 def redact(line: str, known: tuple[str, ...] = ()) -> str:
     """A log line with credentials replaced by [redacted]: the connector's own sealed
-    header and env values (exactly) and anything shaped like a credential."""
+    header and env values (exactly) and anything shaped like a credential (Satr's
+    patterns, ``security/satr.py``)."""
+    from security import satr
+
     for value in known:
         if value and len(value) >= 6:
             line = line.replace(value, "[redacted]")
-
-    def scrub(match: re.Match) -> str:
-        if match.group(1) is not None:
-            return f"{match.group(1)}[redacted]"
-        if match.group(3) is not None:
-            return f"{match.group(3)}[redacted]"
-        return f"{match.group(5)}[redacted]"
-
-    return _SECRET_LINE.sub(scrub, line)
+    return str(satr.cover_text(line, labelled=False))
 
 
 class _StderrTap:

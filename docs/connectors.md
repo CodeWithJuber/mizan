@@ -49,6 +49,18 @@ Each URL was checked against the page in `docs_url` on 28 Nov 2026.
 | Vercel | http | `https://mcp.vercel.com` | OAuth, with MIZAN's client metadata document (needs MIZAN on https) |
 | Files (sandbox) | stdio | `npx -y @modelcontextprotocol/server-filesystem /workspace` | none |
 | Fetch web pages | stdio | `uvx mcp-server-fetch` | none |
+| ForgeKit cortex (sandbox) | stdio | `forge cortex-mcp` | none |
+
+The ForgeKit cortex preset starts the `forge-cortex` MCP server
+([ForgeKit's integration guide](https://github.com/CodeWithJuber/forgekit/blob/main/docs/INTEGRATIONS.md))
+in the person's own sandbox, where the runtime image already carries ForgeKit
+(no download): its 37 tools (impact prediction, substrate and assumption checks,
+evidence, memory and its ledger, …) work on that sandbox's `/workspace`. It is
+not the chat's project; inside a project, the `workspace_verify`,
+`workspace_impact` and `workspace_docs_check` tools run ForgeKit on the project
+itself ([coding-workspaces.md](coding-workspaces.md)). Like every stdio server,
+it runs on the host only for whoever `MIZAN_MCP_HOST_STDIO` allows, which needs
+ForgeKit installed there.
 
 ## OAuth
 
@@ -171,7 +183,9 @@ error?}`. **Logs** (`GET /{id}/logs`) are the last 200 lines: connections and
 errors, the server's own log messages, and what a host process wrote to stderr.
 Every line is redacted first (`manager.redact`): the connector's own sealed header and
 env values, and anything shaped like a credential (`Authorization:`, `Bearer …`,
-`token=`, `api_key=`, `secret=`, `password=`), read `[redacted]`.
+`token=`, `api_key=`, `secret=`, `password=`, known token formats, random-looking
+tokens: Satr's patterns, [satr.md](satr.md)), read `[redacted]`. A connector tool's
+result is covered the same way before the model sees it.
 
 ## Limits and errors
 
