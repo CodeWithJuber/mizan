@@ -337,15 +337,35 @@ _SENSITIVE_KEY = re.compile(r"(?i)authori[sz]ation|token|secret|password|passwd|
 def _sensitive(steps: list[dict]) -> bool:
     """An argument that is, or looks like, a credential: such a trace is never kept
     (Sakk keeps only keyed digests of arguments; the replay store must not keep more)."""
+    from security import satr
     from tadbir.martaba import _SECRET
 
     for step in steps:
         for path, value in _leaves(step.get("params") or {}):
             if any(isinstance(key, str) and _SENSITIVE_KEY.search(key) for key in path):
                 return True
-            if isinstance(value, str) and _SECRET.search(value):
+            # A command or link that carries one (`curl -u me:pw`, `?token=…`) too:
+            # Satr's grammars, not only the token shapes.
+            if isinstance(value, str) and (_SECRET.search(value) or satr.secrets_in(value)):
                 return True
     return False
+
+
+def scope_of(agent: Any = None, workspace: str | None = None) -> str:
+    """Where a trace was learned: the agent (its template, so a person's private
+    copy counts as the agent) and the bound project. A trace replays only there,
+    so one learned in one project never writes into another, nor under another
+    agent's tools."""
+    if workspace is None:
+        try:
+            from workspace.context import bound_workspace_id
+
+            workspace = str(bound_workspace_id() or "")
+        except Exception:  # noqa: BLE001 - no project bound
+            workspace = ""
+    base = getattr(agent, "_run_base", agent)
+    who = str(getattr(base, "_template_id", None) or getattr(base, "id", "") or "")
+    return f"{who}|{workspace}"
 
 
 def learn(
@@ -355,13 +375,16 @@ def learn(
     *,
     intent: str = "",
     chat: str = "",
+    scope: str = "",
     now: float | None = None,
 ) -> dict | None:
     """One verified run: first test the family's prediction for it, then learn from it."""
     if not steps or len(steps) > MAX_STEPS or any(s.get("outcome") != "done" for s in steps):
         return None
     kept = [{"tool": s["tool"], "params": s.get("params") or {}} for s in steps]
-    if _sensitive(kept):
+    # A trace with an irreversible step never replays, so it is not kept either:
+    # its raw arguments (a shell command, a message) have no reason to stay.
+    if any(effect(s["tool"], s["params"]) == "irreversible" for s in kept) or _sensitive(kept):
         return None
     try:
         if len(json.dumps(kept)) > MAX_TRACE_BYTES:
@@ -373,7 +396,7 @@ def learn(
     families = _load(store)
     example = {"request": request[:500], "steps": kept, "chat": chat, "at": now}
     for family in families:
-        if family.get("tools") != tools:
+        if family.get("tools") != tools or family.get("scope", "") != scope:
             continue
         predicted, why = plan(family, request)
         if predicted is not None:
@@ -386,8 +409,9 @@ def learn(
         _save(store, families)
         return {"family": family["id"], "tested": predicted is not None}
     family = {
-        "id": "f" + hashlib.sha256(f"{tools}|{request}|{now}".encode()).hexdigest()[:12],
+        "id": "f" + hashlib.sha256(f"{tools}|{scope}|{request}|{now}".encode()).hexdigest()[:12],
         "intent": intent,
+        "scope": scope,
         "tools": tools,
         "examples": [example],
         "s": 0,
@@ -400,12 +424,15 @@ def learn(
     return {"family": family["id"], "tested": False}
 
 
-def decide(store: Any, request: str, owner: str = "") -> dict:
-    """Whether this request may be replayed now: the plan, or why not."""
+def decide(store: Any, request: str, owner: str = "", scope: str = "") -> dict:
+    """Whether this request may be replayed now (only where its trace was
+    learned, ``scope_of``): the plan, or why not."""
     from core.adaptive import anytime_lower
 
     best: dict = {"replay": False, "reason": "no_family"}
     for family in _load(store):
+        if family.get("scope", "") != scope:
+            continue
         steps, why = plan(family, request)
         if steps is None:
             if why != "other_form" and best["reason"] == "no_family":
@@ -495,7 +522,7 @@ async def replay(agent: Any, task: str, stream_callback: Any = None) -> dict | N
     if not owner:
         return None
     store = khatimah.store(owner)
-    found = decide(store, task, owner)
+    found = decide(store, task, owner, scope_of(agent))
     if not found.get("replay"):
         if found.get("family"):
             trace.event("plan", "athar", replay=False, reason=found.get("reason"))
@@ -507,11 +534,13 @@ async def replay(agent: Any, task: str, stream_callback: Any = None) -> dict | N
     for step in found["steps"]:
         result = await agent._execute_tool_safe(step["tool"], step["params"])
         if tool_result_failed(result) or (isinstance(result, dict) and result.get("declined")):
-            drop(store, found["family"])
+            with khatimah.LOCK:
+                drop(store, found["family"])
             trace.event("learn", "athar", dropped=found["family"], at=step["tool"])
             return None
         results.append(result)
-    replayed(store, found["family"])
+    with khatimah.LOCK:
+        replayed(store, found["family"])
     run = current()
     if run is not None:
         run.replay = found["family"]

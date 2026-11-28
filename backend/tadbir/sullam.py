@@ -1,47 +1,57 @@
 """Sullam (سلّم): does sharing the work among agents earn its place? Report only.
 
-He et al. 2026 (arXiv 2611.32606) found that a multi-agent system's gains often
-vanish once a single agent is given the same token budget: a plain vote of
-independent single answers does as well. MIZAN keeps the check ForgeKit's
-ladder keeps: per kind of work (Fahm's intent), the multi-agent answer shape
-(Majlis: the parts of a request given to the agents that fit, side by side)
-stays the default only while it beats a plain vote of
-single answers **at the same token budget**.
+He et al. 2026 (arXiv 2611.32606, §4.1) found that a multi-agent system's gains
+often vanish once single agents are given the same token budget: a plain vote
+of independent single answers does as well. MIZAN grades Majlis the way
+ForgeKit's ``ladder.js`` grades a team, per kind of work (Fahm's intent),
+against INDEPENDENT single answers given the same budget, at three rising bars:
 
-- **Evidence** is a pair of outcomes on the same request: the multi-agent
-  answer and a single-answer arm, each verified or not by rule. The AGI test
-  (``imtihan/runner.py``) already sends every task to the base model alone
-  and to MIZAN; when MIZAN's answer used more than one agent, the pair is
-  recorded, counting the lone answer as a vote of one and only when it spent
-  no more tokens than the multi-agent shape (a vote of k answers within the
-  same budget does at least as well as one). A pair where both arms agree
-  carries no evidence.
-- **Decision**: ``core.adaptive.paired_e_value`` over the pairs where they
-  disagree, safe to read after every pair. The default changes only when the
-  e-value that the challenger is better reaches 1/α (α = 0.05: 20). Until
-  then, today's behaviour stands: no change without evidence.
-- **The forward shape**: workers get disjoint evidence slices, dealt by role
-  with the most-constrained role first (ForgeKit's evidence_team.js), and the
-  lead aggregates one deduplicated facts packet (``deal``, ``facts_packet``).
-  It is a challenger arm like the vote.
+- level 1  Y > V(1)     beats one agent
+- level 2  Y > V(n_B)   beats a compute-matched majority vote
+- level 3  Y > T(n_B)   beats compute-matched pass@n (solved if ANY is right)
 
-The ladder level per intent is reported in ``GET /api/tadbir/learning``
-(Agents → Majlis → Learning). It never blocks or changes a run by itself.
-Counts only, no request text: the pairs come from evaluation runs, so they
-are kept in one shared ``ladder.db``.
+n_B = the team's completion tokens / c₁, and c₁ = the mean completion tokens of
+one independent single answer. A level counts only when a one-sided paired
+t-test at α = 0.025, clustered by question (one difference per question),
+confirms it AND every level below it.
+
+- **Evidence.** The AGI test (``imtihan/runner.py``) sends every task to the
+  base model alone and to MIZAN, ``repeats`` times. Each base answer is an
+  independent single answer to that question (the pool); each MIZAN answer
+  that used more than one agent is a team run (the group). V(n) and T(n) are
+  exact, from the pool's m answers of which k were right (hypergeometric:
+  ``majority_at_n``, ``pass_at_n``), interpolated at a non-integer n_B, so no
+  extra model call is made. A question with fewer than ⌈n_B⌉ pool answers
+  cannot judge levels 2 and 3 (capping n would understate the baseline): run
+  the AGI test with more repeats. A row without a token count is not priced
+  and is left out.
+- **The verdict.** Majlis stays the reported default for an intent only while
+  it clears level 2 (it beats the vote at the same budget); otherwise the
+  report says the vote does as well, or that there is not enough evidence. It
+  is reported in ``GET /api/tadbir/learning`` (Agents → Majlis → Learning) and
+  never blocks or changes a run by itself.
+- **The forward shape.** Workers get disjoint evidence slices, dealt by role
+  with the most-constrained role first (ForgeKit's ``evidence_team.js``), and
+  the lead aggregates one deduplicated facts packet (``deal``,
+  ``facts_packet``). These are the building blocks; Majlis does not run the
+  shape yet, so the ladder does not grade it.
+
+Counts only, no request text: the runs come from evaluation runs, so they are
+kept in one shared ``ladder.db``.
 """
 
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 import sqlite3
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
-SHAPES = ("majlis", "vote", "forward")
-CHALLENGERS = ("vote", "forward")
-ALPHA = 0.05
+LADDER_ALPHA = 0.025
+ARMS = ("group", "pool")
 _LOCK = threading.Lock()
 
 
@@ -55,38 +65,33 @@ def _connect() -> sqlite3.Connection | None:
         path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(path), timeout=5)
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS pairs (intent TEXT NOT NULL, challenger TEXT NOT NULL, "
-            "multi_ok INTEGER NOT NULL, other_ok INTEGER NOT NULL, multi_tokens INTEGER, "
-            "other_tokens INTEGER, at TEXT DEFAULT CURRENT_TIMESTAMP)"
+            "CREATE TABLE IF NOT EXISTS ladder_runs (arm TEXT NOT NULL, question TEXT NOT NULL, "
+            "intent TEXT NOT NULL DEFAULT '', correct INTEGER NOT NULL, tokens INTEGER NOT NULL, "
+            "at TEXT DEFAULT CURRENT_TIMESTAMP)"
         )
         return conn
     except (OSError, sqlite3.Error):
         return None
 
 
-def record_pair(
-    intent: str,
-    challenger: str,
-    *,
-    multi_ok: bool,
-    other_ok: bool,
-    multi_tokens: int | None,
-    other_tokens: int | None,
+def record_run(
+    arm: str, question: str, *, correct: bool, tokens: int | None, intent: str = ""
 ) -> bool:
-    """One equal-budget pair; False when it is not one (the challenger spent more)."""
-    if challenger not in CHALLENGERS or not intent:
+    """One team run (``group``, with its intent) or one independent single answer
+    (``pool``); False when it cannot be priced or kept."""
+    if arm not in ARMS or not question or not isinstance(tokens, int) or tokens < 0:
         return False
-    if multi_tokens is not None and other_tokens is not None and other_tokens > multi_tokens:
-        return False  # not at the same budget: the challenger had more
+    if arm == "group" and not intent:
+        return False
     conn = _connect()
     if conn is None:
         return False
     try:
         with _LOCK, conn:
             conn.execute(
-                "INSERT INTO pairs (intent, challenger, multi_ok, other_ok, multi_tokens, "
-                "other_tokens) VALUES (?, ?, ?, ?, ?, ?)",
-                (intent, challenger, int(multi_ok), int(other_ok), multi_tokens, other_tokens),
+                "INSERT INTO ladder_runs (arm, question, intent, correct, tokens) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (arm, question[:200], intent if arm == "group" else "", int(correct), tokens),
             )
     except sqlite3.Error:
         return False
@@ -95,61 +100,202 @@ def record_pair(
     return True
 
 
-def _counts() -> dict[tuple[str, str], dict[str, int]]:
+def _rows() -> list[tuple[str, str, str, int, int]]:
     conn = _connect()
     if conn is None:
-        return {}
+        return []
     try:
-        rows = conn.execute(
-            "SELECT intent, challenger, SUM(other_ok > multi_ok), SUM(multi_ok > other_ok), "
-            "COUNT(*) FROM pairs GROUP BY intent, challenger"
+        return conn.execute(
+            "SELECT arm, question, intent, correct, tokens FROM ladder_runs"
         ).fetchall()
     except sqlite3.Error:
-        return {}
+        return []
     finally:
         conn.close()
-    return {
-        (intent, challenger): {"wins": int(wins or 0), "losses": int(losses or 0), "pairs": n}
-        for intent, challenger, wins, losses, n in rows
-    }
 
 
-def level(intent: str, counts: dict | None = None) -> dict:
-    """The default shape for this intent and the evidence for each challenger."""
-    from core.adaptive import paired_e_value
+# ── the references, exact (ForgeKit ladder.js) ───────────────────────────
 
-    counts = _counts() if counts is None else counts
-    evidence = {}
-    default = "majlis"
-    best = 0.0
-    for challenger in CHALLENGERS:
-        found = counts.get((intent, challenger), {"wins": 0, "losses": 0, "pairs": 0})
-        better = paired_e_value(found["wins"], found["losses"])
-        worse = paired_e_value(found["losses"], found["wins"])
-        evidence[challenger] = {
-            **found,
-            "challenger_better": round(better, 3),
-            "majlis_better": round(worse, 3),
+
+def _log_choose(n: int, k: int) -> float:
+    if k < 0 or k > n:
+        return -math.inf
+    return math.lgamma(n + 1) - math.lgamma(k + 1) - math.lgamma(n - k + 1)
+
+
+def pass_at_n(m: int, k: int, n: int) -> float:
+    """P(at least one of n distinct draws from m answers, k of them right, is right)."""
+    if n <= 0 or k <= 0:
+        return 0.0
+    q = 1.0
+    for j in range(n):
+        if m - k - j <= 0:
+            return 1.0
+        q *= (m - k - j) / (m - j)
+    return 1.0 - q
+
+
+def majority_at_n(m: int, k: int, n: int) -> float:
+    """A majority vote of n distinct draws from m answers, k right, when only
+    right/wrong is known: P(more than half right) + ½·P(exactly half)."""
+    if n <= 0:
+        return 0.0
+    total = _log_choose(m, n)
+    p = 0.0
+    for x in range(max(0, n - (m - k)), min(k, n) + 1):
+        w = math.exp(_log_choose(k, x) + _log_choose(m - k, n - x) - total)
+        if 2 * x > n:
+            p += w
+        elif 2 * x == n:
+            p += w / 2
+    return min(1.0, p)
+
+
+def _at(f: Callable[[int], float], n: float) -> float:
+    """f at a non-integer n: linear between ⌊n⌋ and ⌈n⌉, never below n = 1."""
+    x = max(1.0, n)
+    lo, hi = math.floor(x), math.ceil(x)
+    return f(lo) if lo == hi else f(lo) + (x - lo) * (f(hi) - f(lo))
+
+
+def paired_one_sided(d: list[float]) -> dict:
+    """One-sided paired t-test of mean(d) > 0, one difference per question."""
+    from core.adaptive import regularized_beta
+
+    n = len(d)
+    if n < 2:
+        return {"n": n, "mean": d[0] if n else 0.0, "se": None, "t": None, "p": None}
+    mean = sum(d) / n
+    sd = math.sqrt(sum((x - mean) ** 2 for x in d) / (n - 1))
+    se = sd / math.sqrt(n)
+    if se <= 1e-12 * max(1.0, abs(mean)):  # no spread: the sign of the mean decides
+        return {"n": n, "mean": mean, "se": 0.0, "t": None, "p": 0.0 if mean > 0 else 1.0}
+    t = mean / se
+    df = n - 1
+    tail = 0.5 * regularized_beta(df / (df + t * t), df / 2, 0.5)  # P(T > |t|)
+    return {"n": n, "mean": mean, "se": se, "t": t, "p": tail if t > 0 else 1 - tail}
+
+
+def _round(x: float | None, k: int = 4) -> float | None:
+    return round(x, k) if isinstance(x, float | int) and math.isfinite(x) else None
+
+
+def grade(group: list[dict], pool: list[dict], alpha: float = LADDER_ALPHA) -> dict:
+    """Grade a team on the equal-budget ladder. ``group``: {id, correct, tokens}
+    per team run; ``pool``: the same per INDEPENDENT single answer."""
+    warnings: list[str] = []
+    if not group or not pool:
+        return {"questions": 0, "level": 0, "measured": False, "warnings": warnings}
+    c1 = sum(r["tokens"] for r in pool) / len(pool)
+    if c1 <= 0:
+        warnings.append("the single answers report no tokens: the unit cost c₁ is undefined")
+        return {"questions": 0, "level": 0, "measured": False, "warnings": warnings}
+    pool_by: dict[str, list[dict]] = {}
+    for r in pool:
+        pool_by.setdefault(r["id"], []).append(r)
+    group_by: dict[str, list[dict]] = {}
+    for r in group:
+        group_by.setdefault(r["id"], []).append(r)
+    ids = sorted(q for q in group_by if q in pool_by)
+    if len(ids) < len(group_by):
+        warnings.append(f"{len(group_by) - len(ids)} question(s) have no single answers")
+    if not ids:
+        return {"questions": 0, "level": 0, "measured": False, "warnings": warnings}
+    kept = [r for q in ids for r in group_by[q]]
+    n_b = sum(r["tokens"] for r in kept) / len(kept) / c1
+    if n_b < 1:
+        warnings.append(f"the team spent less than one agent (n_B = {n_b:.2f}); n = 1 is used")
+    need = math.ceil(max(1.0, n_b))
+    per = []
+    for q in ids:
+        members = pool_by[q]
+        m, k = len(members), sum(1 for r in members if r["correct"])
+        y = sum(1 for r in group_by[q] if r["correct"]) / len(group_by[q])
+
+        def vote(n: int, m: int = m, k: int = k) -> float:
+            return majority_at_n(m, k, n) if n <= m else math.nan
+
+        def any_right(n: int, m: int = m, k: int = k) -> float:
+            return pass_at_n(m, k, n)
+
+        fits = m >= need
+        per.append(
+            {
+                "y": y,
+                "v1": vote(1),
+                "vn": _at(vote, n_b) if fits else math.nan,
+                "tn": _at(any_right, n_b) if fits else math.nan,
+                "fits": fits,
+            }
+        )
+    short = sum(1 for q in per if not q["fits"])
+    if short:
+        warnings.append(
+            f"{short} question(s) have fewer than {need} single answers, so levels 2 and 3 "
+            "cannot be judged: run the AGI test with more repeats"
+        )
+
+    def judge(ref: str, indeterminate: bool) -> dict:
+        if indeterminate:
+            return {"reference": None, "cleared": False, "indeterminate": True}
+        test = paired_one_sided([q["y"] - q[ref] for q in per])
+        return {
+            "reference": _round(sum(q[ref] for q in per) / len(per)),
+            "mean_diff": _round(test["mean"]),
+            "p": _round(test["p"], 5),
+            "cleared": test["p"] is not None and test["p"] < alpha,
+            "indeterminate": test["p"] is None,
         }
-        if better >= 1 / ALPHA and better > best:
-            default, best = challenger, better
-    settled = default != "majlis" or any(
-        item["majlis_better"] >= 1 / ALPHA for item in evidence.values()
-    )
+
+    tests = {1: judge("v1", False), 2: judge("vn", short > 0), 3: judge("tn", short > 0)}
+    level = 0
+    for step in (1, 2, 3):
+        if not tests[step]["cleared"]:
+            break
+        level = step
     return {
-        "intent": intent,
-        "default": default,
-        "level": default if settled else "majlis (not enough evidence)",
-        "threshold": round(1 / ALPHA, 1),
-        "evidence": evidence,
-        "report_only": True,
+        "questions": len(ids),
+        "measured": True,
+        "alpha": alpha,
+        "c1": _round(c1, 1),
+        "n_b": _round(n_b, 3),
+        "y": _round(sum(q["y"] for q in per) / len(per)),
+        "level": level,
+        "vote": "majority-of-correct",
+        "tests": {str(step): test for step, test in tests.items()},
+        "warnings": warnings,
     }
+
+
+def level(intent: str, rows: list[tuple[str, str, str, int, int]] | None = None) -> dict:
+    """The ladder for one intent and the shape the evidence keeps as default."""
+    rows = _rows() if rows is None else rows
+    group = [
+        {"id": q, "correct": bool(ok), "tokens": t}
+        for arm, q, i, ok, t in rows
+        if arm == "group" and i == intent
+    ]
+    asked = {r["id"] for r in group}
+    pool = [
+        {"id": q, "correct": bool(ok), "tokens": t}
+        for arm, q, _i, ok, t in rows
+        if arm == "pool" and q in asked
+    ]
+    graded = grade(group, pool)
+    vote_test = (graded.get("tests") or {}).get("2") or {}
+    if graded["level"] >= 2:
+        default, verdict = "majlis", "Majlis beats a vote of single answers at the same budget"
+    elif graded.get("measured") and not vote_test.get("indeterminate", True):
+        default, verdict = "vote", "a vote of single answers at the same budget does as well"
+    else:
+        default, verdict = "majlis", "not enough evidence yet"
+    return {"intent": intent, "default": default, "verdict": verdict, **graded, "report_only": True}
 
 
 def report(intents: list[str]) -> list[dict]:
-    counts = _counts()
-    seen = sorted({*intents, *(intent for intent, _c in counts)})
-    return [level(intent, counts) for intent in seen]
+    rows = _rows()
+    seen = sorted({*intents, *(i for arm, _q, i, _ok, _t in rows if arm == "group")})
+    return [level(intent, rows) for intent in seen]
 
 
 def multi_agent(orchestration: dict | None) -> bool:
@@ -162,28 +308,24 @@ def multi_agent(orchestration: dict | None) -> bool:
 
 
 def observe_compare(compared: dict, rows: list[dict]) -> bool:
-    """An AGI-test task's two arms as an equal-budget pair, when MIZAN's arm
-    was multi-agent (``imtihan/runner.run_task``)."""
-    mizan = compared.get("mizan") or {}
-    orchestration = mizan.get("orchestration") or {}
-    if not multi_agent(orchestration):
-        return False
+    """An AGI-test task's arms: the base answer joins the pool of independent
+    single answers to that question, and MIZAN's answer is a team run when it
+    was multi-agent (``imtihan/runner.run_task``). True when a team run was kept."""
     by_arm = {row.get("arm"): row for row in rows}
     ours, alone = by_arm.get("mizan"), by_arm.get("base")
     if not ours or not alone:
         return False
-
-    def tokens(row: dict) -> int | None:
-        parts = [row.get("input_tokens"), row.get("output_tokens")]
-        return sum(int(p) for p in parts if isinstance(p, int)) if any(parts) else None
-
-    return record_pair(
-        str(orchestration.get("intent") or "compound"),
-        "vote",
-        multi_ok=bool(ours.get("pass")),
-        other_ok=bool(alone.get("pass")),
-        multi_tokens=tokens(ours),
-        other_tokens=tokens(alone),
+    question = str(alone.get("task_id") or "")
+    record_run("pool", question, correct=bool(alone.get("pass")), tokens=alone.get("output_tokens"))
+    orchestration = (compared.get("mizan") or {}).get("orchestration") or {}
+    if not multi_agent(orchestration):
+        return False
+    return record_run(
+        "group",
+        question,
+        correct=bool(ours.get("pass")),
+        tokens=ours.get("output_tokens"),
+        intent=str(orchestration.get("intent") or "compound"),
     )
 
 

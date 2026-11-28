@@ -224,10 +224,13 @@ MIZAN proposes one of its own only from evidence:
   the request text, since a skill is loaded into later chats. Instruction-shaped
   words ("ignore", "instructions", "always") are left out, and Amanah checks the
   draft.
-- **Saved pending.** The skill (`mizan-learned-<keywords>`) is written into your
-  skills and held until you trust it in **Library → Skills**, like a skill
-  Amanah held (`agent_skills.loader.hold`; the list marks it `earned`). Earning
-  never makes it trusted, and a later change holds it again.
+- **Saved pending.** The skill (`mizan-learned-<keywords>`) is held first
+  (`agent_skills.loader.hold`), then written into your skills, so no chat can
+  load it untrusted in between; a hold that fails writes nothing, and a write
+  that fails gives the name back once no folder of it is left. It waits until
+  you trust it in **Library → Skills**, like a skill Amanah held (the list marks
+  it `earned`). Earning never makes it trusted, and a later change holds it
+  again.
 
 ## Athar: replay of verified runs
 
@@ -238,9 +241,17 @@ a repeated request (a watcher's task, the same question about other numbers).
 
 - **The trace.** Every tool call of a top-level run (delegated runs included)
   is recorded with its Sakk receipt (`athar.note` in `_execute_tool_safe`). A
-  verified run's steps join the family of its form: the same tools in order,
-  requests that differ only in numbers and spans of other words (Hifz's
-  anti-unification).
+  verified run whose tools the model chose joins the family of its form: the
+  same tools in order, requests that differ only in numbers and spans of other
+  words (Hifz's anti-unification). A run MIZAN handled with its own recipe is
+  not learned (the recipe keeps its own answer, and Hifz repeats its program).
+- **Where it replays.** Only for the same person, under the same agent (its
+  template) and in the same bound project it was learned in (`athar.scope_of`):
+  a trace from one project never writes into another.
+- **What is never kept.** A trace with an irreversible step (it could never
+  replay), and one whose arguments hold a credential (a key named like one, a
+  token shape, or anything Satr reads as a secret, such as a password in a
+  link).
 - **Every argument has a known source**: a constant all the family's runs used,
   the request's j-th number (with an offset they agree on), a span of its own
   words, or a text holding those (Hifz's slots). A constant holding a word the

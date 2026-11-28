@@ -95,3 +95,38 @@ def test_the_same_work_with_other_numbers_is_one_signature():
     b = itqan.signature("compute", ["workspace_run", "workspace_run"], "Add 9 and 2 then double it")
     assert a == b
     assert a != itqan.signature("compute", ["workspace_run"], "Add 5 and 7 then halve it")
+
+
+def test_an_earned_skill_is_held_before_it_is_written(store, monkeypatch):
+    # No chat can load it untrusted between the write and the hold.
+    seen = []
+    write = installer.write_skill
+
+    def watched(user_id, name, *args, **kwargs):
+        seen.append(name in loader.pending_skills(user_id))
+        return write(user_id, name, *args, **kwargs)
+
+    monkeypatch.setattr(installer, "write_skill", watched)
+    for n in range(3):
+        name = run(store, now=T0 + n)["proposed"]
+    assert seen == [True] and name in loader.pending_skills(OWNER)
+
+
+def test_a_hold_that_fails_writes_no_skill(store, monkeypatch):
+    def broken(user_id, name):
+        raise OSError("state file is read-only")
+
+    monkeypatch.setattr(loader, "hold", broken)
+    for n in range(3):
+        assert run(store, now=T0 + n)["proposed"] is None
+    assert not [s for s in loader.user_skills(OWNER) if s.name.startswith("mizan-learned-")]
+
+
+def test_a_write_that_fails_gives_the_name_back(store, monkeypatch):
+    def broken(user_id, name, *args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(installer, "write_skill", broken)
+    for n in range(3):
+        assert run(store, now=T0 + n)["proposed"] is None
+    assert not {p for p in loader.pending_skills(OWNER) if p.startswith("mizan-learned-")}

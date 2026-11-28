@@ -261,10 +261,24 @@ def _propose(state: dict, user_id: str, sig: str, intent: str, now: float) -> st
 
     if amanah.beyond_instructions(f"{description}\n{body}", f"skill:{name}"):
         return None
+    # Earning never makes it trusted: held BEFORE it is written, so no chat can
+    # load it untrusted in between, and a hold that fails writes nothing.
+    try:
+        loader.hold(user_id, name)
+    except Exception:  # noqa: BLE001 - an unwritable state file keeps nothing
+        return None
     try:
         installer.write_skill(user_id, name, description, body)
-        loader.hold(user_id, name)  # earning never makes it trusted
     except Exception:  # noqa: BLE001 - a folder that cannot be written keeps nothing
+        # The name is given back only once no folder of it is left; a part-written
+        # one stays held.
+        try:
+            if not installer.skill_path(user_id, name).exists() or installer.delete_skill(
+                user_id, name
+            ):
+                loader.release(user_id, name)
+        except Exception:  # noqa: BLE001 - still held: it waits for the person
+            pass
         return None
     state["proposed"].append(
         {

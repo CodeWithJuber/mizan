@@ -116,6 +116,12 @@ def test_a_trace_holding_a_credential_is_never_kept(store):
     assert athar.learn(store, "Fetch my api data", keyed) is None
     leaked = [done("http_get", url="https://api.test/x?key=sk-ant-" + "a" * 30)]
     assert athar.learn(store, "Fetch my api data", leaked) is None
+    # A password in a link or a command, whatever its key's name (Satr's grammars).
+    in_link = [done("http_get", url="https://amina:" + "hunter2Pass" + "@api.test/x")]
+    assert athar.learn(store, "Fetch my api data", in_link) is None
+    # A trace with an irreversible step (a shell command) is not kept at all.
+    in_command = [done("bash", command="curl -u amina:" + "Zq8vR2mXw7Lp" + " https://api.test")]
+    assert athar.learn(store, "Fetch my api data", in_command) is None
     assert athar._load(store) == []
 
 
@@ -125,12 +131,14 @@ def test_a_trace_holding_a_credential_is_never_kept(store):
 CITIES = ("Multan", "Sukkur", "Peshawar", "Hyderabad")
 
 
-def teach(store, runs: int):
-    athar.learn(store, "Gold price in Karachi for 10 grams", price("Karachi", 10))
-    athar.learn(store, "Gold price in Lahore for 12 grams", price("Lahore", 12))
+def teach(store, runs: int, scope: str = ""):
+    athar.learn(store, "Gold price in Karachi for 10 grams", price("Karachi", 10), scope=scope)
+    athar.learn(store, "Gold price in Lahore for 12 grams", price("Lahore", 12), scope=scope)
     for n in range(runs):
         city = CITIES[n % len(CITIES)]
-        athar.learn(store, f"Gold price in {city} for {n + 1} grams", price(city, n + 1))
+        athar.learn(
+            store, f"Gold price in {city} for {n + 1} grams", price(city, n + 1), scope=scope
+        )
 
 
 def test_each_verified_run_first_tests_the_prediction(store):
@@ -162,9 +170,21 @@ def test_an_irreversible_step_stops_the_trace(store):
     for n in range(30):
         city = CITIES[n % len(CITIES)]
         athar.learn(store, f"Gold price in {city} for {n + 1} grams", send(city, n + 1))
+    assert athar._load(store) == []  # never kept: it could never replay
+    assert athar.decide(store, "Gold price in Quetta for 7 grams")["replay"] is False
+
+
+def test_a_step_that_became_irreversible_since_it_was_learned_stops_the_trace(store, monkeypatch):
+    teach(store, 30)
+    assert athar.decide(store, "Gold price in Quetta for 7 grams")["replay"] is True
+    # A connector's tool loses its read-only hint: the kept trace replays nothing.
+    monkeypatch.setattr(
+        athar, "effect", lambda tool, params=None, owner="": "irreversible"
+        if tool == "http_get" else "read",
+    )  # fmt: skip
     found = athar.decide(store, "Gold price in Quetta for 7 grams")
     assert found["replay"] is False and found["reason"] == "irreversible_step"
-    assert found["stops_at"] == 2
+    assert found["stops_at"] == 1
 
 
 # ── a replay in a real run ───────────────────────────────────────────────
@@ -211,7 +231,7 @@ def amina():
 
 async def test_a_repeated_request_is_replayed_with_no_model_call(agent, amina, monkeypatch):
     monkeypatch.setenv("MIZAN_REPLAY", "on")
-    teach(khatimah.store("amina"), 16)
+    teach(khatimah.store("amina"), 16, athar.scope_of(agent))
     result = await agent.execute("Gold price in Quetta for 7 grams", {"session_id": "w1"})
     assert result["orchestrator"] == "mizan" and result["replay"]["steps"] == 2
     assert result["completion_status"] == "evidence_observed" and not result["task_verified"]
@@ -225,7 +245,7 @@ async def test_a_repeated_request_is_replayed_with_no_model_call(agent, amina, m
 async def test_a_failed_step_drops_the_family_and_the_agent_runs(agent, amina, monkeypatch):
     monkeypatch.setenv("MIZAN_REPLAY", "on")
     store = khatimah.store("amina")
-    teach(store, 16)
+    teach(store, 16, athar.scope_of(agent))
     family = athar._load(store)[0]
     (seen,) = family["examples"] = [
         {**e, "steps": [*e["steps"][:1], done("http_get", url="https://fail.test")]}
@@ -238,7 +258,7 @@ async def test_a_failed_step_drops_the_family_and_the_agent_runs(agent, amina, m
 
 
 async def test_replay_off_and_stateless_runs_never_replay(agent, amina, monkeypatch):
-    teach(khatimah.store("amina"), 16)
+    teach(khatimah.store("amina"), 16, athar.scope_of(agent))
     monkeypatch.setenv("MIZAN_REPLAY", "off")
     assert await athar.replay(agent, "Gold price in Quetta for 7 grams") is None
     monkeypatch.setenv("MIZAN_REPLAY", "on")
@@ -247,10 +267,25 @@ async def test_replay_off_and_stateless_runs_never_replay(agent, amina, monkeypa
     assert agent.tool_calls == []
 
 
+async def test_a_trace_replays_only_under_the_agent_and_project_it_was_learned_in(
+    agent, amina, monkeypatch
+):
+    monkeypatch.setenv("MIZAN_REPLAY", "on")
+    store = khatimah.store("amina")
+    teach(store, 16, athar.scope_of(agent, workspace="p-sales"))
+    assert athar.decide(store, "Gold price in Quetta for 7 grams", "amina",
+                        athar.scope_of(agent, workspace="p-sales"))["replay"]  # fmt: skip
+    # Another project, or the same project under another agent: nothing replays.
+    for scope in (athar.scope_of(agent, workspace="p-other"), "another-agent|p-sales"):
+        assert not athar.decide(store, "Gold price in Quetta for 7 grams", "amina", scope)["replay"]
+    assert await athar.replay(agent, "Gold price in Quetta for 7 grams") is None  # no project bound
+    assert agent.tool_calls == []
+
+
 async def test_a_corrected_replay_drops_its_family(agent, amina, monkeypatch):
     monkeypatch.setenv("MIZAN_REPLAY", "on")
     store = khatimah.store("amina")
-    teach(store, 16)
+    teach(store, 16, athar.scope_of(agent))
     await agent.execute("Gold price in Quetta for 7 grams", {"session_id": "w1"})
     khatimah.before_run("No, that's wrong, I asked for 24 karat", {"session_id": "w1"})
     assert athar._load(store) == []
@@ -288,3 +323,22 @@ def test_mahw_takes_the_erased_chats_runs_out_of_every_family(store):
     (family,) = athar._load(store)
     assert [e["chat"] for e in family["examples"]] == ["kept"]
     assert (family["s"], family["f"]) == (0, 0)
+
+
+async def test_a_run_mizan_handled_with_its_own_recipe_is_not_learned_for_replay(
+    agent, amina, monkeypatch
+):
+    async def impl(task, context, *args):
+        await agent._execute_tool_safe("web_search", {"query": "gold price in Karachi"})
+        return {
+            "success": True,
+            "result": "Rs 250,000",
+            "task_verified": True,
+            "orchestrator": "mizan",
+            "orchestration": {"intent": "web_search"},
+        }
+
+    monkeypatch.setattr(agent, "_execute_impl", impl)
+    result = await agent.execute("Gold price in Karachi", {"session_id": "c1"})
+    assert "athar" not in result["usage"]["learned"]
+    assert athar._load(khatimah.store("amina")) == []

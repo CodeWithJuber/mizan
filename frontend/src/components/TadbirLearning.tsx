@@ -55,9 +55,13 @@ interface Lessons {
 interface LadderRow {
   intent: string;
   default: string;
-  level: string;
-  threshold: number;
-  evidence: Record<string, { wins: number; losses: number; pairs: number; challenger_better: number; majlis_better: number }>;
+  verdict: string;
+  /** 0-3: beats one answer, a vote at the same budget, pass@n at the same budget. */
+  level: number;
+  questions: number;
+  n_b?: number | null;
+  y?: number | null;
+  tests?: Record<string, { reference: number | null; cleared: boolean; indeterminate: boolean }>;
 }
 
 /** Islah, Itqan and Athar: lessons from corrections, earned skills, replayed runs. */
@@ -82,13 +86,15 @@ interface Replay {
   families: { tools: string[]; requests: number; agreed: number; lower_bound: number; replayed: number }[];
 }
 
+const share = (value?: number | null) => (typeof value === "number" ? percent(value) : "—");
+
 function ShapesCard({ ladder, corrections, earned, replay }: {
   ladder: LadderRow[];
   corrections: Corrections | null;
   earned: EarnedSkills | null;
   replay: Replay | null;
 }) {
-  const measured = ladder.filter((row) => Object.values(row.evidence).some((item) => item.pairs > 0));
+  const measured = ladder.filter((row) => row.questions > 0);
   return (
     <div className="card">
       <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
@@ -124,17 +130,17 @@ function ShapesCard({ ladder, corrections, earned, replay }: {
           {measured.map((row) => (
             <li key={row.intent} className="py-1.5 flex flex-wrap items-center gap-x-3 text-xs">
               <span className="min-w-0 flex-1 font-mono text-foreground">{row.intent}</span>
-              <span className="text-muted-foreground">{row.level}</span>
+              <span className="text-muted-foreground">{row.verdict}</span>
               <span className="font-mono text-muted-foreground">
-                vote won {row.evidence.vote?.wins ?? 0} · lost {row.evidence.vote?.losses ?? 0} (e {row.evidence.vote?.challenger_better ?? 1} of {row.threshold})
+                level {row.level} of 3 · {row.questions} questions · n_B {row.n_b ?? "—"} · right {share(row.y)} vs vote {share(row.tests?.["2"]?.reference)}
               </span>
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-xs text-muted-foreground">
-          No equal-budget pairs yet: Majlis stays the default for every kind of work. Pairs come from the AGI test.
-          This is reported only and never changes a run.
+          Not measured yet: Majlis stays the default for every kind of work. The AGI test measures it (more repeats
+          let it judge the vote). This is reported only and never changes a run.
         </p>
       )}
     </div>

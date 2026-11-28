@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from typing import Any
 
 from core.adaptive import AdaptiveStateStore
@@ -28,6 +29,10 @@ from core.adaptive import AdaptiveStateStore
 logger = logging.getLogger("mizan.khatimah")
 _STORES: dict[str, AdaptiveStateStore] = {}
 FILE = "learning.db"
+# Every change to a learning store (read, change, write back) holds this lock:
+# Mahw erases in a worker thread while runs learn and replays drop on the event
+# loop, and a stale copy written back must never revive what was dropped.
+LOCK = threading.RLock()
 
 
 def store(owner: str) -> AdaptiveStateStore:
@@ -74,10 +79,11 @@ def before_run(task: Any, context: dict | None) -> None:
     from tadbir import athar, islah
 
     try:
-        heard = islah.hear(store(owner), chat, task)
-        if heard and heard.get("replay"):
-            # A replayed answer the person corrected: the replay failed its check.
-            athar.drop(store(owner), heard["replay"])
+        with LOCK:
+            heard = islah.hear(store(owner), chat, task)
+            if heard and heard.get("replay"):
+                # A replayed answer the person corrected: the replay failed its check.
+                athar.drop(store(owner), heard["replay"])
     except Exception:  # noqa: BLE001 - learning never stops a run
         logger.debug("Islah could not hear the message", exc_info=True)
 
@@ -107,9 +113,10 @@ def signal(owner: str, kind: str, *, chat: str = "", workspace: str = "") -> dic
     from tadbir import athar, islah
 
     try:
-        found: dict | None = islah.signal(store(owner), kind, chat=chat, workspace=workspace)
-        if found and found.get("replay") and islah.SIGNALS.get(kind, ("", ""))[1] == "undo":
-            athar.drop(store(owner), found["replay"])
+        with LOCK:
+            found: dict | None = islah.signal(store(owner), kind, chat=chat, workspace=workspace)
+            if found and found.get("replay") and islah.SIGNALS.get(kind, ("", ""))[1] == "undo":
+                athar.drop(store(owner), found["replay"])
         return found
     except Exception:  # noqa: BLE001
         logger.debug("Islah signal not kept", exc_info=True)
@@ -156,7 +163,7 @@ def after_run(agent: Any, task: Any, context: dict | None, result: dict, run: An
     owner = _owner()
     if not owner or not isinstance(task, str) or not _learns():
         return report
-    from tadbir import athar, islah, itqan
+    from tadbir import athar
 
     run = run if run is not None else athar.current()
     steps = list(run.steps) if run is not None else []
@@ -164,31 +171,55 @@ def after_run(agent: Any, task: Any, context: dict | None, result: dict, run: An
     workspace = _workspace()
     kept = store(owner)
     try:
-        if chat or workspace:
-            report["episode"] = islah.observe(
-                kept,
-                chat=chat,
-                request=task,
-                tools=[step["tool"] for step in steps],
-                files=[step["path"] for step in steps if step.get("path")],
-                signals=_signals(steps, result),
-                shown=list(run.shown) if run is not None else [],
-                workspace=workspace,
-                replay=run.replay if run is not None else "",
-            )
-        if run is not None and run.replay:
-            return report  # a replayed run is no new evidence about itself
-        if not result.get("task_verified") or not steps or _tainted(result):
-            return report
-        orchestration = result.get("orchestration") or {}
-        intent = str(orchestration.get("intent") or result.get("orchestrator") or "agent")
-        report["athar"] = athar.learn(kept, task, steps, intent=intent, chat=chat)
-        report["itqan"] = itqan.observe(
-            kept, owner, intent=intent, request=task, steps=steps, verified=True, chat=chat
-        )
+        with LOCK:
+            _learn_from(report, agent, task, result, run, steps, kept, chat, workspace)
     except Exception:  # noqa: BLE001 - learning never loses an answer
         logger.debug("Run-end learning skipped", exc_info=True)
     return report
+
+
+def _learn_from(
+    report: dict,
+    agent: Any,
+    task: str,
+    result: dict,
+    run: Any,
+    steps: list[dict],
+    kept: AdaptiveStateStore,
+    chat: str,
+    workspace: str,
+) -> None:
+    from tadbir import athar, islah, itqan
+
+    owner = _owner()
+    if chat or workspace:
+        report["episode"] = islah.observe(
+            kept,
+            chat=chat,
+            request=task,
+            tools=[step["tool"] for step in steps],
+            files=[step["path"] for step in steps if step.get("path")],
+            signals=_signals(steps, result),
+            shown=list(run.shown) if run is not None else [],
+            workspace=workspace,
+            replay=run.replay if run is not None else "",
+        )
+    if run is not None and run.replay:
+        return  # a replayed run is no new evidence about itself
+    if not result.get("task_verified") or not steps or _tainted(result):
+        return
+    orchestration = result.get("orchestration") or {}
+    intent = str(orchestration.get("intent") or result.get("orchestrator") or "agent")
+    if result.get("orchestrator") != "mizan":
+        # Only a chain the model chose is learned for replay: MIZAN's own recipes
+        # keep their own answers (Hifz repeats their programs), and a replay runs
+        # before Tadbir, so a learned recipe would take its place.
+        report["athar"] = athar.learn(
+            kept, task, steps, intent=intent, chat=chat, scope=athar.scope_of(agent, workspace)
+        )
+    report["itqan"] = itqan.observe(
+        kept, owner, intent=intent, request=task, steps=steps, verified=True, chat=chat
+    )
 
 
 def forget_chat(owner: str, chat: str) -> dict[str, int]:
@@ -198,9 +229,10 @@ def forget_chat(owner: str, chat: str) -> dict[str, int]:
     kept = store(owner)
     removed = {"lessons from corrections": 0, "earned skills and their runs": 0, "replay runs": 0}
     try:
-        removed["lessons from corrections"] = islah.forget_chat(kept, chat)
-        removed["earned skills and their runs"] = itqan.forget_chat(kept, owner, chat)
-        removed["replay runs"] = athar.forget_chat(kept, chat)
+        with LOCK:
+            removed["lessons from corrections"] = islah.forget_chat(kept, chat)
+            removed["earned skills and their runs"] = itqan.forget_chat(kept, owner, chat)
+            removed["replay runs"] = athar.forget_chat(kept, chat)
     except Exception:  # noqa: BLE001 - reported as zero, never raised into Mahw
         logger.warning("Learning store could not be erased for a chat", exc_info=True)
     return removed

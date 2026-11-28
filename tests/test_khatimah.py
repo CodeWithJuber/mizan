@@ -154,3 +154,42 @@ async def test_nested_runs_add_to_the_top_level_trace(alice):
     agent._execute_impl = impl
     await agent.execute("hello", {"session_id": "c3"})
     assert seen and seen[0] is not None and athar.current() is None
+
+
+def test_an_erase_and_a_learning_write_never_interleave(tmp_path, monkeypatch):
+    # Mahw erases in a worker thread while a run learns on the event loop: each
+    # read-change-write of the store holds one lock, so neither undoes the other.
+    import threading
+
+    from tadbir import athar, khatimah
+
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    entered = threading.Event()
+    release = threading.Event()
+    order = []
+    forget = athar.forget_chat
+
+    def slow_forget(store, chat):
+        entered.set()
+        release.wait(5)
+        order.append("erased")
+        return forget(store, chat)
+
+    monkeypatch.setattr(athar, "forget_chat", slow_forget)
+    eraser = threading.Thread(target=khatimah.forget_chat, args=("amina", "c1"))
+    eraser.start()
+    assert entered.wait(5)
+    got = threading.Event()
+
+    def writer():
+        with khatimah.LOCK:
+            order.append("learned")
+        got.set()
+
+    other = threading.Thread(target=writer)
+    other.start()
+    assert not got.wait(0.2)  # the learning write waits for the erase
+    release.set()
+    eraser.join(5)
+    other.join(5)
+    assert order == ["erased", "learned"]
