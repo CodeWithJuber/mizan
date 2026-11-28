@@ -499,6 +499,12 @@ async def lifespan(app: FastAPI):
 
     from connectors.manager import manager as connector_manager
 
+    def _connector_owner_roles(user_id: str) -> list[str] | None:
+        # Launch-time checks (a host stdio server) read the owner's roles now.
+        record = auth.get_user(user_id)
+        return list(record.roles) if record is not None and record.enabled else None
+
+    connector_manager.role_lookup = _connector_owner_roles
     connector_manager.start()
     sakk_task = asyncio.create_task(_sakk_daily())
 
@@ -580,8 +586,11 @@ _PUBLIC_API = {
     "/api/openapi.json",
     "/api/docs",
     # Authorization servers redirect the browser here; the single-use OAuth
-    # state (not a session) identifies the waiting connector.
+    # state (not a session) identifies the waiting connector, and the page
+    # finishes with the person's own credential (/api/connectors/oauth/complete).
     "/api/connectors/oauth/callback",
+    # MIZAN's OAuth client metadata document (its URL is MIZAN's client ID).
+    "/api/connectors/oauth/client-metadata.json",
 }
 # Dev-server previews: the capability in the path is the credential, and every
 # response carries a CSP sandbox (opaque origin), so no session is involved.
@@ -3186,6 +3195,39 @@ async def list_chat_approvals(user: TokenPayload = Depends(require_auth)):
     from security.approvals import broker
 
     return {"pending": broker.pending_for(user.user_id)}
+
+
+class ElicitationAnswer(BaseModel):
+    """A person's answer to a question a connected server asked during a tool call."""
+
+    action: str = Field(..., pattern=r"^(accept|decline|cancel)$")
+    content: dict[str, Any] | None = Field(default=None, max_length=100)
+
+
+@app.post("/api/chat/elicitations/{elicitation_id}")
+async def answer_chat_elicitation(
+    elicitation_id: str,
+    body: ElicitationAnswer,
+    user: TokenPayload = Depends(require_auth),
+):
+    """Answer a connector's pending question in one of the caller's own live chats."""
+    import re
+
+    from connectors.elicitation import broker as elicitations
+
+    if not re.fullmatch(r"[0-9a-f]{32}", elicitation_id) or not elicitations.resolve(
+        user.user_id, elicitation_id, body.action, body.content if body.action == "accept" else None
+    ):
+        raise HTTPException(404, "No pending question with that id")
+    from security import sakk
+
+    sakk.record(
+        user.user_id,
+        "elicitation",
+        {"elicitation": elicitation_id, "action": body.action},
+        f"elicitation · {body.action}",
+    )
+    return {"id": elicitation_id, "action": body.action}
 
 
 class HeldDecision(BaseModel):

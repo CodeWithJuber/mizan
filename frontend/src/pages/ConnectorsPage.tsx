@@ -1,468 +1,348 @@
 /**
  * Connectors (Wasl - وَصْل - connection): MCP servers the agent can use.
- * Browse the official MCP Registry, add remote (OAuth or headers) or local
- * servers, connect, and choose which of their tools the agent may call.
+ * Add one from a preset, the official MCP Registry or by hand; connect and
+ * sign in; test it; choose per tool whether the agent may call it, must ask
+ * first, or never may. Tools whose description changed or that instruct the
+ * AI are held by Amanah until the person trusts them.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ExternalLink, Plug, PlugZap, Plus, Power, RefreshCw, Search, ShieldCheck, Trash2,
-} from "lucide-react";
-import type { PageProps } from "../types";
-import { useToast } from "../components/Toast";
+import { useEffect, useRef, useState } from "react";
+import { Plug, PlugZap, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { confirmDialog } from "@/components/ui/confirm";
+import { addToast } from "../components/Toast";
+import { AddConnector } from "../features/connectors/AddConnector";
+import { type Busy, ConnectorCard } from "../features/connectors/ConnectorCard";
+import { EditSheet } from "../features/connectors/EditSheet";
+import { LogsDialog } from "../features/connectors/LogsDialog";
+import { notFound, useConnectorActions, useConnectorList } from "../features/connectors/api";
+import {
+  closeSignInWindow, openSignInWindow, pollOAuth, readConnectorPhase, readOAuthStatus, sendSignInWindow, type PollEnd,
+} from "../features/connectors/oauth";
+import { Dot, useNow } from "../features/connectors/parts";
+import type { Capabilities, Connector } from "../features/connectors/types";
 
-interface ConnectorTool {
-  name: string;
-  exposed: string;
-  description: string;
-  read_only: boolean;
-  destructive: boolean;
-  enabled: boolean;
-  /** Amanah holds a tool whose description changed since you accepted it, or that instructs the AI. */
-  held?: "changed" | "flagged";
-  amanah?: string[];
+const message = (problem: unknown) => (problem instanceof Error ? problem.message : undefined);
+
+function CapabilityBadges({ capabilities }: { capabilities: Capabilities }) {
+  const runner = !capabilities.sandbox_stdio
+    ? { tone: "muted" as const, text: "No sandbox runner" }
+    : capabilities.runner_available === false
+      ? { tone: "warning" as const, text: "Sandbox runner offline" }
+      : { tone: "success" as const, text: capabilities.runner_available ? "Sandbox runner available" : "Sandbox runner enabled" };
+  return (
+    <ul className="flex flex-wrap gap-2" aria-label="What this MIZAN can run">
+      <li className="inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-xs">
+        <Dot tone="success" /> Remote servers
+      </li>
+      <li className="inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-xs"
+        title="Local (stdio) servers run in an isolated container whose only network is the package registries.">
+        <Dot tone={runner.tone} /> {runner.text}
+      </li>
+      {capabilities.host_stdio && (
+        <li className="inline-flex h-6 items-center gap-1.5 rounded-full border px-2.5 text-xs"
+          title="As an administrator, local servers you add run as a process on the MIZAN server.">
+          <Dot tone="info" /> Local servers on this server
+        </li>
+      )}
+    </ul>
+  );
 }
 
-interface Connector {
-  id: string;
-  name: string;
-  slug: string;
-  transport: "http" | "stdio";
-  url: string;
-  command: string;
-  args: string[];
-  runtime: string;
-  enabled: boolean;
-  disabled_tools: string[];
-  status: string;
-  last_error: string;
-  source: string;
-  header_names: string[];
-  env_names: string[];
-  oauth_connected: boolean;
-  tools: ConnectorTool[];
-}
+const EMPTY_CAPS: Capabilities = { sandbox_stdio: false, host_stdio: false, runner_available: null };
 
-interface RegistryField { name: string; description: string; required: boolean; secret: boolean }
-interface RegistryServer {
-  name: string;
-  title: string;
-  description: string;
-  version: string;
-  repository: string;
-  remotes: { type: string; url: string; headers: RegistryField[] }[];
-  packages: { registry: string; identifier: string; version: string; runtime: string; env: RegistryField[] }[];
-}
-
-interface Draft {
-  name: string;
-  transport: "http" | "stdio";
-  url: string;
-  command: string;
-  args: string;
-  source: string;
-  secrets: { key: string; value: string; secret: boolean; description?: string }[];
-}
-
-const emptyDraft = (): Draft => ({ name: "", transport: "http", url: "", command: "", args: "", source: "", secrets: [] });
-
-const STATUS_STYLE: Record<string, string> = {
-  connected: "badge-success",
-  auth_required: "badge-warning",
-  error: "badge-error",
-  disconnected: "badge-info",
-  new: "badge-info",
-};
-
-/** Split an argument line like a shell would for simple quoting. */
-export function splitArgs(line: string): string[] {
-  const args: string[] = [];
-  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(line)) !== null) args.push(match[1] ?? match[2] ?? match[3]);
-  return args;
-}
-
-export default function ConnectorsPage({ api }: PageProps) {
-  const { addToast } = useToast();
-  const [tab, setTab] = useState<"mine" | "browse" | "add">("mine");
-  const [connectors, setConnectors] = useState<Connector[]>([]);
-  const [hostStdio, setHostStdio] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<string>("");
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<RegistryServer[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [searching, setSearching] = useState(false);
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const polls = useRef<Record<string, number>>({});
-
-  const load = useCallback(async () => {
-    try {
-      const data = await api.get("/connectors");
-      setConnectors((data.connectors as Connector[]) ?? []);
-      setHostStdio(Boolean((data.capabilities as Record<string, unknown> | undefined)?.host_stdio));
-    } catch (error) {
-      addToast({ type: "error", title: "Connectors unavailable", description: (error as Error).message });
-    } finally {
-      setLoading(false);
-    }
-  }, [api, addToast]);
+export default function ConnectorsPage() {
+  const { data, isLoading, error, refetch } = useConnectorList();
+  const actions = useConnectorActions();
+  const now = useNow();
+  const [adding, setAdding] = useState<boolean | null>(null);
+  const [editing, setEditing] = useState<Connector | null>(null);
+  const [logsFor, setLogsFor] = useState<Connector | null>(null);
+  const [busy, setBusy] = useState<Record<string, Busy | undefined>>({});
+  const [waiting, setWaiting] = useState<Record<string, boolean>>({});
+  const [signInUrls, setSignInUrls] = useState<Record<string, string | undefined>>({});
+  const polls = useRef(new Map<string, () => void>());
 
   useEffect(() => {
-    void load();
-    const timers = polls.current;
-    return () => Object.values(timers).forEach((timer) => window.clearInterval(timer));
-  }, [load]);
+    const running = polls.current;
+    return () => running.forEach((stop) => stop());
+  }, []);
 
-  const search = useCallback(async (cursor = "") => {
-    setSearching(true);
-    try {
-      const params = new URLSearchParams({ search: query, limit: "30", ...(cursor ? { cursor } : {}) });
-      const data = await api.get(`/connectors/registry?${params}`);
-      const servers = (data.servers as RegistryServer[]) ?? [];
-      setResults((previous) => cursor ? [...previous, ...servers] : servers);
-      setNextCursor((data.next_cursor as string) || null);
-    } catch (error) {
-      addToast({ type: "error", title: "Registry unavailable", description: (error as Error).message });
-    } finally {
-      setSearching(false);
+  const connectors = data?.connectors ?? [];
+  const capabilities = data?.capabilities ?? EMPTY_CAPS;
+  // With nothing added yet the add panel is open; after that it opens on request.
+  const showAdd = adding ?? (data !== undefined && connectors.length === 0);
+
+  const mark = (id: string, value: Busy | undefined) => setBusy((current) => ({ ...current, [id]: value }));
+  const setWait = (id: string, value: boolean) => setWaiting((current) => ({ ...current, [id]: value }));
+  const setLink = (id: string, url: string | undefined) => setSignInUrls((current) => ({ ...current, [id]: url }));
+
+  const announce = (connector: Connector, end: PollEnd, signIn: boolean) => {
+    if (end.outcome === "connected") {
+      addToast({ type: "success", title: `${connector.name} connected` });
+    } else if (end.outcome === "error") {
+      addToast({ type: "error", title: `Could not connect ${connector.name}`, description: end.error });
+    } else if (end.outcome === "auth_required") {
+      addToast({
+        type: "warning",
+        title: `${connector.name} still needs you to sign in`,
+        description: end.error ?? "The sign-in did not finish. Press Sign in to try again.",
+      });
+    } else {
+      addToast({
+        type: "warning",
+        title: `Stopped waiting for ${connector.name}`,
+        description: signIn
+          ? "The sign-in took longer than five minutes. Press Sign in to try again."
+          : "It has not connected yet. Its logs may say why.",
+      });
     }
-  }, [api, query, addToast]);
+  };
 
-  useEffect(() => {
-    if (tab === "browse" && results.length === 0) void search();
-  }, [tab, results.length, search]);
-
-  const pollUntilConnected = (id: string) => {
-    window.clearInterval(polls.current[id]);
-    let attempts = 0;
-    polls.current[id] = window.setInterval(async () => {
-      attempts += 1;
-      try {
-        const server = (await api.get(`/connectors/${id}`)) as unknown as Connector;
-        setConnectors((list) => list.map((item) => item.id === id ? server : item));
-        if (server.status === "connected" || attempts > 90) {
-          window.clearInterval(polls.current[id]);
-          if (server.status === "connected") addToast({ type: "success", title: `${server.name} connected` });
+  /** Ask every 2 s how the sign-in (or the connection) is going, until it ends. */
+  const watch = (connector: Connector, signIn: boolean, popup: Window | null) => {
+    polls.current.get(connector.id)?.();
+    setWait(connector.id, true);
+    // A sign-in asks /oauth/status; an older server without it, or a plain connection, reads the connector.
+    let fallback = !signIn;
+    const stop = pollOAuth({
+      check: async () => {
+        if (!fallback) {
+          try {
+            return readOAuthStatus(await actions.oauthStatus(connector));
+          } catch (problem) {
+            if (!notFound(problem)) throw problem;
+            fallback = true;
+          }
         }
-      } catch {
-        window.clearInterval(polls.current[id]);
-      }
-    }, 2000);
+        const current = await actions.get(connector.id);
+        return readConnectorPhase(current.status, current.last_error, signIn);
+      },
+      onEnd: (end) => {
+        polls.current.delete(connector.id);
+        closeSignInWindow(popup);
+        setWait(connector.id, false);
+        if (end.outcome === "connected") setLink(connector.id, undefined);
+        void actions.refresh();
+        announce(connector, end, signIn);
+      },
+    });
+    polls.current.set(connector.id, () => {
+      stop();
+      setWait(connector.id, false);
+    });
   };
 
-  const connect = async (connector: Connector) => {
-    setBusy(connector.id);
-    try {
-      const data = await api.post(`/connectors/${connector.id}/connect`);
-      if (data.status === "authorization_required" && typeof data.authorization_url === "string") {
-        window.open(data.authorization_url, "_blank", "noopener,noreferrer");
-        addToast({ type: "info", title: "Authorize in the new window", description: "This page updates when you are done." });
-        pollUntilConnected(connector.id);
-      } else if (data.status === "connected") {
-        addToast({ type: "success", title: `${connector.name} connected` });
-      } else {
-        pollUntilConnected(connector.id);
+  const stopWaiting = (connector: Connector) => {
+    polls.current.get(connector.id)?.();
+    polls.current.delete(connector.id);
+    void actions.refresh();
+  };
+
+  const connect = (connector: Connector, intent: "connect" | "signin") => {
+    // The window opens here, inside the click: a window opened after the server answers is blocked by Safari and others.
+    const expectsSignIn = intent === "signin" || connector.status === "auth_required"
+      || (connector.auth.type === "oauth" && !connector.auth.signed_in);
+    const popup = expectsSignIn ? openSignInWindow(`mizan-sign-in-${connector.id}`) : null;
+    mark(connector.id, "connect");
+    setLink(connector.id, undefined);
+    void (async () => {
+      try {
+        const result = await actions.connect(connector);
+        if (result.status === "authorization_required" && result.authorizationUrl) {
+          const url = result.authorizationUrl;
+          // No window opened in the click (the server asked for a sign-in we did not expect): try one now.
+          const signInWindow = popup ?? openSignInWindow(`mizan-sign-in-${connector.id}`);
+          if (sendSignInWindow(signInWindow, url)) {
+            addToast({ type: "info", title: `Sign in to ${connector.name} in the new window`, description: "This page updates when you are done." });
+          } else {
+            closeSignInWindow(signInWindow);
+            setLink(connector.id, url);
+            addToast({
+              type: "warning",
+              title: "Your browser blocked the sign-in window",
+              description: `Open the sign-in page for ${connector.name} to continue.`,
+              action: { label: "Open sign-in page", onClick: () => globalThis.open(url, "_blank", "noopener,noreferrer") },
+            });
+          }
+          watch(connector, true, signInWindow);
+        } else if (result.status === "connected") {
+          closeSignInWindow(popup);
+          addToast({ type: "success", title: `${connector.name} connected` });
+        } else {
+          closeSignInWindow(popup);
+          watch(connector, false, null);
+        }
+      } catch (problem) {
+        closeSignInWindow(popup);
+        addToast({ type: "error", title: `Could not connect ${connector.name}`, description: message(problem) });
+        void actions.refresh();
+      } finally {
+        mark(connector.id, undefined);
       }
-      const updated = data.connector as Connector | undefined;
-      if (updated?.id) setConnectors((list) => list.map((item) => item.id === updated.id ? updated : item));
-    } catch (error) {
-      addToast({ type: "error", title: `Could not connect ${connector.name}`, description: (error as Error).message });
-      await load();
+    })();
+  };
+
+  const run = async (connector: Connector, kind: Busy, work: () => Promise<void>, failure: string) => {
+    mark(connector.id, kind);
+    try {
+      await work();
+    } catch (problem) {
+      addToast({ type: "error", title: failure, description: message(problem) });
     } finally {
-      setBusy("");
+      mark(connector.id, undefined);
     }
   };
 
-  const update = async (connector: Connector, changes: Record<string, unknown>) => {
-    setBusy(connector.id);
-    try {
-      const updated = (await api.patch(`/connectors/${connector.id}`, changes)) as unknown as Connector;
-      setConnectors((list) => list.map((item) => item.id === connector.id ? updated : item));
-    } catch (error) {
-      addToast({ type: "error", title: "Update failed", description: (error as Error).message });
-    } finally {
-      setBusy("");
+  const test = (connector: Connector) => void run(connector, "test", async () => {
+    const result = await actions.test(connector);
+    if (result.ok) {
+      const parts = [
+        result.latency_ms != null ? `${Math.round(result.latency_ms)} ms` : "",
+        result.tools != null ? `${result.tools} tool${result.tools === 1 ? "" : "s"}` : "",
+      ].filter(Boolean);
+      addToast({ type: "success", title: `${connector.name} answered`, ...(parts.length ? { description: parts.join(" · ") } : {}) });
+    } else {
+      addToast({ type: "error", title: `${connector.name} did not answer`, description: result.error });
     }
+  }, `Could not test ${connector.name}`);
+
+  const disconnect = (connector: Connector) => void run(connector, "disconnect", async () => {
+    stopWaiting(connector);
+    await actions.disconnect(connector);
+    addToast({ type: "info", title: `${connector.name} disconnected` });
+  }, `Could not disconnect ${connector.name}`);
+
+  const signOut = async (connector: Connector) => {
+    const confirmed = await confirmDialog({
+      title: `Sign out of ${connector.name}?`,
+      description: "MIZAN forgets its sign-in, and the agent can't use this connector until you sign in again.",
+      confirmLabel: "Sign out",
+    });
+    if (!confirmed) return;
+    await run(connector, "signout", async () => {
+      await actions.signOut(connector);
+      addToast({ type: "info", title: `Signed out of ${connector.name}` });
+    }, `Could not sign out of ${connector.name}`);
   };
+
+  const toggle = (connector: Connector, enabled: boolean) => void run(connector, "enable", async () => {
+    await actions.update(connector, { enabled });
+    if (!enabled) stopWaiting(connector);
+  }, `Could not ${enabled ? "enable" : "disable"} ${connector.name}`);
 
   const remove = async (connector: Connector) => {
-    if (!(await confirmDialog({ title: `Remove ${connector.name}?`, description: "Its saved credentials are deleted too.", confirmLabel: "Remove", destructive: true }))) return;
-    try {
-      await api.del(`/connectors/${connector.id}`);
-      setConnectors((list) => list.filter((item) => item.id !== connector.id));
-    } catch (error) {
-      addToast({ type: "error", title: "Remove failed", description: (error as Error).message });
-    }
-  };
-
-  const toggleTool = (connector: Connector, tool: ConnectorTool) => {
-    const disabled = new Set(connector.disabled_tools);
-    if (tool.enabled) disabled.add(tool.name); else disabled.delete(tool.name);
-    void update(connector, { disabled_tools: [...disabled] });
-  };
-
-  const trustTool = async (connector: Connector, tool: ConnectorTool) => {
-    try {
-      const updated = (await api.post(
-        `/connectors/${connector.id}/tools/${encodeURIComponent(tool.name)}/trust`,
-        {},
-      )) as unknown as Connector;
-      setConnectors((list) => list.map((item) => item.id === connector.id ? updated : item));
-      addToast({ type: "success", title: `${tool.name} is available to the agent again` });
-    } catch (error) {
-      addToast({ type: "error", title: "Could not trust the tool", description: (error as Error).message });
-    }
-  };
-
-  const addFromRemote = (server: RegistryServer, remote: RegistryServer["remotes"][number]) => {
-    setDraft({
-      name: (server.title || server.name).split("/").pop() || server.name,
-      transport: "http",
-      url: remote.url,
-      command: "",
-      args: "",
-      source: server.name,
-      secrets: remote.headers.map((h) => ({ key: h.name, value: "", secret: h.secret, description: h.description })),
+    const confirmed = await confirmDialog({
+      title: `Delete ${connector.name}?`,
+      description: "Its saved headers, variables and sign-in are deleted too. The agent loses its tools at once.",
+      confirmLabel: "Delete",
+      destructive: true,
     });
-    setTab("add");
+    if (!confirmed) return;
+    stopWaiting(connector);
+    await run(connector, "delete", async () => {
+      await actions.remove(connector);
+      addToast({ type: "success", title: `${connector.name} deleted` });
+    }, `Could not delete ${connector.name}`);
   };
 
-  const addFromPackage = (server: RegistryServer, pkg: RegistryServer["packages"][number]) => {
-    const npm = pkg.registry === "npm";
-    const spec = pkg.version ? (npm ? `${pkg.identifier}@${pkg.version}` : `${pkg.identifier}==${pkg.version}`) : pkg.identifier;
-    setDraft({
-      name: (server.title || server.name).split("/").pop() || server.name,
-      transport: "stdio",
-      url: "",
-      command: pkg.runtime || (npm ? "npx" : "uvx"),
-      args: npm ? `-y ${spec}` : spec,
-      source: server.name,
-      secrets: pkg.env.map((e) => ({ key: e.name, value: "", secret: e.secret, description: e.description })),
+  const created = (connector: Connector) => {
+    setAdding(false);
+    addToast({
+      type: "success",
+      title: `${connector.name} added`,
+      description: "Connect it to load its tools.",
+      action: { label: "Connect", onClick: () => connect(connector, "connect") },
     });
-    setTab("add");
-  };
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    const secrets = Object.fromEntries(draft.secrets.filter((s) => s.key.trim()).map((s) => [s.key.trim(), s.value]));
-    const body: Record<string, unknown> = { name: draft.name.trim(), transport: draft.transport, source: draft.source };
-    if (draft.transport === "http") Object.assign(body, { url: draft.url.trim(), headers: secrets });
-    else Object.assign(body, { command: draft.command.trim(), args: splitArgs(draft.args), env: secrets });
-    setBusy("add");
-    try {
-      const created = (await api.post("/connectors", body)) as unknown as Connector;
-      setConnectors((list) => [...list, created]);
-      setDraft(emptyDraft());
-      setTab("mine");
-      addToast({ type: "success", title: `${created.name} added`, description: "Press Connect to load its tools." });
-    } catch (error) {
-      addToast({ type: "error", title: "Could not add connector", description: (error as Error).message });
-    } finally {
-      setBusy("");
-    }
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 md:p-6">
-      <div className="max-w-5xl mx-auto space-y-5">
-        <header>
-          <h1 className="page-title flex items-center gap-2"><Plug className="w-6 h-6 text-mizan-gold" /> Connectors</h1>
-          <p className="page-description">
-            Connect MCP servers (GitHub, Notion, databases, search…). Their tools join your agent and
-            still pass permission checks and your approval mode.
-          </p>
-        </header>
-
-        <div className="tab-bar" role="tablist">
-          {(["mine", "browse", "add"] as const).map((value) => (
-            <button key={value} role="tab" aria-selected={tab === value} className={`tab ${tab === value ? "active" : ""}`} onClick={() => setTab(value)}>
-              {value === "mine" ? `My connectors (${connectors.length})` : value === "browse" ? "Browse registry" : "Add custom"}
-            </button>
-          ))}
-        </div>
-
-        {tab === "mine" && (
-          <section className="space-y-3">
-            {loading && <p className="text-sm text-gray-500">Loading…</p>}
-            {!loading && connectors.length === 0 && (
-              <div className="card text-center py-10">
-                <PlugZap className="w-8 h-8 mx-auto text-mizan-gold" />
-                <p className="mt-2 font-medium">No connectors yet</p>
-                <p className="text-sm text-gray-500">Browse the MCP Registry or add a server URL.</p>
-                <button className="btn-gold mt-4" onClick={() => setTab("browse")}>Browse registry</button>
-              </div>
-            )}
-            {connectors.map((connector) => (
-              <article key={connector.id} className="card space-y-3">
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="font-semibold text-gray-900 dark:text-zinc-100">{connector.name}</h2>
-                      <span className={STATUS_STYLE[connector.status] ?? "badge-info"}>{connector.status.replace("_", " ")}</span>
-                      <span className="badge-gold">{connector.transport === "http" ? "remote" : `local · ${connector.runtime}`}</span>
-                      {connector.oauth_connected && <span className="badge-success inline-flex items-center gap-1"><ShieldCheck className="w-3 h-3" /> OAuth</span>}
-                    </div>
-                    <p className="text-xs font-mono text-gray-500 break-all mt-1">
-                      {connector.transport === "http" ? connector.url : `${connector.command} ${connector.args.join(" ")}`}
-                    </p>
-                    {connector.last_error && connector.status !== "connected" && (
-                      <p className="text-xs text-rose-600 mt-1">{connector.last_error}</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button className="btn-primary btn-sm inline-flex items-center gap-1" disabled={busy === connector.id || !connector.enabled} onClick={() => connect(connector)}>
-                      <RefreshCw className={`w-3.5 h-3.5 ${busy === connector.id ? "animate-spin" : ""}`} />
-                      {connector.status === "connected" ? "Reconnect" : "Connect"}
-                    </button>
-                    <button className="btn-secondary btn-sm inline-flex items-center gap-1" disabled={busy === connector.id} onClick={() => update(connector, { enabled: !connector.enabled })}>
-                      <Power className="w-3.5 h-3.5" /> {connector.enabled ? "Disable" : "Enable"}
-                    </button>
-                    <button className="btn-danger btn-sm inline-flex items-center gap-1" onClick={() => remove(connector)} aria-label={`Remove ${connector.name}`}>
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-                {connector.tools.length > 0 && (
-                  <details>
-                    <summary className="text-sm cursor-pointer text-muted-foreground">
-                      {connector.tools.filter((t) => t.enabled).length}/{connector.tools.length} tools enabled
-                    </summary>
-                    <ul className="mt-2 grid gap-1 sm:grid-cols-2">
-                      {connector.tools.map((tool) => (
-                        <li key={tool.name} className="flex items-start gap-2 rounded-md border border-border/60 p-2">
-                          <input type="checkbox" className="mt-1" checked={tool.enabled} onChange={() => toggleTool(connector, tool)} aria-label={`Enable ${tool.name}`} />
-                          <div className="min-w-0">
-                            <p className="text-xs font-mono font-medium break-all">
-                              {tool.name}
-                              {tool.read_only && <span className="ml-1 badge-info">read-only</span>}
-                              {tool.destructive && <span className="ml-1 badge-error">destructive</span>}
-                              {tool.held && <span className="ml-1 badge-warning">held</span>}
-                            </p>
-                            <p className="text-xs text-gray-500 line-clamp-2">{tool.description.replace(/^\[[^\]]+\]\s*/, "")}</p>
-                            {tool.held && (
-                              <div className="mt-1 rounded-md bg-amber-50 dark:bg-amber-950/30 p-1.5 text-xs text-amber-800 dark:text-amber-300">
-                                <p>
-                                  {tool.held === "changed"
-                                    ? "Amanah: this tool's description changed since you accepted it, so the agent cannot use it until you check it."
-                                    : "Amanah: this tool's description contains instructions aimed at the AI, so the agent cannot use it until you check it."}
-                                </p>
-                                {tool.amanah?.map((excerpt) => (
-                                  <p key={excerpt} className="mt-0.5 font-mono break-all">“{excerpt}”</p>
-                                ))}
-                                <button type="button" className="btn-secondary btn-sm mt-1" onClick={() => void trustTool(connector, tool)}>
-                                  Trust as it is now
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                )}
-              </article>
-            ))}
-          </section>
-        )}
-
-        {tab === "browse" && (
-          <section className="space-y-3">
-            <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void search(); }}>
-              <input className="input flex-1" placeholder="Search MCP servers (github, notion, postgres, search…)" value={query} onChange={(event) => setQuery(event.target.value)} />
-              <button className="btn-primary inline-flex items-center gap-1" disabled={searching}><Search className="w-4 h-4" /> Search</button>
-            </form>
-            <div className="grid gap-3 md:grid-cols-2">
-              {results.map((server) => (
-                <article key={`${server.name}@${server.version}`} className="card space-y-2">
-                  <div>
-                    <h3 className="font-semibold break-all">{server.title || server.name}</h3>
-                    <p className="text-xs font-mono text-gray-500 break-all">{server.name}{server.version && ` · v${server.version}`}</p>
-                  </div>
-                  <p className="text-sm text-muted-foreground line-clamp-3">{server.description}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {server.remotes.slice(0, 2).map((remote) => (
-                      <button key={remote.url} className="btn-gold btn-sm" onClick={() => addFromRemote(server, remote)}>Add remote</button>
-                    ))}
-                    {server.packages.slice(0, 2).map((pkg) => (
-                      <button key={`${pkg.registry}:${pkg.identifier}`} className="btn-secondary btn-sm" onClick={() => addFromPackage(server, pkg)} title={hostStdio ? "Runs on the server" : "Runs in the sandbox runner"}>
-                        Add local ({pkg.registry || "package"})
-                      </button>
-                    ))}
-                    {server.repository && (
-                      <a className="btn-ghost btn-sm inline-flex items-center gap-1" href={server.repository} target="_blank" rel="noreferrer noopener">
-                        Source <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-            {searching && <p className="text-sm text-gray-500">Searching…</p>}
-            {!searching && results.length === 0 && <p className="text-sm text-gray-500">No servers found.</p>}
-            {nextCursor && !searching && <button className="btn-secondary" onClick={() => search(nextCursor)}>Load more</button>}
-          </section>
-        )}
-
-        {tab === "add" && (
-          <form className="card space-y-4" onSubmit={submit}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1">
-                <span className="text-sm font-medium">Name</span>
-                <input className="input w-full" required maxLength={60} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="GitHub" />
-              </label>
-              <label className="space-y-1">
-                <span className="text-sm font-medium">Type</span>
-                <select className="input w-full" value={draft.transport} onChange={(event) => setDraft({ ...draft, transport: event.target.value as Draft["transport"] })}>
-                  <option value="http">Remote (HTTPS URL)</option>
-                  <option value="stdio">Local command (stdio)</option>
-                </select>
-              </label>
-            </div>
-            {draft.transport === "http" ? (
-              <label className="block space-y-1">
-                <span className="text-sm font-medium">Server URL</span>
-                <input className="input w-full font-mono" type="url" required value={draft.url} onChange={(event) => setDraft({ ...draft, url: event.target.value })} placeholder="https://example.com/mcp" />
-                <span className="text-xs text-gray-500">Servers that use OAuth open a sign-in window when you press Connect.</span>
-              </label>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <label className="space-y-1">
-                  <span className="text-sm font-medium">Command</span>
-                  <input className="input w-full font-mono" required value={draft.command} onChange={(event) => setDraft({ ...draft, command: event.target.value })} placeholder="npx" />
-                </label>
-                <label className="space-y-1 sm:col-span-2">
-                  <span className="text-sm font-medium">Arguments</span>
-                  <input className="input w-full font-mono" value={draft.args} onChange={(event) => setDraft({ ...draft, args: event.target.value })} placeholder="-y @modelcontextprotocol/server-everything" />
-                </label>
-                <p className="text-xs text-gray-500 sm:col-span-3">
-                  {hostStdio ? "Local servers you add run as a process on the MIZAN server." : "Local servers run in the isolated sandbox runner when it is enabled."}
+    <div className="page-wrapper">
+      <div className="page-body">
+        <div className="mx-auto w-full max-w-5xl min-w-0 space-y-6">
+          <header className="space-y-3">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="page-title flex items-center gap-2">
+                  <Plug className="size-6 text-brand" aria-hidden /> Connectors
+                </h2>
+                <p className="page-description">
+                  MCP servers whose tools your agent can use: GitHub, Notion, databases, search and more. Their tools
+                  still pass permission checks and your approval mode.
                 </p>
               </div>
-            )}
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">{draft.transport === "http" ? "Headers" : "Environment variables"} <span className="text-xs text-gray-500">(stored encrypted)</span></legend>
-              {draft.secrets.map((secret, index) => (
-                <div key={index} className="flex gap-2 items-start">
-                  <input className="input w-1/3 font-mono" placeholder={draft.transport === "http" ? "Authorization" : "API_KEY"} value={secret.key} onChange={(event) => setDraft({ ...draft, secrets: draft.secrets.map((s, i) => i === index ? { ...s, key: event.target.value } : s) })} />
-                  <div className="flex-1">
-                    <input className="input w-full font-mono" type={secret.secret ? "password" : "text"} placeholder={secret.description || "value"} value={secret.value} onChange={(event) => setDraft({ ...draft, secrets: draft.secrets.map((s, i) => i === index ? { ...s, value: event.target.value } : s) })} />
-                  </div>
-                  <button type="button" className="btn-ghost btn-sm" onClick={() => setDraft({ ...draft, secrets: draft.secrets.filter((_, i) => i !== index) })} aria-label="Remove">✕</button>
-                </div>
-              ))}
-              <button type="button" className="btn-secondary btn-sm inline-flex items-center gap-1" onClick={() => setDraft({ ...draft, secrets: [...draft.secrets, { key: "", value: "", secret: true }] })}>
-                <Plus className="w-3.5 h-3.5" /> Add {draft.transport === "http" ? "header" : "variable"}
-              </button>
-            </fieldset>
-            <div className="flex gap-2">
-              <button className="btn-gold" disabled={busy === "add"}>Add connector</button>
-              <button type="button" className="btn-ghost" onClick={() => setDraft(emptyDraft())}>Clear</button>
+              {!showAdd && (
+                <Button onClick={() => setAdding(true)}>
+                  <Plus aria-hidden /> Add connector
+                </Button>
+              )}
             </div>
-          </form>
-        )}
+            {data && <CapabilityBadges capabilities={capabilities} />}
+          </header>
+
+          {showAdd && data && (
+            <AddConnector
+              capabilities={capabilities}
+              onCreated={created}
+              focusOnOpen={adding === true}
+              {...(connectors.length ? { onClose: () => setAdding(false) } : {})}
+            />
+          )}
+
+          <section aria-labelledby="my-connectors" className="space-y-3">
+            <h3 id="my-connectors" className="text-sm font-medium text-muted-foreground">
+              Your connectors{connectors.length ? ` (${connectors.length})` : ""}
+            </h3>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : error ? (
+              <div role="alert" className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+                <span className="text-destructive">Connectors are unavailable: {error.message}</span>
+                <Button size="sm" variant="outline" onClick={() => void refetch()}>Try again</Button>
+              </div>
+            ) : connectors.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-8 text-center">
+                <PlugZap className="mx-auto size-8 text-brand" aria-hidden />
+                <p className="mt-2 font-medium">No connectors yet</p>
+                <p className="text-sm text-muted-foreground">Add one above: a preset is the quickest start.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {connectors.map((connector) => (
+                  <ConnectorCard
+                    key={connector.id}
+                    connector={connector}
+                    actions={actions}
+                    now={now}
+                    busy={busy[connector.id]}
+                    waiting={Boolean(waiting[connector.id])}
+                    signInUrl={signInUrls[connector.id]}
+                    onConnect={connect}
+                    onStopWaiting={stopWaiting}
+                    onTest={test}
+                    onDisconnect={disconnect}
+                    onSignOut={(item) => void signOut(item)}
+                    onToggle={toggle}
+                    onEdit={setEditing}
+                    onLogs={setLogsFor}
+                    onDelete={(item) => void remove(item)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
+
+      {editing && (
+        <EditSheet
+          connector={connectors.find((item) => item.id === editing.id) ?? editing}
+          capabilities={capabilities}
+          actions={actions}
+          onClose={() => setEditing(null)}
+          onReconnect={(connector) => connect(connector, "connect")}
+        />
+      )}
+      {logsFor && <LogsDialog connector={logsFor} onClose={() => setLogsFor(null)} />}
     </div>
   );
 }

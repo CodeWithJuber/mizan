@@ -204,6 +204,7 @@ class Tadbir:
             return None
         self._model = model_turn
         self._stream = stream_callback
+        self._history = history
         started = time.time()
         if _button() and self._handoff_ready():
             # A button ("Approve plan and run", "Fix with MIZAN"), never the words: the
@@ -742,7 +743,9 @@ class Tadbir:
         )
         try:
             # Pasted text may carry an instruction; it never chooses MIZAN's actions.
-            steps = await self.lisan.plan_steps(amanah.clean_message(task), earlier)
+            steps = await self.lisan.plan_steps(
+                amanah.clean_message(task), earlier, self._connected_tools()
+            )
         except LisanUnavailable:
             return []
         planned = []
@@ -1650,6 +1653,26 @@ class Tadbir:
             {"workspace_id": workspace_id, "files": sorted(files), "repairs": rounds},
         )
 
+    def _connected_tools(self) -> str:
+        """The user's connector tools Lisan may name a need for (40 at most)."""
+        try:
+            tools = amal.candidates(self.agent, self._chat_allowed)
+        except Exception:  # noqa: BLE001 - no tool list: Lisan maps without it
+            return ""
+        lines = [
+            f"- {tool['name']}: {' '.join(str(tool.get('description', '')).split())[:100]}"
+            for tool in tools
+            if str(tool.get("name", "")).startswith("mcp__")
+        ]
+        return "\n".join(lines[:40])
+
+    def _earlier(self, limit: int = 3) -> str:
+        history = getattr(self, "_history", None)
+        return "\n".join(
+            f"- {amanah.clean_message(text)[:300]}"
+            for text in qasd.earlier_messages(history)[-limit:]
+        )
+
     async def _use_tool(self, task: str, u: fahm.Understanding) -> Outcome:
         """Any other action: MIZAN picks the tool and checks its arguments."""
         need = str(u.entities.get("need") or task)
@@ -1680,7 +1703,9 @@ class Tadbir:
         for _attempt in range(2):
             try:
                 arguments = amal.restrict(
-                    await self.lisan.fill_arguments(amanah.clean_message(task), need, tool, error),
+                    await self.lisan.fill_arguments(
+                        amanah.clean_message(task), need, tool, error, self._earlier()
+                    ),
                     tool.get("input_schema"),
                 )
             except LisanUnavailable as exc:

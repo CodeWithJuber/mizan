@@ -1009,6 +1009,16 @@ class BaseAgent:
 
         return bool(read_only_hint(current_user_id() or "", tool_name))
 
+    @staticmethod
+    def _connector_asks(tool_name: str) -> bool:
+        try:
+            from connectors.tools import asks_first
+
+            return bool(asks_first(current_user_id() or "", tool_name))
+        except Exception:  # noqa: BLE001 - an unreadable policy asks
+            logger.warning("Connector tool policy unavailable", exc_info=True)
+            return True
+
     def _chat_tool_allowed(self, tool_name: str) -> bool:
         """Selected-project chats expose only owner-scoped tools with trusted handlers."""
         from skills.builtin.coding_workspace import allows_user_web_tool, allows_user_workspace_tool
@@ -2450,6 +2460,14 @@ class BaseAgent:
 
         if approvals is None and tool_name in ALWAYS_ASK_TOOLS:
             return {"error": "This sends something to a site, and no one is here to approve it"}
+        # A connector tool its owner set to "ask": a person approves every call, in any mode.
+        asks = tool_name.startswith("mcp__") and self._connector_asks(tool_name)
+        if approvals is None and asks:
+            return {
+                "error": "This connector tool asks its owner before each call, and no one is "
+                "here to approve it",
+                "approval_required": True,
+            }
         if approvals is not None:
             read_only = self._read_only_hint(tool_name)
             if approvals.blocks(tool_name, read_only, params):
@@ -2459,8 +2477,16 @@ class BaseAgent:
                 }
             if approvals.was_granted(tool_name, params):
                 pass  # the owner allowed exactly this call when it was held
-            elif izn_asks or held or approvals.needs_approval(tool_name, read_only, params):
-                reason = perm.get("reason", "") if izn_asks else _AMANAH_REASON if held else ""
+            elif izn_asks or held or asks or approvals.needs_approval(tool_name, read_only, params):
+                reason = (
+                    perm.get("reason", "")
+                    if izn_asks
+                    else _AMANAH_REASON
+                    if held
+                    else "You set this connector tool to ask before each call"
+                    if asks
+                    else ""
+                )
                 if approvals.deferred:
                     # No one is watching this run: keep the exact action for
                     # its owner to allow or deny later; never run it now.

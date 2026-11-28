@@ -56,6 +56,15 @@ All notable changes to this project will be documented in this file.
   - Vitest specs;
   - size budgets (the entry bundle dropped from 371 KB to 178 KB gzip; `npm run size`);
   - Playwright tests on desktop and phone against a mock API (`npm run e2e`).
+- Connectors (MCP), ready for production (`docs/connectors.md`):
+  - the HTTP+SSE transport beside Streamable HTTP; per-connector `timeouts` (`connect_s`, default 30 s or 90 s for `npx`/`uvx` servers; `call_s`, default 120 s);
+  - OAuth with a pre-registered client (`oauth: {client_id, client_secret?, scopes?}`, the secret sealed) for servers without dynamic registration, MIZAN's client metadata document (`/api/connectors/oauth/client-metadata.json`), requested scopes, `auth.expires_at`, and sign-out that revokes the tokens (RFC 7009, `POST /api/connectors/{id}/signout`);
+  - curated presets checked against each vendor's documentation (`GET /api/connectors/presets`: GitHub, Notion, Linear, Atlassian, Sentry, Stripe, Hugging Face, Cloudflare docs, Vercel, and sandboxed Files and Fetch);
+  - the MCP Registry's `v0.1` API (with `v0` as fallback), only active entries, an `official` mark, and a ready `install` (command, arguments, environment) per package for npm, PyPI and OCI;
+  - resources as `mcp__<server>__resources_list`/`__resources_read` tools and on the page (`GET /{id}/resources`), prompts (`GET /{id}/prompts`, `POST /{id}/prompts/get`), the server's instructions on its tools' descriptions, re-listing on `tools/list_changed`, progress as the live event `tool_progress`, the server's log messages in the connector's log, and questions from the server (elicitation) answered in the chat (`POST /api/chat/elicitations/{id}`; declined with no one watching);
+  - per-tool policy `allow` · `ask` (a person approves every call, even in auto mode) · `never` (`POST /{id}/tools/policy`), new tools offered at once and marked `new` until seen (`POST /{id}/tools/ack`), `POST /{id}/tools/trust {tool}`, and a changed tool's `previous` description, schema and hints;
+  - live status (`connected`, `connecting`, `disconnected`, `error`, `auth_required`, `disabled`), `capabilities.sandbox_stdio`/`runner_available`, `POST /{id}/test` (`{ok, latency_ms, tools}`) and `GET /{id}/logs` (last 200 lines); `PATCH` changes the URL, transport, command, arguments, OAuth client and limits, and merges headers and environment per key;
+  - `MIZAN_CONNECTORS_KEY`: the data key from the environment, comma-separated for rotation (the first seals, all open; the key file still opens what it sealed).
 
 ### Changed
 - Relicensed from the Apache License 2.0 to the GNU Affero General Public License v3.0 only (`AGPL-3.0-only`), Copyright (C) 2026 Juber Shaikh (Hostlelo). The Bayan package (`packages/bayan/`, MIT), the shadcn/ui components (MIT), the sense-model artifacts (Apache-2.0), the Amiri font (OFL-1.1) and the licensed datasets keep their licences: `NOTICE` lists them, `REUSE.toml` gives every file's licence and `LICENSES/` holds the texts. Contributors sign a Contributor License Agreement (`CLA.md`, checked by `cla.yml`); `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md` (private vulnerability reporting), `CITATION.cff` and a pull request template are added.
@@ -93,6 +102,18 @@ All notable changes to this project will be documented in this file.
   - a stem after ال, ب or ك is never read as a verb (العلم is `NOUN`, not `VERB_PAST`).
 
   The root accuracy on the 172-word QAC-derived gold set rose from 79/172 to 81/172 (60/172 in the published 0.1.0). The vendored copy had drifted from upstream; CI now runs `sync_vendor.py --check` and the package tests.
+
+- Connectors:
+  - an OAuth connector asked for a new browser authorization after every reconnect: tokens were kept without their expiry, so a new connection sent a stale token and never refreshed. The absolute expiry and the authorization server's metadata are kept now: a later connection refreshes first, and a 401 is answered by a refresh before a new authorization;
+  - a server that restarted or a local process that exited left a dead session in use; MIZAN now notices it, reconnects, sends a call that cannot have run once more, and pings idle connections;
+  - a slow connect raised out of the tool call; timeouts are a receipt now (`code: connector_timeout`), as are the other failures (`connector_disconnected`, `auth_required`, `secrets_unreadable`, `connector_not_allowed`);
+  - the HTTP client of every connection was left open; registry entries offered SSE servers MIZAN could not connect to; "Add local" from the registry dropped package and runtime arguments; the status shown was the stored one (a closed connection still read "connected"), `sandbox_stdio` was always false, and a local server could be added where no runner exists;
+  - tools of a connector waiting for sign-in, or that just failed, were still offered to the model; structured results had no size limit, and a resource link in a result could not be read;
+  - the connector file was read again for every tool the model was offered (now cached by modification time); OAuth states and per-connection locks were never pruned; the connection limit could close one with a call running; disabling a sandboxed server left its container running.
+- Lisan maps a request to a connected tool knowing the user's tool names, and fills its arguments with the chat's last three messages; MIZAN's tool choice folds plurals and -ing/-ed and counts a tool's own name, so "list my issues" finds `list_issues`.
+
+### Security
+- Connectors: a tool's behaviour hints (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) are part of its pin, so a read-only tool that stops saying so is held (pins made before are accepted once and upgraded); connections go only to an address checked a moment before (a pinned transport, no DNS rebinding); OAuth endpoints must use https (`MIZAN_DEV` allows loopback http for development); the OAuth callback is completed only by the user who started the sign-in, and shows "Connected" only after the token exchange; host stdio servers are re-checked against `MIZAN_MCP_HOST_STDIO` and the owner's role at every launch, start with a minimal environment and their own home directory, and their stderr goes to the connector's log; a sealed secret the key no longer opens is an error, never read as "no secret".
 
 ### Removed
 - Data that may not be redistributed: the Quranic Arabic Corpus morphology (its GPL notice stripped) and the word table and root summary built from it with Quran.com's word-by-word glosses, a Quran.com tafsir excerpt and API responses, a hadith token pool whose upstream gives no terms for its texts, and poetry and Tabari samples with no recorded source (`backend/research/datasets/LICENSES.md`).

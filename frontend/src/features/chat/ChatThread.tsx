@@ -22,7 +22,7 @@ import { EmptyState } from "./EmptyState";
 function LiveReply({ agentName, onNear }: { agentName: string; onNear: () => void }) {
   const text = useLiveText((state) => state.text);
   const { activity, thinkingTraces, activeThinkingId, runProgress, awaitingText } = useChatState();
-  const { decideApproval } = useChatActions();
+  const { decideApproval, answerElicitation } = useChatActions();
   const startedAt = useRef(Date.now());
   useEffect(onNear, [text, activity, onNear]);
   return (
@@ -40,6 +40,7 @@ function LiveReply({ agentName, onNear }: { agentName: string; onNear: () => voi
               progress={runProgress ?? { startedAt: startedAt.current }}
               awaitingText={awaitingText || !text}
               onDecision={decideApproval}
+              onElicitation={answerElicitation}
             />
             {text && <StreamingMarkdown content={text} />}
           </div>

@@ -227,6 +227,13 @@ def test_connectors_api_owner_scope_and_validation(tmp_path, monkeypatch):
         "/api/connectors", json={"name": "x", "transport": "http", "url": "https://127.0.0.1/mcp"}
     )
     assert blocked.status_code == 422
+    # A local server needs somewhere to run: no runner (and no host access) is refused.
+    local = {"name": "files", "transport": "stdio", "command": "uvx", "args": ["mcp-server-time"]}
+    no_runner = alice.post("/api/connectors", json=local)
+    assert no_runner.status_code == 422 and "sandbox runner" in no_runner.json()["detail"]
+    from workspace import session_client
+
+    monkeypatch.setattr(session_client, "available", lambda: True)
     stdio = alice.post(
         "/api/connectors",
         json={"name": "files", "transport": "stdio", "command": "uvx", "args": ["mcp-server-time"]},
