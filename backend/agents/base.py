@@ -26,7 +26,7 @@ import subprocess
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar, copy_context
 from dataclasses import replace
 from types import MethodType
@@ -2485,8 +2485,11 @@ class BaseAgent:
         finally:
             if not _evaluation_only.get() and not _language_only.get():
                 from security import sakk
+                from tadbir import athar
 
-                sakk.record_tool(current_user_id() or "", tool_name, params, result)
+                receipt = sakk.record_tool(current_user_id() or "", tool_name, params, result)
+                # The run's own trace (Athar replay, Itqan skills, Islah signals).
+                athar.note(tool_name, params, result, receipt)
 
     async def _execute_tool_checked(self, tool_name: str, params: dict) -> Any:
         """Execute a tool with Wali security checks and self-healing.
@@ -3458,8 +3461,14 @@ Match the requested depth and self-correct errors."""
                 if kwargs:  # tool and status frames are not the answer
                     await stream_callback(chunk, **kwargs)
 
+        from tadbir import athar, khatimah
+
+        # A top-level run keeps its own trace of tool calls; a delegated run adds to it.
+        traced = athar.bind() if not stack else nullcontext(athar.current())
         try:
-            with amanah.bind() as taint_record:
+            with traced as run_trace, amanah.bind() as taint_record:
+                if not stack:
+                    khatimah.before_run(task, context)
                 result = await self._execute_impl(
                     task, context, shown, tool_callback, thinking_callback
                 )
@@ -3639,6 +3648,12 @@ Match the requested depth and self-correct errors."""
                     "unmeasured_defaults": {"lawh_consistency": 0.8, "agent_agreement": 0.7},
                 },
             }
+            if not stack:
+                # What the run teaches (docs/automatic-learning.md): an Islah episode,
+                # Athar replay, Itqan skills; the agent's Martaba record (report only).
+                learned = khatimah.after_run(self, task, context, result, run_trace)
+                if learned:
+                    result["usage"]["learned"] = learned
             # Tadqiq: a sample of the answers given with no model call is asked of
             # the teacher afterwards, blinded, in the background (docs/tadqiq.md).
             from tadbir import tadqiq
@@ -3866,6 +3881,12 @@ Match the requested depth and self-correct errors."""
             self._faculty_guidance = (
                 f"{self._faculty_guidance}\n{amanah.guidance(pasted_findings)}".strip()
             )
+        # Islah: lessons from this person's corrections of similar work (background).
+        from tadbir import khatimah
+
+        lessons = khatimah.guidance(task)
+        if lessons:
+            self._faculty_guidance = f"{self._faculty_guidance}\n{lessons}".strip()
 
         try:
             # Hikmah — offer distilled counsel from prior experience for this task
@@ -3879,6 +3900,21 @@ Match the requested depth and self-correct errors."""
                 )
         except Exception as hik_err:
             logger.debug("[HIKMAH] advise skipped: %s", hik_err)
+
+        # Athar: a repeated request whose verified steps all have a known source
+        # and enough evidence is answered by running them again, with no model call.
+        if not _evaluation_only.get() and len(_execution_stack.get()) <= 1:
+            from tadbir import athar
+
+            try:
+                replayed = await athar.replay(self, task, stream_callback)
+            except Exception:
+                logger.exception("[ATHAR] replay failed; the run goes on")
+                replayed = None
+            if replayed is not None:
+                self.total_duration_ms += replayed["duration_ms"]
+                self.success_count += 1
+                return cast(dict, replayed)
 
         # Tadbir: MIZAN's own architecture handles what it understands (plan,
         # tools, verification); the language model is only its language faculty.

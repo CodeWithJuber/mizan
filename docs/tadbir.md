@@ -111,6 +111,48 @@ of a request:
 - **Learning.** Each verified or failed result updates that agent's posterior.
   An agent whose work keeps failing MIZAN's checks stops getting it.
 
+### Does sharing the work earn its place? (Sullam, report only)
+
+`sullam.py`, a port of ForgeKit's `ladder.js`. He et al. 2026 (arXiv
+2611.32606, §4.1) found that a multi-agent system's gains often vanish once
+single agents get the same token budget: a plain vote of independent single
+answers does as well. MIZAN grades Majlis (the parts of a request given to the
+agents that fit, side by side) per kind of work (Fahm's intent) against
+INDEPENDENT single answers at the same budget, at three rising bars:
+
+| Level | Majlis beats | Reference |
+|---|---|---|
+| 1 | one agent | V(1) |
+| 2 | a compute-matched majority vote | V(n_B) |
+| 3 | compute-matched pass@n (solved if any answer is right) | T(n_B) |
+
+- **The budget.** n_B = Majlis's completion tokens / c₁, where c₁ is the mean
+  completion tokens of one single answer.
+- **Evidence.** The AGI test sends every task to the base model alone and to
+  MIZAN, `repeats` times. Each base answer is an independent single answer to
+  that question (the pool); each MIZAN answer that used more than one agent is
+  a team run (the group), kept in `ladder.db` (counts and token counts only).
+  V(n) and T(n) are exact from the pool's m answers, k of them right
+  (hypergeometric, `majority_at_n`, `pass_at_n`), interpolated at a non-integer
+  n_B, so no extra model call is made. A run without a token count is not
+  priced and is left out.
+- **The test.** A level counts only when a one-sided paired t-test at α = 0.025,
+  one difference per question, confirms it and every level below it. A
+  question with fewer than ⌈n_B⌉ single answers cannot judge levels 2 and 3
+  (capping n would understate the baseline): the report says so, and running
+  the AGI test with more repeats fixes it.
+- **The verdict.** Majlis stays the reported default for an intent only while
+  it clears level 2; otherwise the report says a vote of single answers at the
+  same budget does as well, or that there is not enough evidence yet.
+- **The forward shape.** `sullam.deal` gives workers disjoint evidence slices,
+  dealt by role with the most-constrained role first (ForgeKit's
+  `evidence_team.js`), and `sullam.facts_packet` gives the lead one
+  deduplicated packet. These are the building blocks; Majlis does not run the
+  shape yet, so the ladder does not grade it.
+- **Report, don't block.** `GET /api/tadbir/learning` → `ladder` gives each
+  intent's level, verdict, n_B and references; Agents → Majlis → Learning
+  shows the intents that were measured. Nothing here changes a run by itself.
+
 ## Ta'allum: learning from verified work
 
 `taallum.py`. When Lisan maps wording that Fahm did not recognise, and MIZAN

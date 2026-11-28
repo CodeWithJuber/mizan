@@ -331,3 +331,47 @@ async def test_the_chats_episodes_and_the_repeats_it_gave_go_too(stores, monkeyp
     assert receipt["removed"]["episode repeats"] == 1
     assert receipt["traces"] == 0
     assert episodic.counts(OWNER) == {"episodes": 1, "lasting": 0}
+
+
+async def test_lessons_earned_skills_and_replay_runs_of_the_chat_go_too(stores):
+    """Islah, Itqan and Athar (docs/automatic-learning.md): what the erased chat
+    taught leaves the person's learning store; the kept chat's stays."""
+    from agent_skills import loader
+    from tadbir import athar, islah, itqan, khatimah
+
+    chat, private, folder = stores
+    await seed_chat(chat, private, folder, "chat-secret", SECRET)
+    await seed_chat(chat, private, folder, "chat-kept", KEPT)
+    kept = khatimah.store(OWNER)
+    steps = [{"tool": "web_search", "params": {"query": "x"}, "outcome": "done",
+              "receipt": "b" * 64, "path": ""}]  # fmt: skip
+    for at, chat_id in ((1.0, "chat-secret"), (2.0, "chat-kept")):
+        secret = "secret" in chat_id
+        islah.observe(kept, chat=chat_id, request=SECRET if secret else KEPT,
+                      tools=["web_search" if secret else "salah_times"], files=[],
+                      signals=["check_fixed"], shown=[], workspace=f"p-{chat_id}",
+                      now=1_800_000_000 + at)  # fmt: skip
+        islah.signal(kept, "restored", workspace=f"p-{chat_id}", now=1_800_000_000 + at)
+        athar.learn(kept, f"look up {chat_id}", steps, chat=chat_id)
+    for n in range(3):
+        earned = itqan.observe(kept, OWNER, intent="web_search", request=SECRET, steps=steps,
+                               verified=True, chat="chat-secret", now=1_800_000_000 + n)  # fmt: skip
+    name = earned["proposed"]
+    assert name and islah.summary(kept)["lessons"] == 2
+
+    receipt = await mahw.erase_chat(
+        chat_db=chat.db_path,
+        artifacts_db=chat.db_path,
+        private=private,
+        owner=OWNER,
+        session_id="chat-secret",
+    )
+
+    removed = receipt["removed"]
+    assert removed["lessons from corrections"] == 1
+    assert removed["earned skills and their runs"] == 4
+    assert removed["replay runs"] == 1
+    assert [lesson["chats"] for lesson in islah._load(kept)["lessons"]] == [["chat-kept"]]
+    assert name not in {skill.name for skill in loader.user_skills(OWNER)}
+    assert [e["chat"] for f in athar._load(kept) for e in f["examples"]] == ["chat-kept"]
+    assert "Maryam" not in str(kept.get(islah.KEY)) + str(kept.get(itqan.KEY))

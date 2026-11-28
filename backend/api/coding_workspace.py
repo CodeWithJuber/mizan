@@ -335,6 +335,11 @@ async def restore_checkpoint(
     result = cast(
         dict, await asyncio.to_thread(store.restore, workspace_id, checkpoint_id, body.paths)
     )
+    if result["restored"] or result["removed"]:
+        # Islah: the person undid the latest answer's changes to this project.
+        from tadbir import khatimah
+
+        khatimah.signal(user.user_id, "restored", workspace=workspace_id)
     if (result["restored"] or result["removed"]) and await session_client.running(
         user.user_id, workspace_id
     ):

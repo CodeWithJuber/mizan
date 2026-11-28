@@ -274,6 +274,72 @@ class BettingEProcess:
         return self.value
 
 
+# Bet fractions g (with their weights) fixed before any outcome is seen: the
+# mixture of ForgeKit's mathcore/sequential.js. Any mixture chosen in advance
+# keeps the test valid.
+BET_MIXTURE: tuple[tuple[float, float], ...] = (
+    (1.0, 1 / 2),
+    (0.75, 1 / 6),
+    (0.5, 1 / 6),
+    (0.25, 1 / 6),
+)
+
+
+def log_wealth_at_most(
+    successes: float,
+    failures: float,
+    rate: float,
+    mixture: Sequence[tuple[float, float]] = BET_MIXTURE,
+) -> float:
+    """ln of the betting wealth against "the success rate is at most ``rate``".
+
+    The same test by betting as :class:`BettingEProcess`, with the stake
+    λ = g/rate fixed in advance and mixed over g: a success multiplies the
+    wealth by 1 + g(1/rate − 1), a failure by 1 − g. Each factor has mean at
+    most 1 under the null, so the mixture is a test supermartingale, and as
+    the factors do not depend on the order, the counts are enough.
+    (BettingEProcess's aGRAPA stake stays 0 until its running mean passes
+    ``p0``; for a null near 0.8 that is some 65 outcomes before any bet.)
+    """
+    if not 0.0 < rate < 1.0:
+        raise ValueError("need 0 < rate < 1")
+    terms = []
+    for g, weight in mixture:
+        log_term = math.log(weight)
+        if successes:
+            log_term += successes * math.log1p(g * (1.0 / rate - 1.0))
+        if failures:
+            if g >= 1.0:
+                continue  # all in: one failure leaves nothing
+            log_term += failures * math.log1p(-g)
+        terms.append(log_term)
+    if not terms:
+        return -math.inf
+    top = max(terms)
+    return top + math.log(sum(math.exp(term - top) for term in terms))
+
+
+def anytime_lower(successes: float, failures: float, alpha: float = 0.05) -> float:
+    """A lower confidence bound for a success rate that holds at every time at once:
+    P(the bound ever exceeds the true rate) ≤ α, however often it is read (Ville's
+    inequality on :func:`log_wealth_at_most`). Ported from ForgeKit's ``anytimeLower``."""
+    if successes < 0 or failures < 0:
+        raise ValueError("counts must be nonnegative")
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("need 0 < alpha < 1")
+    need = -math.log(alpha)
+    low, high = 0.0, 1.0
+    for _ in range(60):
+        middle = (low + high) / 2
+        if middle <= 0.0:
+            break
+        if log_wealth_at_most(successes, failures, middle) >= need:
+            low = middle
+        else:
+            high = middle
+    return low
+
+
 def thompson_choice(
     options: Sequence[str], posteriors: dict[str, BetaEstimator], rng: random.Random | None = None
 ) -> str:

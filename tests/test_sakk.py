@@ -30,6 +30,13 @@ def tamper(store: Sakk, owner: str, seq: int, **changes) -> None:
         )
 
 
+def test_a_tool_receipt_is_returned_to_the_run_that_made_it(store):
+    """The run's trace keeps each step's receipt id (Itqan, Athar)."""
+    receipt = sakk.record_tool("alice", "web_search", {"q": "x"}, {"ok": True})
+    assert receipt["seq"] == 1 and receipt["hash"] == store.receipts("alice")[0]["hash"]
+    assert receipt["outcome"] == "done" and "x" not in json.dumps(receipt)
+
+
 def test_each_receipt_links_to_the_one_before(store):
     for tool in ("web_search", "bash", "write_file"):
         store.record_tool("alice", tool, {"q": tool}, {"ok": True})

@@ -51,6 +51,102 @@ interface Lessons {
   items: { kind: string; signature: string; usefulness: number }[];
 }
 
+/** Sullam: whether sharing the work among agents beats a vote at the same budget. */
+interface LadderRow {
+  intent: string;
+  default: string;
+  verdict: string;
+  /** 0-3: beats one answer, a vote at the same budget, pass@n at the same budget. */
+  level: number;
+  questions: number;
+  n_b?: number | null;
+  y?: number | null;
+  tests?: Record<string, { reference: number | null; cleared: boolean; indeterminate: boolean }>;
+}
+
+/** Islah, Itqan and Athar: lessons from corrections, earned skills, replayed runs. */
+interface Corrections {
+  lessons: number;
+  active: number;
+  candidate: number;
+  quarantined: number;
+  items: { id: string; status: string; corrected: string; confidence: number }[];
+}
+
+interface EarnedSkills {
+  counting: number;
+  proposed: { name: string; terms: string[] }[];
+  removed: number;
+  threshold: number;
+}
+
+interface Replay {
+  enabled: boolean;
+  thresholds: Record<string, number>;
+  families: { tools: string[]; requests: number; agreed: number; lower_bound: number; replayed: number }[];
+}
+
+const share = (value?: number | null) => (typeof value === "number" ? percent(value) : "—");
+
+function ShapesCard({ ladder, corrections, earned, replay }: {
+  ladder: LadderRow[];
+  corrections: Corrections | null;
+  earned: EarnedSkills | null;
+  replay: Replay | null;
+}) {
+  const measured = ladder.filter((row) => row.questions > 0);
+  return (
+    <div className="card">
+      <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">
+        Corrections, earned skills and replays · إصلاح · إتقان · أثر
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        MIZAN learns a lesson only when two independent kinds of correction agree (your correction, an undo, a
+        check that failed before it passed), proposes a skill only from work it verified three times (it waits
+        for your trust in Skills), and repeats a verified run with no model call only once the evidence clears
+        its bar.
+      </p>
+      <ul className="space-y-1 text-sm mb-3">
+        <li className="text-foreground">
+          Lessons: {corrections ? `${corrections.active} in use · ${corrections.candidate} waiting for a second time · ${corrections.quarantined} set aside` : "—"}
+        </li>
+        <li className="text-foreground">
+          Earned skills: {earned ? `${earned.proposed.length} proposed · ${earned.counting} kinds of work being counted (needs ${earned.threshold} verified runs)` : "—"}
+        </li>
+        <li className="text-foreground">
+          Replays: {replay ? `${replay.families.reduce((sum, family) => sum + family.replayed, 0)} answered without the model · ${replay.families.length} forms learned${replay.enabled ? "" : " (turned off)"}` : "—"}
+        </li>
+      </ul>
+      {corrections && corrections.items.some((item) => item.status === "active") && (
+        <ul className="divide-y divide-border mb-3">
+          {corrections.items.filter((item) => item.status === "active").map((item) => (
+            <li key={item.id} className="py-1.5 text-xs text-muted-foreground">{item.corrected}</li>
+          ))}
+        </ul>
+      )}
+      <div className="text-xs font-medium text-foreground mb-1">Sharing the work (Majlis) against a vote at the same budget</div>
+      {measured.length > 0 ? (
+        <ul className="divide-y divide-border" data-testid="ladder">
+          {measured.map((row) => (
+            <li key={row.intent} className="py-1.5 flex flex-wrap items-center gap-x-3 text-xs">
+              <span className="min-w-0 flex-1 font-mono text-foreground">{row.intent}</span>
+              <span className="text-muted-foreground">{row.verdict}</span>
+              <span className="font-mono text-muted-foreground">
+                level {row.level} of 3 · {row.questions} questions · n_B {row.n_b ?? "—"} · right {share(row.y)} vs vote {share(row.tests?.["2"]?.reference)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Not measured yet: Majlis stays the default for every kind of work. The AGI test measures it (more repeats
+          let it judge the vote). This is reported only and never changes a run.
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface HarnessRow {
   task: string;
   incumbent: string;
@@ -211,6 +307,10 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
   const [lessons, setLessons] = useState<Lessons | null>(null);
   const [answers, setAnswers] = useState<Answers | null>(null);
   const [harness, setHarness] = useState<Harness | null>(null);
+  const [ladder, setLadder] = useState<LadderRow[]>([]);
+  const [corrections, setCorrections] = useState<Corrections | null>(null);
+  const [earned, setEarned] = useState<EarnedSkills | null>(null);
+  const [replay, setReplay] = useState<Replay | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -220,6 +320,10 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
       setRows(workRows((data.routing as RoutingRow[]) ?? []));
       setWording((data.wording as Wording) ?? null);
       setAnswers((data.answers as Answers) ?? null);
+      setLadder((data.ladder as LadderRow[]) ?? []);
+      setCorrections((data.lessons as Corrections) ?? null);
+      setEarned((data.earned_skills as EarnedSkills) ?? null);
+      setReplay((data.replay as Replay) ?? null);
       setPrograms((await api.get("/tadbir/programs")) as unknown as Programs);
       setLessons((await api.get("/tadbir/lessons")) as unknown as Lessons);
       setError("");
@@ -462,6 +566,8 @@ export default function TadbirLearning({ api }: { api: ApiClient }) {
           </button>
         </div>
       </div>
+
+      <ShapesCard ladder={ladder} corrections={corrections} earned={earned} replay={replay} />
 
       <div className="card">
         <div className="text-xxs font-semibold text-muted-foreground/80 uppercase tracking-widest mb-1">

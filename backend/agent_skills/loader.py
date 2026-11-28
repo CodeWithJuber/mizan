@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import re
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -295,6 +296,11 @@ def project_skills(user_id: str, workspace_id: str | None) -> list[AgentSkill]:
     return skills[:MAX_SKILLS_PER_SCOPE]
 
 
+# Every change to a user's state file reads, changes and writes it under this
+# lock, so two changes at once never drop one another (one backend process).
+_STATE_LOCK = threading.RLock()
+
+
 def _state_path(user_id: str) -> Path:
     return user_root(user_id) / ".state.json"
 
@@ -321,9 +327,10 @@ def disabled_skills(user_id: str) -> set[str]:
 
 
 def set_enabled(user_id: str, name: str, enabled: bool) -> set[str]:
-    disabled = disabled_skills(user_id)
-    (disabled.discard if enabled else disabled.add)(name)
-    _write_state(user_id, {**_state(user_id), "disabled": sorted(disabled)})
+    with _STATE_LOCK:
+        disabled = disabled_skills(user_id)
+        (disabled.discard if enabled else disabled.add)(name)
+        _write_state(user_id, {**_state(user_id), "disabled": sorted(disabled)})
     return disabled
 
 
@@ -334,15 +341,40 @@ def trusted_skills(user_id: str) -> dict[str, str]:
 
 
 def trust(user_id: str, skill: AgentSkill) -> None:
-    _write_state(
-        user_id,
-        {**_state(user_id), "trusted": {**trusted_skills(user_id), skill.name: skill.digest}},
-    )
+    with _STATE_LOCK:
+        _write_state(
+            user_id,
+            {**_state(user_id), "trusted": {**trusted_skills(user_id), skill.name: skill.digest}},
+        )
+
+
+def pending_skills(user_id: str) -> set[str]:
+    """Skills MIZAN saved on its own (earned from verified work, ``tadbir/itqan.py``):
+    they wait for the user's trust in Library whatever their words."""
+    pending = _state(user_id).get("pending")
+    return {str(name) for name in pending} if isinstance(pending, list) else set()
+
+
+def hold(user_id: str, name: str) -> None:
+    """Keep a skill out of use until the user trusts it (as it is then). Hold a
+    skill MIZAN writes on its own before writing it, so it is never in use
+    untrusted for a moment."""
+    with _STATE_LOCK:
+        pending = pending_skills(user_id) | {name}
+        _write_state(user_id, {**_state(user_id), "pending": sorted(pending)})
+
+
+def release(user_id: str, name: str) -> None:
+    """Give back a held name whose skill was never written."""
+    with _STATE_LOCK:
+        pending = pending_skills(user_id) - {name}
+        _write_state(user_id, {**_state(user_id), "pending": sorted(pending)})
 
 
 def held(user_id: str, skill: AgentSkill) -> bool:
-    """A skill whose instructions try to override the AI waits for the user's trust."""
-    if not skill.findings():
+    """A skill whose instructions try to override the AI, or one MIZAN saved on
+    its own, waits for the user's trust."""
+    if not skill.findings() and skill.name not in pending_skills(user_id):
         return False
     return trusted_skills(user_id).get(skill.name) != skill.digest
 

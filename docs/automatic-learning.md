@@ -13,6 +13,9 @@ How often answers still need the hosted model, per kind of request and language,
 | **Tajriba** (`tadbir/tajriba.py`) | Which change fixed which kind of error | Sandbox failures that a repair then verified | Showing Lisan the most relevant verified lessons when it writes or repairs similar code |
 | **Tajdid** (`tadbir/tajdid.py`) | Better wording of Lisan's code instructions | Every verified or failed result of code work | Replacing an instruction only when the new version proves better |
 | **Wazn** (`tadbir/wazn.py`) | Which model is ready for which kind of work | The same verified outcomes, per model | Sending code work to the cheapest ready model, and a stronger one after a failure |
+| **Islah** (`tadbir/islah.py`) | What you corrected, in any kind of work | Correction signals from two independent families: your correction, an undo, a check that failed before it passed | Showing the agent and Lisan the active lessons for similar work |
+| **Itqan** (`tadbir/itqan.py`) | Which procedure keeps working for you | Runs of the same form that MIZAN verified at least three times, each step with its Sakk receipt | Proposing a skill, held until you trust it |
+| **Athar** (`tadbir/athar.py`) | The tool steps of a verified run, and when a repeat may skip the model | Verified multi-step tool traces of repeated requests, each new run first testing the prediction | Re-running the steps with no model call once the evidence clears a cost-derived bar |
 
 ## Hifz: programs kept and re-checked
 
@@ -161,6 +164,134 @@ Each lesson keeps a Beta posterior of how often the work it was shown for then v
 
 You can see and forget your lessons in **Agents → Majlis → Learning** (`GET/DELETE /api/tadbir/lessons`).
 
+## Islah: lessons for all work
+
+`tadbir/islah.py`, ported from ForgeKit's `lessons.js` and `cortex.js`. Tajriba
+keeps lessons from code that failed and was repaired; Islah ("I only want to
+put things right as far as I am able", 11:88) widens that to any work.
+
+A lesson is learned from **correction signals**, in three families:
+
+| Signal | Family | Weight | When |
+|---|---|---|---|
+| `complaint` | human | 0.35 | Your next message corrects the answer just given ("No, I meant…", "that's wrong", "galat hai"), or asks to try harder (Qasd's `harder` facet). Only the first message after an answer is read, and a message of more than 30 words never counts. |
+| `restored` | undo | 0.5 | You restore a project checkpoint (the latest answer's changes in that project are undone). |
+| `denied` | undo | 0.4 | You refuse an action the answer needed, when asked or later as a held action. |
+| `check_fixed` | outcome | 0.45 | In the same run a tool failed and then worked, or Sidq corrected a claim. |
+
+The signals of one answer are weighed by noisy-OR, p = 1 − ∏(1 − wᵢ), so three
+weak signals cannot fake one strong one. An answer **fires only with signals
+from at least two families**: a stray "no" or a failed tool alone never makes a
+lesson. p ≥ 0.7 distils a lesson; 0.4 ≤ p < 0.7 does only when the same
+context (a shared file or tool, or half its words) misfired before; below 0.4
+it is variation. (ForgeKit also lets an explicit undo fire alone; here every
+lesson needs two families.)
+
+A lesson moves **candidate → active → quarantined → retired**:
+
+- Its text comes from the episode alone, with no model: your own words when
+  you corrected it (kept only when Amanah finds nothing in them), else "confirm
+  what they want changed" for an undo, or "check the result" for a failed check.
+- A new lesson is a candidate and is never shown. A later firing answer in the
+  same context, where the lesson was not in view, confirms it: active. Being
+  shown is not confirmation.
+- When you undo work done with a lesson in view, the lesson is contradicted.
+  Confidence = freshness × validity (validity (1 + confirmations)/(2 +
+  confirmations + contradictions), freshness halving every 45 days without a
+  confirmation): under 0.3 a lesson is quarantined; quarantined and
+  contradicted again it retires; confirmed twice it is active again. A wrong
+  lesson dies faster than a right one grows.
+- The active lessons most relevant to the work (a shared file 1.0, a shared
+  tool 0.6, shared words 0.3 × overlap; times freshness × validity) are shown
+  to the agent as background in its system prompt, and to Lisan when it writes
+  code, at most three. At most 60 lessons and 200 answers are kept.
+
+## Itqan: skills earned from verified work
+
+`tadbir/itqan.py`, ported from ForgeKit's `jev_skills.js`. Besides the skills
+the model writes itself ([`skill_write`](personal-agents.md#learned-skills-skill_write)),
+MIZAN proposes one of its own only from evidence:
+
+- **The same work verified at least 3 times.** The signature is Fahm's
+  intent, the tools in order and the request's content words without numbers
+  ("add 5 and 7 then double it" and "add 9 and 2 then double it" are one).
+  Each run must be verified by MIZAN's own checks, every tool step done, each
+  with its Sakk receipt.
+- **At most one proposal per person per day**, 8 in all. A skill you remove is
+  remembered and never proposed again: by its signature, or a regrouped copy
+  by keyword overlap ≥ ½.
+- **Built only from keywords, tool names, file paths and receipt ids**, never
+  the request text, since a skill is loaded into later chats. Instruction-shaped
+  words ("ignore", "instructions", "always") are left out, and Amanah checks the
+  draft.
+- **Saved pending.** The skill (`mizan-learned-<keywords>`) is held first
+  (`agent_skills.loader.hold`), then written into your skills, so no chat can
+  load it untrusted in between; a hold that fails writes nothing, and a write
+  that fails gives the name back once no folder of it is left. It waits until
+  you trust it in **Library → Skills**, like a skill Amanah held (the list marks
+  it `earned`). Earning never makes it trusted, and a later change holds it
+  again.
+
+## Athar: replay of verified runs
+
+`tadbir/athar.py` ("so they went back, retracing their footsteps", 18:64),
+ported from ForgeKit's `replay/engine.js` and `mathcore/sequential.js`. Hifz
+re-runs one kept program; Athar does the same for the multi-step tool trace of
+a repeated request (a watcher's task, the same question about other numbers).
+
+- **The trace.** Every tool call of a top-level run (delegated runs included)
+  is recorded with its Sakk receipt (`athar.note` in `_execute_tool_safe`). A
+  verified run whose tools the model chose joins the family of its form: the
+  same tools in order, requests that differ only in numbers and spans of other
+  words (Hifz's anti-unification). A run MIZAN handled with its own recipe is
+  not learned (the recipe keeps its own answer, and Hifz repeats its program).
+- **Where it replays.** Only for the same person, under the same agent (its
+  template) and in the same bound project it was learned in (`athar.scope_of`):
+  a trace from one project never writes into another.
+- **What is never kept.** A trace with an irreversible step (it could never
+  replay), and one whose arguments hold a credential (a key named like one, a
+  token shape, or anything Satr reads as a secret, such as a password in a
+  link).
+- **Every argument has a known source**: a constant all the family's runs used,
+  the request's j-th number (with an offset they agree on), a span of its own
+  words, or a text holding those (Hifz's slots). A constant holding a word the
+  earlier requests all said and this one does not is no source. Any other
+  argument stops the replay. With one distinct request seen, only that exact
+  request is replayed.
+- **The bar.** Replaying pays when the chance p that the steps are right exceeds
+  q* = (L_wrong + c_cheap)/(L_wrong + c_fallback). In units of one normal run
+  (c_fallback = 1), a replay costs c_cheap = 0.02 and a wrong step costs
+  L_wrong = 4 for a read or 20 for a checkpointed project write: q* = 0.804 or
+  0.953. MIZAN replays only while an anytime-valid lower bound on p clears the
+  strictest step's q*: `core.adaptive.anytime_lower`, the betting test of
+  `BettingEProcess` with its stake fixed in advance and mixed over four bet
+  sizes (ForgeKit's mixture), α = 0.05, safe to read after every run. Sixteen
+  agreeing runs clear the read bar, 73 the write bar.
+- **The evidence.** Test, then train: before a verified run joins its family,
+  MIZAN predicts its steps from the family and counts whether the run did
+  exactly that. A replayed run adds no evidence about itself.
+- **Irreversible steps are never replayed.** A step that is neither read-only
+  nor a checkpointed project edit or sandbox run (sending, paying, deleting, a
+  connector tool without a read-only hint; `approvals.tool_category`) stops the
+  trace there; as no step after it may run, none runs, and the agent does the
+  request normally.
+- **Each replay is a regression check.** A step that fails, or a replayed answer
+  you correct or undo, drops the family.
+- The answer is what each step returned, marked `evidence_observed` (not
+  verified), `orchestrator: mizan`, with `replay` (family, steps, bound, bar).
+
+`MIZAN_REPLAY` = `on` (default) | `off`; off in tests unless a test turns it on.
+
+### Where they live
+
+Islah, Itqan and Athar keep each person's state in
+`private/<sha256(owner)>/learning.db` (`tadbir/khatimah.py`, which reads each
+finished run once). A stateless run and a person with `learning: off` keep
+nothing and replay nothing; Mahw erases the lessons an erased chat taught, its
+runs and the skills they earned, and its replay runs. **Agents → Majlis →
+Learning** shows the counts (`GET /api/tadbir/learning`: `lessons`,
+`earned_skills`, `replay`).
+
 ## Tajdid: instructions renewed, kept only when proven better
 
 Lisan's instruction for each kind of code work is MIZAN's harness for the model: writing code, repairing it, and proposing or revising a grid or sequence rule. Following HERD and sequential incumbent replacement, the harness evolves under MIZAN's checks:
@@ -217,7 +348,7 @@ Once an approved bundle is in place, the autorun watcher trains, evaluates, and 
 
 **Hardware:** the 2 GB production backend cannot train. Train on a larger host.
 
-Nothing in Majlis, Ta'allum, Hifz, Muhasaba, Tajriba, Tajdid or Wazn becomes training data. What they learn is MIZAN's own understanding.
+Nothing in Majlis, Ta'allum, Hifz, Muhasaba, Tajriba, Islah, Itqan, Athar, Tajdid or Wazn becomes training data. What they learn is MIZAN's own understanding.
 
 Two research directions are deliberately not used for the own model:
 
