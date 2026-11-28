@@ -1,0 +1,88 @@
+{
+  "context": {
+    "fileName": [
+      "AGENTS.md"
+    ]
+  },
+  "_forge": "forge:sync:0deccc74b552",
+  "mcpServers": {
+    "forge-cortex": {
+      "command": "forge",
+      "args": [
+        "cortex-mcp"
+      ]
+    }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "forge-SessionStart",
+            "description": "Forge guards (SessionStart)",
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run gemini SessionStart",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "forge-BeforeAgent",
+            "description": "Forge guards (UserPromptSubmit)",
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run gemini BeforeAgent",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "forge-BeforeTool",
+            "description": "Forge guards (PreToolUse)",
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run gemini BeforeTool",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "forge-AfterTool",
+            "description": "Forge guards (PostToolUse)",
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run gemini AfterTool",
+            "timeout": 30000
+          }
+        ]
+      }
+    ],
+    "AfterAgent": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "name": "forge-AfterAgent",
+            "description": "Forge guards (Stop)",
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run gemini AfterAgent",
+            "timeout": 60000
+          }
+        ]
+      }
+    ]
+  }
+}

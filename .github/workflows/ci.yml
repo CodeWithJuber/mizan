@@ -18,6 +18,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # labeled: the agent-config guard reads the labels from the event, and a re-run would reuse
+    # the old event, so adding agent-config-reviewed has to start a new run.
+    types: [opened, synchronize, reopened, labeled]
   schedule:
     - cron: "17 2 * * 6"
   workflow_dispatch:
@@ -58,6 +61,14 @@ jobs:
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
       - name: Standard hosted runners, pinned actions, no pull request code with secrets
         run: bash scripts/ci/public-repo-guard.sh
+      # Hook and MCP files run in an agent session as soon as a branch is checked out, so a pull
+      # request that changes them needs the owner as author or a maintainer's label (docs/forgekit.md).
+      - name: Agent hooks and MCP configuration read by a maintainer
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: bash scripts/ci/agent-config-guard.sh
       # After a merge, main may hold files that an earlier run of this workflow passed with (one
       # Git tree, in GitHub's own record). The plan trusts that pass only from a full run: a push,
       # the weekly run or a run by hand, never a pull request's, which checks only part. Then the

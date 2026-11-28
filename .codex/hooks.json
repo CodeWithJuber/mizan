@@ -1,0 +1,64 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run codex SessionStart",
+            "commandWindows": "if (Get-Command forge -ErrorAction SilentlyContinue) { forge hooks run codex SessionStart }",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run codex UserPromptSubmit",
+            "commandWindows": "if (Get-Command forge -ErrorAction SilentlyContinue) { forge hooks run codex UserPromptSubmit }",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run codex PreToolUse",
+            "commandWindows": "if (Get-Command forge -ErrorAction SilentlyContinue) { forge hooks run codex PreToolUse }",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run codex PostToolUse",
+            "commandWindows": "if (Get-Command forge -ErrorAction SilentlyContinue) { forge hooks run codex PostToolUse }",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v forge >/dev/null 2>&1 || exit 0; forge hooks run codex Stop",
+            "commandWindows": "if (Get-Command forge -ErrorAction SilentlyContinue) { forge hooks run codex Stop }",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
