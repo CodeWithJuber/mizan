@@ -17,6 +17,8 @@ import {
 import { phaseLabel } from "../../utils/chatRecovery.ts";
 import type { ThinkingTrace } from "../../types/ruh";
 import type { RunProgress } from "./ChatProvider";
+import { ElicitationPrompt } from "./ElicitationPrompt";
+import type { ElicitationAction } from "../../utils/elicitation";
 
 function seconds(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -181,9 +183,10 @@ interface Props {
   progress?: RunProgress | null;
   awaitingText?: boolean;
   onDecision?: (approvalId: string, decision: ApprovalDecision) => Promise<void> | void;
+  onElicitation?: (id: string, action: ElicitationAction, content?: Record<string, unknown>) => Promise<void> | void;
 }
 
-export function RunTimeline({ activity, trace, progress, awaitingText, onDecision }: Props) {
+export function RunTimeline({ activity, trace, progress, awaitingText, onDecision, onElicitation }: Props) {
   const live = Boolean(progress);
   const [open, setOpen] = useState(false);
   const elapsed = useElapsed(progress?.startedAt);
@@ -191,18 +194,22 @@ export function RunTimeline({ activity, trace, progress, awaitingText, onDecisio
   const todos = activity?.todos ?? [];
   const skills = activity?.skills ?? [];
   const approvals = activity?.approvals ?? [];
+  const elicitations = activity?.elicitations ?? [];
   const steps = trace?.steps ?? [];
   const pending = approvals.filter((item) => !item.decision);
+  const asking = elicitations.filter((item) => !item.decision);
   const running = tools.find((tool) => tool.status === "running");
   const stepCount = tools.length + steps.length;
   const hasDetail = stepCount > 0 || todos.length > 0 || skills.length > 0;
 
-  if (!live && !hasDetail && approvals.length === 0) return null;
+  if (!live && !hasDetail && approvals.length === 0 && elicitations.length === 0) return null;
 
   const label = live
     ? pending.length
       ? "Waiting for your approval"
-      : progress?.note
+      : asking.length
+        ? "Waiting for your answer"
+        : progress?.note
         ?? (running ? `Using ${toolLabel(running)}` : steps.length && awaitingText
           ? `${PHASES[steps[steps.length - 1].phase] ?? "Thinking"}…`
           : awaitingText ? `${phaseLabel(progress?.phase)}…` : "Writing…")
@@ -287,6 +294,14 @@ export function RunTimeline({ activity, trace, progress, awaitingText, onDecisio
         <ul className="mt-2 space-y-2">
           {approvals.map((approval) => (
             <ApprovalPrompt key={approval.approvalId} approval={approval} onDecision={live ? onDecision : undefined} />
+          ))}
+        </ul>
+      )}
+
+      {elicitations.length > 0 && (live || elicitations.some((item) => item.decision)) && (
+        <ul className="mt-2 space-y-2">
+          {elicitations.map((request) => (
+            <ElicitationPrompt key={request.id} request={request} onAnswer={live ? onElicitation : undefined} />
           ))}
         </ul>
       )}

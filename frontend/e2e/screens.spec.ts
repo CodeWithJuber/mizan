@@ -87,3 +87,24 @@ for (const scheme of ["light", "dark"] as const) {
     await page.screenshot({ path: `${OUT}/${tag}-code-list.png` });
   });
 }
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`connectors ${scheme}`, async ({ page }, info) => {
+    const tag = `${info.project.name}-${scheme}`;
+    await open(page, scheme);
+    await page.request.post("/api/e2e/connectors/reset", { headers: { Authorization: "Bearer e2e-token" } });
+    await page.goto("/settings/connectors");
+    await page.getByRole("heading", { name: "GitHub" }).waitFor();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${OUT}/${tag}-connectors.png`, fullPage: true });
+    await page.getByRole("button", { name: "Add connector", exact: true }).click();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${OUT}/${tag}-connectors-presets.png`, fullPage: true });
+    await page.getByRole("button", { name: "Set up Exa search" }).click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${OUT}/${tag}-connectors-custom.png`, fullPage: true });
+    await page.getByRole("button", { name: "Edit Filesystem" }).click();
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${OUT}/${tag}-connectors-edit.png` });
+  });
+}

@@ -41,6 +41,12 @@ def has_event_sink() -> bool:
     return _sink.get() is not None
 
 
+def current_sink() -> EventSink | None:
+    """The run's sink, for work that continues in another task (a connector's
+    progress or question arrives there) to bind again with ``bind_event_sink``."""
+    return _sink.get()
+
+
 def bounded(value: Any, depth: int = 0) -> Any:
     """JSON-safe copy with secret-looking keys redacted and long text trimmed."""
     if depth > 6:

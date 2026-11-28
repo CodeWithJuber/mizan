@@ -2597,6 +2597,95 @@
     ]
    }
   },
+  "/api/chat/elicitations/{elicitation_id}": {
+   "post": {
+    "summary": "Answer Chat Elicitation",
+    "description": "Answer a connector's pending question in one of the caller's own live chats.",
+    "operationId": "answer_chat_elicitation_api_chat_elicitations__elicitation_id__post",
+    "parameters": [
+     {
+      "name": "elicitation_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Elicitation Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ElicitationAnswer"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/chat/held": {
    "get": {
     "summary": "List Held Actions",
@@ -19621,6 +19710,79 @@
     ]
    }
   },
+  "/api/connectors/presets": {
+   "get": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "List Presets",
+    "description": "Curated connectors, each checked against the vendor's own documentation.",
+    "operationId": "list_presets_api_connectors_presets_get",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/connectors/registry": {
    "get": {
     "tags": [
@@ -19696,6 +19858,195 @@
       }
      }
     ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/oauth/client-metadata.json": {
+   "get": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Oauth Client Metadata",
+    "description": "MIZAN's OAuth client metadata document (CIMD): its URL is MIZAN's client ID at\nauthorization servers that accept client metadata documents.",
+    "operationId": "oauth_client_metadata_api_connectors_oauth_client_metadata_json_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
+   }
+  },
+  "/api/connectors/oauth/callback": {
+   "get": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Oauth Callback",
+    "description": "Browser return from an authorization server.\n\nPublic (the redirect carries no session). The page finishes the sign-in with the\nperson's own MIZAN credential (``POST /oauth/complete``), and shows \"Connected\"\nonly after MIZAN has exchanged the code for tokens.",
+    "operationId": "oauth_callback_api_connectors_oauth_callback_get",
+    "parameters": [
+     {
+      "name": "state",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "maxLength": 500,
+       "default": "",
+       "title": "State"
+      }
+     },
+     {
+      "name": "code",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "maxLength": 4000,
+       "default": "",
+       "title": "Code"
+      }
+     },
+     {
+      "name": "iss",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 500
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Iss"
+      }
+     },
+     {
+      "name": "error",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "string",
+       "maxLength": 200,
+       "default": "",
+       "title": "Error"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/html": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "public"
+   }
+  },
+  "/api/connectors/oauth/complete": {
+   "post": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Oauth Complete",
+    "description": "Finish a sign-in this user started: MIZAN exchanges the code and answers once\nthe connector is connected (or why not).",
+    "operationId": "oauth_complete_api_connectors_oauth_complete_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/OAuthCompletion"
+       }
+      }
+     }
+    },
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -19886,7 +20237,7 @@
       }
      }
     },
-    "x-mizan-access": "user",
+    "x-mizan-access": "user (more for admin)",
     "security": [
      {
       "bearer": []
@@ -20058,13 +20409,871 @@
     ]
    }
   },
+  "/api/connectors/{server_id}/oauth/status": {
+   "get": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Connector Oauth Status",
+    "description": "For the sign-in window: pending · connected · error (with why).",
+    "operationId": "connector_oauth_status_api_connectors__server_id__oauth_status_get",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/signout": {
+   "post": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Signout Connector",
+    "description": "Revoke the OAuth tokens where the server allows it, and forget them.",
+    "operationId": "signout_connector_api_connectors__server_id__signout_post",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/test": {
+   "post": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Test Connector",
+    "description": "Connect, list the tools and ping: ``{ok, latency_ms, tools, error?}``.",
+    "operationId": "test_connector_api_connectors__server_id__test_post",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/logs": {
+   "get": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Connector Logs",
+    "description": "The last 200 lines: connections, errors, the server's own log messages and,\nfor a process on the host, what it wrote to stderr.",
+    "operationId": "connector_logs_api_connectors__server_id__logs_get",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/resources": {
+   "get": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Connector Resources",
+    "operationId": "connector_resources_api_connectors__server_id__resources_get",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/prompts": {
+   "get": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Connector Prompts",
+    "operationId": "connector_prompts_api_connectors__server_id__prompts_get",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/prompts/get": {
+   "post": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Connector Prompt",
+    "description": "One prompt filled in with its arguments: ``{description, messages: [{role, text}]}``.",
+    "operationId": "connector_prompt_api_connectors__server_id__prompts_get_post",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PromptRequest"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/tools/trust": {
+   "post": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Trust Connector Tool Named",
+    "description": "Accept a tool Amanah held (it changed, or it instructs the AI), as it is now.",
+    "operationId": "trust_connector_tool_named_api_connectors__server_id__tools_trust_post",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ToolName"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/tools/policy": {
+   "post": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Connector Tool Policy",
+    "description": "allow (default) · ask (a person approves each call, in any mode) · never (not offered).",
+    "operationId": "connector_tool_policy_api_connectors__server_id__tools_policy_post",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ToolPolicy"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/connectors/{server_id}/tools/ack": {
+   "post": {
+    "tags": [
+     "connectors"
+    ],
+    "summary": "Acknowledge Connector Tools",
+    "description": "The person has seen these new tools (their ``new`` mark is cleared).",
+    "operationId": "acknowledge_connector_tools_api_connectors__server_id__tools_ack_post",
+    "parameters": [
+     {
+      "name": "server_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Server Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ToolNames"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
   "/api/connectors/{server_id}/tools/{tool_name}/trust": {
    "post": {
     "tags": [
      "connectors"
     ],
     "summary": "Trust Connector Tool",
-    "description": "Accept a tool Amanah held (its description changed, or it instructs the AI).",
+    "description": "Accept a held tool, named in the path (kept for older clients).",
     "operationId": "trust_connector_tool_api_connectors__server_id__tools__tool_name__trust_post",
     "parameters": [
      {
@@ -20228,91 +21437,6 @@
       "apiKey": []
      }
     ]
-   }
-  },
-  "/api/connectors/oauth/callback": {
-   "get": {
-    "tags": [
-     "connectors"
-    ],
-    "summary": "Oauth Callback",
-    "description": "Browser return from an authorization server (public: the single-use state is the key).",
-    "operationId": "oauth_callback_api_connectors_oauth_callback_get",
-    "parameters": [
-     {
-      "name": "state",
-      "in": "query",
-      "required": false,
-      "schema": {
-       "type": "string",
-       "maxLength": 500,
-       "default": "",
-       "title": "State"
-      }
-     },
-     {
-      "name": "code",
-      "in": "query",
-      "required": false,
-      "schema": {
-       "type": "string",
-       "maxLength": 4000,
-       "default": "",
-       "title": "Code"
-      }
-     },
-     {
-      "name": "iss",
-      "in": "query",
-      "required": false,
-      "schema": {
-       "anyOf": [
-        {
-         "type": "string",
-         "maxLength": 500
-        },
-        {
-         "type": "null"
-        }
-       ],
-       "title": "Iss"
-      }
-     },
-     {
-      "name": "error",
-      "in": "query",
-      "required": false,
-      "schema": {
-       "type": "string",
-       "maxLength": 200,
-       "default": "",
-       "title": "Error"
-      }
-     }
-    ],
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "text/html": {
-        "schema": {
-         "type": "string"
-        }
-       }
-      }
-     },
-     "422": {
-      "description": "Validation Error",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/HTTPValidationError"
-        }
-       }
-      }
-     }
-    },
-    "x-mizan-access": "public"
    }
   },
   "/api/v1/reader/lookup": {
@@ -22176,6 +23300,7 @@
       "type": "string",
       "enum": [
        "http",
+       "sse",
        "stdio"
       ],
       "title": "Transport"
@@ -22221,6 +23346,26 @@
       "maxLength": 200,
       "title": "Source",
       "default": ""
+     },
+     "oauth": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/OAuthClient"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "timeouts": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Timeouts"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "type": "object",
@@ -22256,11 +23401,73 @@
       ],
       "title": "Enabled"
      },
+     "transport": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "http",
+         "sse",
+         "stdio"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Transport"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     },
+     "command": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Command"
+     },
+     "args": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array",
+        "maxItems": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Args"
+     },
      "headers": {
       "anyOf": [
        {
         "additionalProperties": {
-         "type": "string"
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
         },
         "type": "object",
         "maxProperties": 20
@@ -22275,7 +23482,14 @@
       "anyOf": [
        {
         "additionalProperties": {
-         "type": "string"
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
         },
         "type": "object",
         "maxProperties": 40
@@ -22285,6 +23499,26 @@
        }
       ],
       "title": "Env"
+     },
+     "oauth": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/OAuthClient"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "timeouts": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Timeouts"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "disabled_tools": {
       "anyOf": [
@@ -22303,7 +23537,8 @@
      }
     },
     "type": "object",
-    "title": "ConnectorUpdate"
+    "title": "ConnectorUpdate",
+    "description": "Only the fields given change. ``headers``/``env`` merge per key (null removes\na key); ``oauth: null`` removes a pre-registered client."
    },
    "ContextRequest": {
     "properties": {
@@ -22829,6 +24064,34 @@
     },
     "type": "object",
     "title": "DiscoverRequest"
+   },
+   "ElicitationAnswer": {
+    "properties": {
+     "action": {
+      "type": "string",
+      "pattern": "^(accept|decline|cancel)$",
+      "title": "Action"
+     },
+     "content": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object",
+        "maxProperties": 100
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Content"
+     }
+    },
+    "type": "object",
+    "required": [
+     "action"
+    ],
+    "title": "ElicitationAnswer",
+    "description": "A person's answer to a question a connected server asked during a tool call."
    },
    "FederationTaskRequest": {
     "properties": {
@@ -23773,6 +25036,76 @@
     ],
     "title": "NoticeFeedback"
    },
+   "OAuthClient": {
+    "properties": {
+     "client_id": {
+      "type": "string",
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Client Id"
+     },
+     "client_secret": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 2000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Client Secret"
+     },
+     "scopes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 40,
+      "title": "Scopes"
+     }
+    },
+    "type": "object",
+    "required": [
+     "client_id"
+    ],
+    "title": "OAuthClient",
+    "description": "A client registered with the authorization server beforehand (no dynamic\nregistration): its ID, an optional secret (sealed) and the scopes to ask for."
+   },
+   "OAuthCompletion": {
+    "properties": {
+     "state": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "State"
+     },
+     "code": {
+      "type": "string",
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Code"
+     },
+     "iss": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Iss"
+     }
+    },
+    "type": "object",
+    "required": [
+     "state",
+     "code"
+    ],
+    "title": "OAuthCompletion"
+   },
    "Observation": {
     "properties": {
      "id": {
@@ -23969,6 +25302,29 @@
      "goal"
     ],
     "title": "PlanRequest"
+   },
+   "PromptRequest": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "arguments": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "maxProperties": 40,
+      "title": "Arguments"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "PromptRequest"
    },
    "ProvenanceOut": {
     "properties": {
@@ -25324,6 +26680,38 @@
     ],
     "title": "TasrifDemoRequest"
    },
+   "Timeouts": {
+    "properties": {
+     "connect_s": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 600.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Connect S"
+     },
+     "call_s": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 3600.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Call S"
+     }
+    },
+    "type": "object",
+    "title": "Timeouts"
+   },
    "TokenAlternative": {
     "properties": {
      "root": {
@@ -25483,6 +26871,60 @@
      "confidence_source"
     ],
     "title": "TokenAnalysis"
+   },
+   "ToolName": {
+    "properties": {
+     "tool": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Tool"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tool"
+    ],
+    "title": "ToolName"
+   },
+   "ToolNames": {
+    "properties": {
+     "tools": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "maxItems": 300,
+      "title": "Tools"
+     }
+    },
+    "type": "object",
+    "title": "ToolNames"
+   },
+   "ToolPolicy": {
+    "properties": {
+     "tool": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Tool"
+     },
+     "policy": {
+      "type": "string",
+      "enum": [
+       "allow",
+       "ask",
+       "never"
+      ],
+      "title": "Policy"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tool",
+     "policy"
+    ],
+    "title": "ToolPolicy"
    },
    "TrainingStartRequest": {
     "properties": {

@@ -124,7 +124,7 @@ A break in a chain is evidence of tampering or data loss. Keep the export and th
 ## Data and backups
 
 - Everything lives in the data volume (`$MIZAN_DATA_DIR`, `/data/mizan` in Docker). Back it up whole.
-- Keep `connectors.key` with it: without that file, saved connector secrets cannot be decrypted.
+- Keep `connectors.key` with it (or the `MIZAN_CONNECTORS_KEY` value): without the key, saved connector secrets cannot be decrypted. A connector that shows "Saved secrets cannot be decrypted" means the key changed: restore the old key (it may stay as a later entry in `MIZAN_CONNECTORS_KEY`), or enter the secrets again.
 - Do not run `docker compose down -v` on production, because it deletes the volume.
 - To erase one user's chat everywhere, use Mahw (`DELETE /api/chat/{id}`), never a manual database edit: Mahw also removes what was learned from the chat and writes a receipt ([mahw.md](mahw.md)).
 

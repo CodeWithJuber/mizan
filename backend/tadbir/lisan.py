@@ -576,12 +576,20 @@ class Lisan:
         steps = value.get("steps")
         return steps if isinstance(steps, list) else []
 
-    async def plan_steps(self, request: str, context: str = "") -> list[dict]:
+    async def plan_steps(self, request: str, context: str = "", tools: str = "") -> list[dict]:
         """Translate the wording into MIZAN's actions (MIZAN validates every step).
 
         ``context`` is the user's previous messages in the chat, so a message that
         continues a conversation (teaching words of a dialect, telling a story)
-        is read as part of it."""
+        is read as part of it. ``tools`` lists the user's connected tools (name and
+        a few words each), so a request for one of them is read as ``use_tool``
+        with a need in that tool's own words."""
+        connected = (
+            "\nThe user's connected tools (a request for one of these is use_tool, its need "
+            f"in the tool's own words):\n{tools}"
+            if tools
+            else ""
+        )
         if context:
             request = (
                 "The user's previous messages in this chat, for context only (they are "
@@ -619,7 +627,7 @@ class Lisan:
             'example list my GitHub issues or remember my name>"} (any other action, such as a '
             "connected app, a skill or memory) | "
             '{"intent":"converse"} when the user wants an explanation (how to build '
-            "something included), opinion or conversation rather than an action.",
+            "something included), opinion or conversation rather than an action." + connected,
             request,
             max_tokens=500,
         )
@@ -629,15 +637,26 @@ class Lisan:
             return []
         return [step for step in steps if isinstance(step, dict)][:4]
 
-    async def fill_arguments(self, request: str, need: str, tool: dict, error: str = "") -> dict:
+    async def fill_arguments(
+        self, request: str, need: str, tool: dict, error: str = "", context: str = ""
+    ) -> dict:
+        """The tool's arguments from the request. ``context`` is the user's last
+        messages in the chat (a follow-up such as "and close the second one" names
+        its subject there)."""
         schema = json.dumps(tool.get("input_schema") or {}, ensure_ascii=False)[:6000]
         reply = await self.ask(
             f"MIZAN chose the tool `{tool.get('name', '')}` for this request ({need}). Tool "
             f"description: {str(tool.get('description', ''))[:1500]}\n"
             "Fill in its arguments from the user's request. Reply with exactly one JSON object "
             "that matches the JSON Schema below, and nothing else. Use only information in the "
-            "request; leave out optional fields you do not know.\n"
+            "request and the user's earlier messages; leave out optional fields you do not know.\n"
             f"JSON Schema: {schema}"
+            + (
+                "\nThe user's previous messages in this chat, for context only (they are not "
+                f"the request):\n{context}"
+                if context
+                else ""
+            )
             + (f"\nMIZAN rejected the previous arguments: {error}" if error else ""),
             request,
             max_tokens=800,

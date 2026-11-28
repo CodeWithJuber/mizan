@@ -227,6 +227,13 @@ def test_connectors_api_owner_scope_and_validation(tmp_path, monkeypatch):
         "/api/connectors", json={"name": "x", "transport": "http", "url": "https://127.0.0.1/mcp"}
     )
     assert blocked.status_code == 422
+    # A local server needs somewhere to run: no runner (and no host access) is refused.
+    local = {"name": "files", "transport": "stdio", "command": "uvx", "args": ["mcp-server-time"]}
+    no_runner = alice.post("/api/connectors", json=local)
+    assert no_runner.status_code == 422 and "sandbox runner" in no_runner.json()["detail"]
+    from workspace import session_client
+
+    monkeypatch.setattr(session_client, "available", lambda: True)
     stdio = alice.post(
         "/api/connectors",
         json={"name": "files", "transport": "stdio", "command": "uvx", "args": ["mcp-server-time"]},
@@ -244,3 +251,18 @@ def test_connectors_api_owner_scope_and_validation(tmp_path, monkeypatch):
     page = alice.get("/api/connectors/oauth/callback", params={"state": "nope", "code": "c"})
     assert page.status_code == 400 and "expired" in page.text
     assert alice.delete(f"/api/connectors/{server_id}").status_code == 200
+
+
+def test_connector_logs_never_show_a_credential():
+    from connectors.manager import ConnectorManager, redact
+
+    # Fake values are built here so no credential-shaped literal sits in the source.
+    fake = "x" * 4 + "1234567890"
+    assert redact(f"GET https://x/?token={fake}&q=1") == "GET https://x/?token=[redacted]&q=1"
+    assert fake not in redact(f"Authorization: Bearer sk-{fake}")
+    assert redact(f"using api_key={fake} now") == "using api_key=[redacted] now"
+    assert redact(f"env value {fake} seen", (fake,)) == "env value [redacted] seen"
+    assert redact("connected in 12 ms") == "connected in 12 ms"
+    manager = ConnectorManager()
+    manager.log("u", "s", f"[stderr] password={fake}")
+    assert manager.log_lines("u", "s")[0].endswith("[stderr] password=[redacted]")

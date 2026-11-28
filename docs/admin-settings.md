@@ -31,7 +31,9 @@ Each setting shows where its value comes from: **Set here**, **From server
 
 - Saved values live in `$MIZAN_DATA_DIR/runtime_settings.json`. API keys and
   tokens in that file are encrypted with the data key
-  (`$MIZAN_DATA_DIR/connectors.key`).
+  (`$MIZAN_DATA_DIR/connectors.key`, or the keys in the `MIZAN_CONNECTORS_KEY`
+  environment variable: the first seals, all open, the key file still opens
+  what it sealed; see `connectors.md`). The data key is never a setting here.
 - At startup they are applied after the server's `.env`, so a value set here
   wins.
 - **Reset** returns a setting to the server's own `.env` or default.

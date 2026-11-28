@@ -4,7 +4,7 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-313 routes in 61 areas.
+327 routes in 61 areas.
 
 Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tadrib](#tadrib) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
@@ -103,6 +103,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/chat` | user | Chat with an agent |
 | GET | `/api/chat/approvals` | user | List chat approvals |
 | POST | `/api/chat/approvals/{approval_id}` | user | Answer a pending tool approval of one of the caller's own live chats. |
+| POST | `/api/chat/elicitations/{elicitation_id}` | user | Answer a connector's pending question in one of the caller's own live chats. |
 | GET | `/api/chat/held` | user | Actions your watchers and other unattended runs held for your approval. |
 | POST | `/api/chat/held/{held_id}` | user | Allow or deny one held action. Allowed, it runs exactly once, as it was held, through your own agent and its gates; the result is posted to the chat. |
 | GET | `/api/chat/memory/summary` | user | Get conversation memory summary |
@@ -138,14 +139,27 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 |---|---|---|---|
 | GET | `/api/connectors` | user (more for admin) | List connectors |
 | POST | `/api/connectors` | user (more for admin) | Add connector |
-| GET | `/api/connectors/oauth/callback` | public | Browser return from an authorization server (public: the single-use state is the key). |
+| GET | `/api/connectors/oauth/callback` | public | Browser return from an authorization server. |
+| GET | `/api/connectors/oauth/client-metadata.json` | public | MIZAN's OAuth client metadata document (CIMD): its URL is MIZAN's client ID at authorization servers that accept client metadata documents. |
+| POST | `/api/connectors/oauth/complete` | user | Finish a sign-in this user started: MIZAN exchanges the code and answers once the connector is connected (or why not). |
+| GET | `/api/connectors/presets` | user | Curated connectors, each checked against the vendor's own documentation. |
 | GET | `/api/connectors/registry` | user | Browse registry |
 | DELETE | `/api/connectors/{server_id}` | user | Delete connector |
 | GET | `/api/connectors/{server_id}` | user | Get connector |
-| PATCH | `/api/connectors/{server_id}` | user | Update connector |
+| PATCH | `/api/connectors/{server_id}` | user (more for admin) | Update connector |
 | POST | `/api/connectors/{server_id}/connect` | user | Connect now; OAuth servers return an authorization URL to open in a new window. |
 | POST | `/api/connectors/{server_id}/disconnect` | user | Disconnect connector |
-| POST | `/api/connectors/{server_id}/tools/{tool_name}/trust` | user | Accept a tool Amanah held (its description changed, or it instructs the AI). |
+| GET | `/api/connectors/{server_id}/logs` | user | The last 200 lines: connections, errors, the server's own log messages and, for a process on the host, what it wrote to stderr. |
+| GET | `/api/connectors/{server_id}/oauth/status` | user | For the sign-in window: pending · connected · error (with why). |
+| GET | `/api/connectors/{server_id}/prompts` | user | Connector prompts |
+| POST | `/api/connectors/{server_id}/prompts/get` | user | One prompt filled in with its arguments: ``{description, messages: [{role, text}]}``. |
+| GET | `/api/connectors/{server_id}/resources` | user | Connector resources |
+| POST | `/api/connectors/{server_id}/signout` | user | Revoke the OAuth tokens where the server allows it, and forget them. |
+| POST | `/api/connectors/{server_id}/test` | user | Connect, list the tools and ping: ``{ok, latency_ms, tools, error?}``. |
+| POST | `/api/connectors/{server_id}/tools/ack` | user | The person has seen these new tools (their ``new`` mark is cleared). |
+| POST | `/api/connectors/{server_id}/tools/policy` | user | allow (default) · ask (a person approves each call, in any mode) · never (not offered). |
+| POST | `/api/connectors/{server_id}/tools/trust` | user | Accept a tool Amanah held (it changed, or it instructs the AI), as it is now. |
+| POST | `/api/connectors/{server_id}/tools/{tool_name}/trust` | user | Accept a held tool, named in the path (kept for older clients). |
 
 ## daftar
 

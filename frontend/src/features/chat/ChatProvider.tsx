@@ -27,6 +27,7 @@ import { useChatRecovery } from "../../hooks/useChatRecovery.ts";
 import { keptArtifacts, keptImages, chatFailureFields, messageUsage, restoredMessageFields } from "../../utils/chatFailure.ts";
 import { checkLine, isReceipt, removedLine } from "../../utils/mahw.ts";
 import type { ApprovalDecision } from "../../components/AgentActivity";
+import type { ElicitationAction } from "../../utils/elicitation";
 import {
   agentPermissionMode, baselinePermissionMode, chatPermissionMode, forgetPermissionMode, rememberPermissionMode,
   savedPermissionMode, serverPermissionDefault, type PermissionSource,
@@ -171,6 +172,8 @@ export interface ChatActions {
   continueAnswer: () => void;
   dismissContinue: () => void;
   decideApproval: (approvalId: string, decision: ApprovalDecision) => Promise<void>;
+  /** Answer a connector's question (MCP elicitation) shown in the run timeline. */
+  answerElicitation: (id: string, action: ElicitationAction, content?: Record<string, unknown>) => Promise<void>;
   startNewSession: () => void;
   switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<boolean>;
@@ -251,6 +254,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ decision }),
     });
     if (!response.ok) applyActivity({ type: "approval_resolved", approval_id: approvalId, decision: "expired" });
+  }, [applyActivity]);
+  const answerElicitation = useCallback(async (id: string, action: ElicitationAction, content?: Record<string, unknown>) => {
+    const response = await authFetch(`${config.API_URL}/chat/elicitations/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(content ? { action, content } : { action }),
+    }).catch(() => null);
+    applyActivity({ type: "elicitation_resolved", id, action: response?.ok ? action : "expired" });
   }, [applyActivity]);
   const [thinkingTraces, setThinkingTraces] = useState<Record<string, ThinkingTrace>>({});
   const [activeThinkingId, setActiveThinkingId] = useState<string | null>(null);
@@ -777,6 +788,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         case "todo":
         case "approval_request":
         case "approval_resolved":
+        case "elicitation":
+        case "elicitation_resolved":
         case "skill":
           if (ACTIVITY_EVENTS.has(data.type as string)) applyActivity(data);
           break;
@@ -1578,12 +1591,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // Actions are stable for the whole visit; each call reaches the latest closure.
   const latest = useRef({
-    sendMessage, stopGeneration, requestContinuation, decideApproval, startNewSession, switchSession, deleteSession,
-    loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun, setPermissionMode, resetPermissionMode,
+    sendMessage, stopGeneration, requestContinuation, decideApproval, answerElicitation, startNewSession, switchSession,
+    deleteSession, loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun, setPermissionMode, resetPermissionMode,
   });
   latest.current = {
-    sendMessage, stopGeneration, requestContinuation, decideApproval, startNewSession, switchSession, deleteSession,
-    loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun, setPermissionMode, resetPermissionMode,
+    sendMessage, stopGeneration, requestContinuation, decideApproval, answerElicitation, startNewSession, switchSession,
+    deleteSession, loadChatHistory, loadOlderHistory, exportChat, stopRecoveredRun, setPermissionMode, resetPermissionMode,
   };
 
   const actions = useMemo<ChatActions>(() => ({
@@ -1597,6 +1610,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     },
     dismissContinue: () => setTruncatedContinue(null),
     decideApproval: (id, decision) => latest.current.decideApproval(id, decision),
+    answerElicitation: (id, action, content) => latest.current.answerElicitation(id, action, content),
     startNewSession: () => latest.current.startNewSession(),
     switchSession: (sid) => latest.current.switchSession(sid),
     deleteSession: (sid) => latest.current.deleteSession(sid),

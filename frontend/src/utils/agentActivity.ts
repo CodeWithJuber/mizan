@@ -1,4 +1,4 @@
-/** Live agent activity for one chat run: tool calls, todo list, approvals, skills. */
+/** Live agent activity for one chat run: tool calls, todo list, approvals, questions from connectors, skills. */
 
 export type ToolCallStatus = "running" | "done" | "failed";
 
@@ -38,20 +38,31 @@ function parsePreview(value: unknown): ApprovalRequest["preview"] {
   return { path: item.path, diff: item.diff, truncated: item.truncated === true, newFile: item.new_file === true };
 }
 
+/** A connector (MCP elicitation) asks the person for some values mid-run. */
+export interface ElicitationRequest {
+  id: string;
+  server: string;
+  message: string;
+  schema: unknown;
+  /** accept | decline | cancel, or expired when the answer could not be delivered. */
+  decision?: string;
+}
+
 export interface AgentActivity {
   tools: ToolCall[];
   todos: TodoItem[];
   approvals: ApprovalRequest[];
+  elicitations: ElicitationRequest[];
   skills: string[];
 }
 
 export const PERMISSION_MODES = ["auto_edits", "ask", "plan", "auto"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-export const emptyActivity = (): AgentActivity => ({ tools: [], todos: [], approvals: [], skills: [] });
+export const emptyActivity = (): AgentActivity => ({ tools: [], todos: [], approvals: [], elicitations: [], skills: [] });
 
 export const ACTIVITY_EVENTS = new Set([
-  "tool_start", "tool_result", "todo", "approval_request", "approval_resolved", "skill",
+  "tool_start", "tool_result", "todo", "approval_request", "approval_resolved", "elicitation", "elicitation_resolved", "skill",
 ]);
 
 const text = (value: unknown, fallback = ""): string => typeof value === "string" ? value : fallback;
@@ -116,6 +127,24 @@ export function reduceActivity(state: AgentActivity, event: Record<string, unkno
         approvals: state.approvals.map((a) => a.approvalId === approvalId ? { ...a, decision: text(event.decision, "deny") } : a),
       };
     }
+    case "elicitation": {
+      const id = text(event.id) || text(event.elicitation_id);
+      const known = state.elicitations ?? [];
+      if (!id || known.some((item) => item.id === id)) return state;
+      return {
+        ...state,
+        elicitations: [...known, { id, server: text(event.server, "A connector"), message: text(event.message), schema: event.schema ?? null }],
+      };
+    }
+    case "elicitation_resolved": {
+      const id = text(event.id) || text(event.elicitation_id);
+      const known = state.elicitations ?? [];
+      if (!known.some((item) => item.id === id && !item.decision)) return state;
+      return {
+        ...state,
+        elicitations: known.map((item) => (item.id === id ? { ...item, decision: text(event.action) || text(event.decision, "cancel") } : item)),
+      };
+    }
     case "skill": {
       const name = text(event.name);
       return name && !state.skills.includes(name) ? { ...state, skills: [...state.skills, name] } : state;
@@ -126,7 +155,8 @@ export function reduceActivity(state: AgentActivity, event: Record<string, unkno
 }
 
 export const hasActivity = (state: AgentActivity | undefined): boolean =>
-  !!state && (state.tools.length > 0 || state.todos.length > 0 || state.approvals.length > 0 || state.skills.length > 0);
+  !!state && (state.tools.length > 0 || state.todos.length > 0 || state.approvals.length > 0
+    || (state.elicitations?.length ?? 0) > 0 || state.skills.length > 0);
 
 export const pendingApprovals = (state: AgentActivity): ApprovalRequest[] =>
   state.approvals.filter((a) => !a.decision);
