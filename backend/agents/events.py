@@ -10,11 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
+
+from security.satr import SECRET_KEY
 
 logger = logging.getLogger("mizan.events")
 
@@ -25,7 +26,6 @@ _sink: ContextVar[EventSink | None] = ContextVar("mizan_agent_event_sink", defau
 # Frames stay well below the transport's per-event limit.
 MAX_EVENT_BYTES = 96 * 1024
 MAX_TEXT_CHARS = 32 * 1024
-_SECRET_KEY = re.compile(r"(api[_-]?key|token|secret|password|authorization|cookie)", re.I)
 
 
 @contextmanager
@@ -53,9 +53,7 @@ def bounded(value: Any, depth: int = 0) -> Any:
         return "…"
     if isinstance(value, dict):
         return {
-            str(key)[:80]: "[redacted]"
-            if _SECRET_KEY.search(str(key))
-            else bounded(item, depth + 1)
+            str(key)[:80]: "[redacted]" if SECRET_KEY.search(str(key)) else bounded(item, depth + 1)
             for key, item in list(value.items())[:100]
         }
     if isinstance(value, (list, tuple)):

@@ -276,10 +276,12 @@ async def ledger(
 def edit_note(
     store: Any, note_id: str, *, content: str | None, tags: list[str] | None, expires: str | None
 ) -> bool:
+    from security import satr
+
     changes, params = [], []
     if content is not None:
         changes.append("content = ?")
-        params.append(content.strip())
+        params.append(satr.cover_text(content.strip()))  # a secret is never kept (Satr)
     if tags is not None:
         changes.append("tags = ?")
         params.append(json.dumps([tag.strip() for tag in tags if tag.strip()][:20]))

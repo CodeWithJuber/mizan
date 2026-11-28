@@ -55,8 +55,8 @@ binds an interactive approval context, so a tool that asks is asked, not refused
 | `ask` | Every tool that changes something waits for you. |
 | `plan` | Read-only tools only. The agent proposes changes instead of making them. |
 
-Two kinds of action ask in every mode, `auto` included, even after an
-`always`:
+These actions ask in every mode, `auto` included, even after an `always`, and
+are held for the owner when no one is watching the run:
 
 - a tool an administrator named in `MIZAN_ALWAYS_ASK_TOOLS` (empty by default;
   `shahid_submit`, which sends something to a site on your behalf, is the
@@ -64,10 +64,30 @@ Two kinds of action ask in every mode, `auto` included, even after an
 - a change the model chooses after Amanah **found** instructions aimed at the AI in
   outside content the run read (a page, a file, a tool result, pasted text):
   [Amanah](amanah.md). Reading outside content, or attaching an image, with no
-  finding asks nothing extra.
+  finding asks nothing extra;
+- an install of a package Wara' doubts: new, with few versions, its name one slip
+  from a popular package ([Wara'](wara.md)). A package no registry has, or one OSV
+  lists as malicious, is refused outright; a registry that cannot be reached never
+  blocks;
+- a `workspace_write` or `workspace_edit` to one of the project's protected paths
+  (`.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa*`, `.github/workflows/**` by default;
+  each project keeps its own list: [coding-workspaces.md](coding-workspaces.md)).
 
-With no approval context (an internal caller that binds none), both are refused
-instead of asked.
+With no approval context (an internal caller that binds none), each is refused
+instead of asked. The prompt's `reason` says which of them asked.
+
+Two more guards act on every tool call, whatever the mode:
+
+- **Satr** covers secrets in a tool's output (keys, tokens, passwords, private keys)
+  as `[redacted:<kind>]` before the model, the history, the live events or the
+  receipt see it ([Satr](satr.md)). A write that would put such a placeholder back
+  into a project file is refused, so a covered secret is never overwritten.
+- **Tawbah** counts failed tool calls by signature within one run (the tool, the
+  error's class, the message with numbers, paths and ids taken out). The third
+  identical failure closes that path: the model is told it failed three times the
+  same way and must change approach, the diagnosis is kept (`result.tawbah_loops`),
+  and where `MIZAN_LISAN_MODELS` lists the run's model, the rest of the run uses the
+  next stronger one (Wazn).
 
 ### Host tools for everyone, in their own sandbox
 

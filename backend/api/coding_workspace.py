@@ -10,14 +10,14 @@ from pathlib import Path
 from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from api.artifacts import create_artifact, get_artifact, require_auth, validate_image
 from security.auth import TokenPayload
 from workspace import session_client
 from workspace.context import refuse_if_busy
 from workspace.execution import capabilities, run_project
-from workspace.store import MAX_FILES, WorkspaceStore
+from workspace.store import MAX_FILES, MAX_PROTECTED, WorkspaceStore
 
 router = APIRouter(prefix="/api/workspaces", tags=["coding workspaces"])
 
@@ -61,8 +61,17 @@ class CheckpointRestore(BaseModel):
     paths: list[str] | None = Field(default=None, max_length=MAX_FILES)
 
 
-class WorkspaceRename(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+class WorkspaceUpdate(BaseModel):
+    """A new name and/or the project's protected paths (an empty list protects nothing)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    protected_paths: list[str] | None = Field(default=None, max_length=MAX_PROTECTED)
+
+    @model_validator(mode="after")
+    def one_change(self) -> WorkspaceUpdate:
+        if self.name is None and self.protected_paths is None:
+            raise ValueError("Send a name or protected_paths")
+        return self
 
 
 class ArtifactPublish(FilePath):
@@ -137,11 +146,17 @@ def create_workspace(body: WorkspaceCreate, user: TokenPayload = Depends(require
 
 
 @router.patch("/{workspace_id}")
-def rename_workspace(
-    workspace_id: str, body: WorkspaceRename, user: TokenPayload = Depends(require_editor)
+def update_workspace(
+    workspace_id: str, body: WorkspaceUpdate, user: TokenPayload = Depends(require_editor)
 ) -> dict:
-    """Rename a project."""
-    return cast(dict, WorkspaceStore(user.user_id).rename_project(workspace_id, body.name))
+    """Rename a project or set its protected paths: a change the agent makes to one of
+    them asks the person in every permission mode (docs/coding-workspaces.md)."""
+    return cast(
+        dict,
+        WorkspaceStore(user.user_id).update_project(
+            workspace_id, name=body.name, protected_paths=body.protected_paths
+        ),
+    )
 
 
 @router.delete("/{workspace_id}")

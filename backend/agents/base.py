@@ -75,7 +75,7 @@ from core.ruh_engine import RuhEngine
 from core.sabr import SabrEngine
 from core.self_healing import LawwamaHealingSystem
 from core.shukr import ShukrSystem
-from core.tawbah import TawbahProtocol
+from core.tawbah import TawbahLoop, TawbahProtocol
 
 # Living Memory + 24/7 Multi-Agent Collaboration
 from memory.living_memory import LivingMemorySystem
@@ -1534,6 +1534,8 @@ class BaseAgent:
         self._last_tool_results = []
         # Results from the latest tool turn, for the end-of-run Furqan check.
         last_tool_results: list = []
+        # Tawbah: the same failure THRASH_K times closes that path for this run.
+        loop_guard = TawbahLoop()
         # Guarded auto-continuation when a turn is cut off by max_tokens
         continuations = 0
         # Agent config or MIZAN_CHAT_MAX_CONTINUATIONS / MIZAN_CHAT_TOOL_RESULT_CHARS.
@@ -1725,6 +1727,11 @@ class BaseAgent:
 
                 tool_results = []
                 for block, tool_result in zip(tool_blocks, tool_results_raw, strict=True):
+                    diagnosis = loop_guard.observe(block.name, tool_result)
+                    if diagnosis is not None:
+                        tool_result = loop_guard.stop_note(tool_result, diagnosis)
+                        if diagnosis["first"]:
+                            self._tawbah_loop(diagnosis, original_task)
                     self._last_tool_results.append({"name": block.name, "result": tool_result})
                     yield f"\n[Tool: {block.name}] → {json.dumps(tool_result)[:500]}\n"
 
@@ -2414,16 +2421,56 @@ class BaseAgent:
         # or turn the preceding tool preamble into a successful final answer.
         self._require_answer_progress(response)
 
+    def _tawbah_loop(self, diagnosis: dict, task: str) -> None:
+        """A path failed THRASH_K times the same way: record the diagnosis, and where
+        Wazn routes this run's model, give the rest of the run one tier stronger."""
+        from tadbir import trace, wazn
+
+        try:
+            self.tawbah.loop(self.id, task, diagnosis)
+        except Exception:  # noqa: BLE001 - a record must never break the run
+            logger.debug("Tawbah record not kept", exc_info=True)
+        client = self.ai_client
+        stronger = wazn.stronger(self.ai_model)
+        if stronger:
+            # Undone with the run's own binding when the run ends (_execute_run).
+            _execution_provider.set((id(self), stronger, client))
+            diagnosis["escalated_to"] = stronger
+        logger.info(
+            "[TAWBAH] %s failed %d times the same way (%s)%s",
+            diagnosis["tool"],
+            diagnosis["count"],
+            diagnosis["error_class"],
+            f"; model now {stronger}" if stronger else "",
+        )
+        trace.event(
+            "verify",
+            "tawbah_loop",
+            tool=diagnosis["tool"],
+            signature=diagnosis["signature"],
+            count=diagnosis["count"],
+            escalated_to=stronger or "",
+        )
+        loops = getattr(self, "_tawbah_loops", None)
+        if isinstance(loops, list) and len(loops) < 20:
+            loops.append(dict(diagnosis))
+
     async def _execute_tool_safe(self, tool_name: str, params: dict) -> Any:
         """Execute a tool through every check, then write its Sakk receipt.
 
         The receipt (tool, outcome, keyed digests of the parameters and the
         result, linked to the owner's previous receipt) is written whatever
         happened: done, held, declined, refused or raised.
+
+        Satr: a secret in the result is covered here, the one place every tool
+        result passes, before it reaches the model, the history, the live events
+        or the receipt.
         """
+        from security import satr
+
         result: Any = {"error": "raised"}
         try:
-            result = await self._execute_tool_checked(tool_name, params)
+            result = satr.cover(await self._execute_tool_checked(tool_name, params))
             return result
         finally:
             if not _evaluation_only.get() and not _language_only.get():
@@ -2536,8 +2583,21 @@ class BaseAgent:
                 "here to approve it",
                 "approval_required": True,
             }
+        # Doubt asks a person in every mode and is held when no one is watching: a
+        # package Wara' doubts, a change to one of the project's protected paths.
+        # First-hand evidence of harm (an invented or malicious package) refuses.
+        read_only = self._read_only_hint(tool_name) if approvals is not None else False
+        doubt, wara_note = "", None
+        if approvals is None or not approvals.blocks(tool_name, read_only, params):
+            refusal, doubt, wara_note = await self._doubt(tool_name, params)
+            if refusal is not None:
+                return refusal
+        if approvals is None and doubt:
+            return {
+                "error": f"{doubt} No one is here to confirm it.",
+                "approval_required": True,
+            }
         if approvals is not None:
-            read_only = self._read_only_hint(tool_name)
             if approvals.blocks(tool_name, read_only, params):
                 return {
                     "error": "Plan mode is read-only: describe this step in the plan instead",
@@ -2545,12 +2605,20 @@ class BaseAgent:
                 }
             if approvals.was_granted(tool_name, params):
                 pass  # the owner allowed exactly this call when it was held
-            elif izn_asks or held or asks or approvals.needs_approval(tool_name, read_only, params):
+            elif (
+                izn_asks
+                or held
+                or doubt
+                or asks
+                or approvals.needs_approval(tool_name, read_only, params)
+            ):
                 reason = (
                     perm.get("reason", "")
                     if izn_asks
                     else _AMANAH_REASON
                     if held
+                    else doubt
+                    if doubt
                     else "You set this connector tool to ask before each call"
                     if asks
                     else ""
@@ -2575,6 +2643,96 @@ class BaseAgent:
                 if decision == "deny":
                     return {"error": "The user declined this action", "declined": True}
 
+        result = await self._dispatch_tool(tool_name, params)
+        if wara_note and isinstance(result, dict):
+            # Allowed with what could not be checked (or a mild doubt) said on the receipt.
+            result = {**result, "wara": wara_note}
+        return result
+
+    async def _doubt(self, tool_name: str, params: dict) -> tuple[dict | None, str, dict | None]:
+        """What gives doubt about this call: (a refusal, a reason to ask a person,
+        Wara's note for the result). Missing evidence never refuses or asks."""
+        refusal = self._covered_write(tool_name, params)
+        if refusal is not None:
+            return refusal, "", None
+        reasons = [self._protected_reason(tool_name, params)]
+        note = None
+        from security import wara
+
+        targets = wara.tool_targets(tool_name, params) if wara.enabled() else []
+        if targets:
+            verdict = await wara.vet(targets)
+            if verdict.decision == "refuse":
+                logger.warning("[WARA] %s refused: %s", tool_name, verdict.reason)
+                return {"error": verdict.reason, "wara": wara.summary(verdict)}, "", None
+            if verdict.decision == "ask":
+                reasons.append(verdict.reason)
+            elif verdict.notes:
+                note = wara.summary(verdict)
+        return None, " ".join(reason for reason in reasons if reason), note
+
+    @staticmethod
+    def _protected_reason(tool_name: str, params: dict) -> str:
+        """Why a project write or edit asks: its path is one the project protects."""
+        if tool_name not in {"workspace_write", "workspace_edit"}:
+            return ""
+        path = str(params.get("path") or "")
+        try:
+            from workspace.context import selected_workspace
+            from workspace.store import GIT_DIR, WorkspaceStore, parts, protected_match
+
+            if parts(path)[0] == GIT_DIR:
+                return ""  # the store refuses .git outright
+            workspace_id = selected_workspace(params.get("workspace_id"))
+            patterns = WorkspaceStore(current_user_id() or "").protected_paths(workspace_id)
+            pattern = protected_match(path, patterns)
+        except Exception:  # noqa: BLE001 - the tool itself reports a bad path or project
+            return ""
+        if not pattern:
+            return ""
+        return (
+            f"{path} is a protected path of this project ({pattern}): a change to it "
+            "always asks you first."
+        )
+
+    @staticmethod
+    def _covered_write(tool_name: str, params: dict) -> dict | None:
+        """A refusal when a project write would put back a ``[redacted:…]`` placeholder
+        Satr showed in place of a secret, which would replace the secret itself."""
+        from security import satr
+
+        if tool_name == "workspace_edit":
+            added = satr.markers(str(params.get("new_string") or "")) > satr.markers(
+                str(params.get("old_string") or "")
+            )
+        elif tool_name == "workspace_write":
+            content = str(params.get("content") or "")
+            added = satr.markers(content) > 0
+            if added:
+                try:
+                    from workspace.context import selected_workspace
+                    from workspace.store import WorkspaceStore
+
+                    before = WorkspaceStore(current_user_id() or "").read(
+                        selected_workspace(params.get("workspace_id")),
+                        str(params.get("path") or ""),
+                    )["content"]
+                except Exception:  # noqa: BLE001 - a new file holds no placeholder
+                    before = ""
+                added = satr.markers(content) > satr.markers(before)
+        else:
+            return None
+        if not added:
+            return None
+        return {
+            "error": "This change writes a [redacted:…] placeholder that MIZAN showed in "
+            "place of a secret, so it would replace the secret itself. Change the file with "
+            "workspace_edit around the secret's line instead of writing it back."
+        }
+
+    async def _dispatch_tool(self, tool_name: str, params: dict) -> Any:
+        """Run a tool that passed every check: connectors, the agent's own tools,
+        skills, then plugins."""
         # 0. The user's own MCP connectors (reserved prefix)
         if tool_name.startswith("mcp__"):
             from connectors.tools import call
@@ -3153,6 +3311,7 @@ Match the requested depth and self-correct errors."""
         "_last_tool_results",
         "_faculty_guidance",
         "_runtime_state_note",
+        "_tawbah_loops",
     )
 
     def _run_copy(self) -> Any:
@@ -3244,6 +3403,7 @@ Match the requested depth and self-correct errors."""
         mode_binding = _agent_mode.set(own.get("orchestration"))
         effort_binding = AGENT_EFFORT.set(own.get("effort"))
         self._fitrah_advisories: list[dict] = []
+        self._tawbah_loops: list[dict] = []
         from tadbir import amanah
 
         # Pasted text that tries to instruct the AI is known before the model
@@ -3291,6 +3451,9 @@ Match the requested depth and self-correct errors."""
             if getattr(self, "_fitrah_advisories", None):
                 # Fitrah reads actions by their words: reported, never a gate.
                 result["fitrah"] = {"advisory": True, "findings": list(self._fitrah_advisories)}
+            if getattr(self, "_tawbah_loops", None):
+                # Paths that failed the same way three times: closed, and why.
+                result["tawbah_loops"] = list(self._tawbah_loops)
             if "amanah" not in result:
                 # Always reported, "ignored": 0 included: an absent key reads as
                 # "not checked", which is never the case.

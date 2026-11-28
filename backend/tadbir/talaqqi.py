@@ -137,6 +137,12 @@ def keep(
     answer = lesson(findings)
     if len(answer) > MAX_ANSWER or not about(question, answer):
         return False
+    from security import satr
+
+    # Satr: an answer that would be given again holds no secret; covering it would
+    # hand out the placeholder instead, so it is simply not kept.
+    if satr.holds(answer) or any(satr.holds(f.passage.text) for f in supported if f.passage):
+        return False
     now = _now()
     claims = []
     for finding in supported:

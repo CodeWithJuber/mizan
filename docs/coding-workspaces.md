@@ -4,10 +4,28 @@ supports file trees, optimistic file edits, rename/delete of individual files,
 checkpoints you can restore, actual diffs, and saved code/HTML/markdown/image
 artifacts. Files survive chat and backend restarts.
 
-**Projects.** `PATCH /api/workspaces/{id}` renames one (`{"name"}`),
-`DELETE /api/workspaces/{id}` deletes it (its server session is stopped first)
-and `GET /api/workspaces/{id}/export.zip` downloads its files without `.git`.
+**Projects.** `PATCH /api/workspaces/{id}` renames one (`{"name"}`) and sets its
+protected paths (`{"protected_paths": [...]}`, below), `DELETE /api/workspaces/{id}`
+deletes it (its server session is stopped first) and
+`GET /api/workspaces/{id}/export.zip` downloads its files without `.git`.
 Delete and restore answer 409 while a chat is working in the project.
+
+**Protected paths.** A `workspace_write` or `workspace_edit` the agent makes to a
+protected path asks you in every permission mode, `auto` included and after an
+"Always", shows the diff on the prompt, is held for you when no one is watching the
+run (a watcher, a schedule), and is refused when there is no one to ask. Each project
+keeps its own list in its record (`protected_paths`, returned by `GET /api/workspaces`
+and the PATCH); a project with none uses the defaults `.env`, `.env.*`, `*.pem`,
+`*.key`, `id_rsa*`, `.git/**` and `.github/workflows/**`. A pattern with no `/` matches
+a file's name at any depth (`.env` is also `config/.env`); one with `/` matches from
+the project's root (`**` spans folders). Send `[]` to protect nothing; at most 100
+relative patterns, no `..`. `.git` itself stays refused outright (below), never asked.
+Your own edits in the project editor are not asked: the list guards what the agent
+changes. Only `workspace_write` and `workspace_edit` are guarded: a command a run
+executes (`echo x > .env`) or the sandbox `write_file` tool is not, so this is a
+check in front of the project tools, not a sandbox boundary. A write that would put back a
+`[redacted:…]` placeholder Satr showed in place of a secret is refused
+([Satr](satr.md)).
 
 **Checkpoints.** A checkpoint is a manifest of `{path: sha256}`; each file's
 bytes are stored once under `checkpoints/objects/<sha[:2]>/<sha>`, so ten
