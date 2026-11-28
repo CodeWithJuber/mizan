@@ -1405,12 +1405,21 @@ def _permission_mode(agent) -> str:
 
 def _broadcast_view(agent) -> dict:
     """What every open WebSocket is told of an agent: a shared agent without its
-    persona, someone's own agent by its id and name only."""
+    persona; nothing of someone's own agent (empty: not broadcast)."""
     if not getattr(agent, "shared", True):
-        return {"id": agent.id, "name": agent.name, "shared": False}
+        return {}
     data: dict = dict(agent.to_dict())
     data.pop("system_prompt", None)
     return data
+
+
+def _settings_allowed(user: Any, settings: dict | None) -> None:
+    """Orchestration "llm" turns MIZAN's own recipes off, so the model would answer
+    Quran and hadith requests itself: only an administrator may choose it for an agent."""
+    if settings and settings.get("orchestration") == "llm" and not _agent_admin(user):
+        raise HTTPException(
+            403, "Only an administrator may let the model drive every request (llm)"
+        )
 
 
 def _caller(user: Any) -> TokenPayload | None:
@@ -1539,6 +1548,7 @@ async def _build_agent(
     shared: bool | None = None,
 ):
     """Resolve a provider once, then persist the validated agent before publishing it."""
+    _settings_allowed(user, settings)
     caller = _caller(user)
     if caller is not None and not caller.has_role("admin"):
         owned = sum(
@@ -1600,7 +1610,8 @@ async def _build_agent(
     await memory.save_agent_profile({**_agent_profile(agent), "role": agent_type})
     _publish_agent(agent)
 
-    await manager.broadcast({"type": "agent_created", "agent": _broadcast_view(agent)})
+    if view := _broadcast_view(agent):  # someone's own agent is told to no one else
+        await manager.broadcast({"type": "agent_created", "agent": view})
 
     wali.audit.log("agent_created", {"agent_id": agent.id, "name": agent.name, "type": agent_type})
     await event_bus.emit(
@@ -1832,6 +1843,7 @@ async def update_agent(
         if req.system_prompt is not None:
             agent.config["system_prompt"] = req.system_prompt
         if req.settings is not None:
+            _settings_allowed(user, req.settings.model_dump(exclude_unset=True))
             current = agent_settings.of(agent.config)
             agent_settings.apply(
                 agent.config,
@@ -1850,7 +1862,8 @@ async def update_agent(
 
     await memory.save_agent_profile(_agent_profile(agent))
 
-    await manager.broadcast({"type": "agent_updated", "agent": _broadcast_view(agent)})
+    if view := _broadcast_view(agent):  # someone's own agent is told to no one else
+        await manager.broadcast({"type": "agent_updated", "agent": view})
     return await _agent_view(user, agent)
 
 
@@ -2049,7 +2062,9 @@ def _private_agent(user: TokenPayload, template):
             name=template.name,
             config=deepcopy(template.config),
             **_agent_services(
-                memory=private_memory, knowledge_graph=private_memory.knowledge_graph
+                memory=private_memory,
+                knowledge_graph=private_memory.knowledge_graph,
+                plugin_manager=None,  # plugins are the server's, not a user's team's
             ),
         )
         instance.ai_model, instance.ai_client = template.ai_model, template.ai_client

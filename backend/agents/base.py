@@ -401,6 +401,8 @@ _LANGUAGE_ONLY_NOTE = (
 )
 # Hermes-style learned skills: an agent saves a task that worked as a skill of its user's.
 SKILL_WRITE_MAX_BYTES = 32 * 1024
+# Reads that can still send data away (in the URL): held after an injection finding.
+EXFILTRATING_READS = frozenset({"http_get", "web_fetch", "fetch_url"})
 SKILL_WRITE_SCHEMA = {
     "name": "skill_write",
     "description": (
@@ -2497,8 +2499,11 @@ class BaseAgent:
             # Only an instruction Amanah actually found in this run (in a page, a file
             # or the user's pasted text) holds a change the model then chooses; reading
             # outside text, or an image the user attached, alone does not.
+            # A GET carries data out in its URL, so after an injection finding it is
+            # held like a change (http_get is otherwise a read).
             held = bool(amanah.tainted()) and (
-                tool_category(tool_name, self._read_only_hint(tool_name), params) != "read"
+                tool_name in EXFILTRATING_READS
+                or tool_category(tool_name, self._read_only_hint(tool_name), params) != "read"
             )
         if held and approvals is None:
             return {
@@ -4829,23 +4834,28 @@ Match the requested depth and self-correct errors."""
                 "amanah": amanah.summary(findings),
             }
         try:
-            saved = installer.write_skill(
-                user_id, name, str(description), str(body), overwrite=True
-            )
+            saved = installer.write_skill(user_id, name, str(description), str(body))
         except installer.InstallError as exc:
             return {"error": str(exc)}
         from agent_skills import loader
 
+        held = bool(amanah.tainted())
         for skill in loader.user_skills(user_id):
-            if skill.name == saved["name"] and skill.findings():
+            if skill.name == saved["name"] and skill.findings() and not held:
                 # Plain instructions are what a skill is; this one the agent wrote for
-                # its user, so it is not held for their trust (pinned to this content).
+                # its user in a run where Amanah found no injected instruction, so it is
+                # not held for their trust (pinned to this content). After a finding the
+                # skill waits for the user's trust in Library, like an installed one.
                 loader.trust(user_id, skill)
         await emit_event("skill", {"name": saved["name"], "scope": "user", "saved": True})
         return {
             "saved": saved["name"],
             "scope": "user",
-            "note": "Load it later with activate_skill.",
+            "held": held,
+            "note": "Held until the user trusts it in Library (this run read an injected "
+            "instruction)."
+            if held
+            else "Load it later with activate_skill.",
         }
 
     async def _tool_todo_write(self, todos: list | None = None) -> dict:

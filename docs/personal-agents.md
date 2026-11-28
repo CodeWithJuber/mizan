@@ -64,7 +64,7 @@ the server's own setting.
 | `effort` | `low` … `max` or `null` | Claude's effort for this agent's runs, instead of `MIZAN_CHAT_EFFORT` (`providers.AGENT_EFFORT`). |
 | `max_steps` | 1–1000 or `null` | Tool rounds per answer, instead of `MIZAN_CHAT_MAX_STEPS`. |
 | `max_output_tokens` | 256–128000 or `null` | Output tokens per call, instead of `MIZAN_CHAT_MAX_OUTPUT_TOKENS`. |
-| `orchestration` | `mizan`, `hybrid`, `llm` or `null` | Who directs this agent's runs, instead of `MIZAN_ORCHESTRATION` ([tadbir.md](tadbir.md#modes)). Bound per run (`tadbir.engine.bind_mode`). |
+| `orchestration` | `mizan`, `hybrid`, `llm` or `null` | Who directs this agent's runs, instead of `MIZAN_ORCHESTRATION` ([tadbir.md](tadbir.md#modes)). Bound per run (`tadbir.engine.bind_mode`). Only an administrator may choose `llm` (403 otherwise): it turns MIZAN's recipes off, so the model would answer Quran and hadith requests itself. |
 | `permission_mode` | `auto`, `auto_edits`, `ask`, `plan` or `null` | The mode of a chat with this agent that sends none, instead of `MIZAN_DEFAULT_PERMISSION_MODE` ([agentic-coding.md](agentic-coding.md#permission-modes-izn-approvals)). |
 | `tools_allow` | tool names, `*` and `?` allowed | Only these tools are offered (connector tools are chosen by `connectors`). |
 | `tools_deny` | tool names, `*` and `?` allowed | Never offered, connector tools included. |
@@ -100,12 +100,13 @@ away or hide text is refused with 422.
 
 After a multi-step task that could recur, the agent may save it as a skill:
 `skill_write(name, description, body)` writes a `SKILL.md` into the signed-in user's own
-skills (`agent_skills.installer.write_skill`; replaced when the name exists). A later chat
-loads it with `activate_skill`. The name is 1–64 lowercase letters, digits and hyphens,
-the text at most 32 KB. Amanah refuses an override, concealment or exfiltration in it; a
-skill with plain instructions only is trusted for its user (pinned to its content), so it
-is not held as an uploaded one would be. A model that read an injected page cannot save
-one silently: after a finding every change it chooses needs a person's approval.
+skills (`agent_skills.installer.write_skill`). It never replaces a skill of the same name:
+the agent picks another name. A later chat loads it with `activate_skill`. The name is
+1–64 lowercase letters, digits and hyphens, the text at most 32 KB. Amanah refuses an
+override, concealment or exfiltration in it. A skill with plain instructions only, written
+in a run where Amanah found no injected instruction, is trusted for its user (pinned to its
+content). Written after a finding, it is saved but held until the user trusts it in
+Library, like an uploaded one, so an injected page cannot leave a standing instruction.
 
 ## The default agent
 
