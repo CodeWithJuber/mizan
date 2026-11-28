@@ -152,6 +152,29 @@ _COMMANDS: tuple[tuple[str, tuple[tuple[str, ...], ...], str], ...] = (
 _WRAPPERS = frozenset({"sudo", "doas", "env", "command", "exec", "time", "nohup", "nice"})
 _SHELLS = frozenset({"sh", "bash", "zsh", "dash", "ash"})
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+# Environment settings that point an installer at another index or registry.
+_INDEX_ENV: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"^(?:PIP_(?:EXTRA_)?INDEX_URL|PIP_FIND_LINKS|UV_(?:EXTRA_|DEFAULT_)?INDEX(?:_URL)?)=",
+            re.I,
+        ),
+        "pypi",
+    ),
+    (
+        re.compile(
+            r"^(?:npm_config_(?:@[^:=]+:)?registry|YARN_(?:NPM_)?REGISTRY(?:_SERVER)?)=", re.I
+        ),
+        "npm",
+    ),
+)
+
+
+def _index_settings(words: list[str]) -> set[str]:
+    """The ecosystems these ``VAR=value`` words point at another index."""
+    return {eco for word in words for pattern, eco in _INDEX_ENV if pattern.match(word)}
+
+
 _UNRESOLVED = re.compile(r"[$`*?]")
 _PUNCT = set("();<>|&")
 _NPM_NAME = re.compile(r"^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*$")
@@ -242,7 +265,11 @@ def _match(tool: str, args: list[str]) -> tuple[str, list[str]] | None:
     return None
 
 
-def _from_words(words: list[str], depth: int) -> list[tuple[str, str]]:
+Found = tuple[list[tuple[str, str]], list[tuple[str, str]]]
+
+
+def _from_words(words: list[str], depth: int, elsewhere_eco: set[str]) -> Found:
+    """(names the public registry serves, names another index serves) of one command."""
     start = 0
     while start < len(words) and (
         _ASSIGNMENT.match(words[start])
@@ -253,21 +280,23 @@ def _from_words(words: list[str], depth: int) -> list[tuple[str, str]]:
     ):
         start += 1
     if start >= len(words):
-        return []
+        return [], []
+    other = elsewhere_eco | _index_settings(words[:start])
     tool, args = _tool_name(words[start]), words[start + 1 :]
     if tool in _SHELLS and "-c" in args and depth < 2:
         script = args[args.index("-c") + 1 : args.index("-c") + 2]
-        return _targets(script[0], depth + 1) if script else []
+        return _targets(script[0], depth + 1, other) if script else ([], [])
     if re.fullmatch(r"py(?:thon(?:\d(?:\.\d+)?)?)?", tool) and "-m" in args:
         at = args.index("-m")
         if args[at + 1 : at + 2] == ["pip"]:
             tool, args = "pip", args[at + 2 :]
     hit = _match(tool, args)
     if hit is None:
-        return []
+        return [], []
     ecosystem, rest = hit
     values, custom = _FLAGS[ecosystem]
     found: list[tuple[str, str]] = []
+    off_registry = ecosystem in other
     literal, index = False, 0
     while index < len(rest):
         word = rest[index]
@@ -283,33 +312,50 @@ def _from_words(words: list[str], depth: int) -> list[tuple[str, str]]:
             continue
         flag = word.split("=", 1)[0]
         if flag in custom:
-            return []  # another index: nothing here can be checked publicly
+            off_registry = True  # another index: a miss on the public one proves nothing
         if "=" not in word and flag in values:
             index += 1  # the flag's value (a requirements file, a path) is no package
-    return found
+    return ([], found) if off_registry else (found, [])
 
 
-def _targets(command: str, depth: int = 0) -> list[tuple[str, str]]:
+def _targets(command: str, depth: int = 0, elsewhere_eco: set[str] | None = None) -> Found:
     try:
         segments = _segments(command)
     except ValueError:  # unbalanced quotes: nothing can be read, so nothing is vetted
-        return []
-    found: list[tuple[str, str]] = []
+        return [], []
+    checked: list[tuple[str, str]] = []
+    elsewhere: list[tuple[str, str]] = []
+    exported = set(elsewhere_eco or ())
     for words in segments:
-        for target in _from_words(words, depth):
-            if target not in found:
-                found.append(target)
-    return found
+        # ``export PIP_INDEX_URL=…`` (or a bare ``VAR=…``) holds for the commands after it.
+        settings = words[1:] if words[0] == "export" else words
+        if all(_ASSIGNMENT.match(word) for word in settings):
+            exported |= _index_settings(settings)
+            continue
+        public, other = _from_words(words, depth, exported)
+        checked += [target for target in public if target not in checked]
+        elsewhere += [target for target in other if target not in elsewhere]
+    return checked, elsewhere
 
 
 def install_targets(command: str) -> list[tuple[str, str]]:
     """Every (ecosystem, name) a shell command line would fetch from PyPI or npm:
     pip / pip3 / python -m pip / uv pip install / uv add, npm / pnpm / yarn add, install
-    and i. Local paths, URLs, git sources, ``-r`` files, names built from a variable and
-    installs from another index name nothing that can be checked."""
+    and i. Local paths, URLs, git sources, ``-r`` files and names built from a variable
+    name nothing that can be checked; names another index serves are in
+    :func:`tool_install`'s ``elsewhere``."""
     if not isinstance(command, str) or not command.strip():
         return []
-    return _targets(command)
+    return _targets(command)[0]
+
+
+@dataclass
+class Install:
+    """What one tool call would install: names the public registries serve (vetted) and
+    names another index or registry serves (noted: a miss there proves nothing)."""
+
+    checked: list[tuple[str, str]] = field(default_factory=list)
+    elsewhere: list[tuple[str, str]] = field(default_factory=list)
 
 
 # The command line each tool runs, composed exactly as the tool composes it.
@@ -330,16 +376,25 @@ _COMMAND_LINES: dict[str, Any] = {
 }
 
 
-def tool_targets(tool_name: str, params: dict) -> list[tuple[str, str]]:
+def tool_install(tool_name: str, params: dict) -> Install:
     """What a tool call would install: ``install_package``'s package, or the packages
     the command line of a tool that runs one would fetch."""
     params = params if isinstance(params, dict) else {}
     if tool_name == "install_package":
         ecosystem = "npm" if str(params.get("manager") or "pip") == "npm" else "pypi"
         name = _SPECS[ecosystem](str(params.get("package") or ""))
-        return [(ecosystem, name)] if name else []
+        return Install([(ecosystem, name)] if name else [])
     compose = _COMMAND_LINES.get(tool_name)
-    return install_targets(compose(params)) if compose else []
+    command = compose(params) if compose else ""
+    if not isinstance(command, str) or not command.strip():
+        return Install()
+    checked, elsewhere = _targets(command)
+    return Install(checked, elsewhere)
+
+
+def tool_targets(tool_name: str, params: dict) -> list[tuple[str, str]]:
+    """The public-registry packages of :func:`tool_install`."""
+    return tool_install(tool_name, params).checked
 
 
 # ── Typosquats ─────────────────────────────────────────────────────────────
@@ -393,6 +448,9 @@ class Evidence:
     first_published: float | None = None
     versions: int | None = None
     malicious: list[str] | None = None
+    # Sources that did not answer although the registry did (OSV; the history the
+    # registry's answer should hold): partial evidence is noted and never remembered.
+    partial: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -442,7 +500,15 @@ def judge(ecosystem: str, name: str, evidence: Evidence, now: float | None = Non
     score = max(0.0, min(1.0, 1 - clean))
     if evidence.exists is None:
         reasons.append(f"could not be checked ({where} did not answer)")
+    if "history" in evidence.partial:
+        reasons.append(
+            "its age and versions could not be read (the registry's answer was too large or not JSON)"
+        )
+    if "OSV" in evidence.partial:
+        reasons.append("could not be fully checked (OSV did not answer)")
     level = "ask" if score >= THRESHOLDS["ask"] else "note" if score >= THRESHOLDS["note"] else "ok"
+    if evidence.partial and level == "ok":
+        level = "note"  # missing evidence: allowed, and said
     if evidence.exists is None and level == "ask":
         level = "note"  # never ask on what could not be checked
     return Judgment(level, round(score, 3), {k: round(v, 3) for k, v in signals.items()}, reasons)
@@ -511,6 +577,8 @@ async def probe(ecosystem: str, name: str, client: httpx.AsyncClient) -> Evidenc
             evidence.canonical = name
             evidence.first_published = _when((doc.get("time") or {}).get("created"))
             evidence.versions = len(doc.get("versions") or {}) or None
+    else:
+        evidence.partial.append("history")  # too large to read, or not JSON
     # Only a name its registry has is told to OSV (never a typo or a private name).
     try:
         response = await asyncio.wait_for(
@@ -532,8 +600,10 @@ async def probe(ecosystem: str, name: str, client: httpx.AsyncClient) -> Evidenc
                 for item in vulns
                 if str(item.get("id", "")).upper().startswith("MAL-")
             ]
+        else:
+            evidence.partial.append("OSV")
     except (httpx.HTTPError, TimeoutError, OSError, ValueError):
-        pass
+        evidence.partial.append("OSV")
     return evidence
 
 
@@ -559,12 +629,25 @@ def _label(ecosystem: str, name: str) -> str:
     return f"{name} ({ECOSYSTEMS[ecosystem]['label']})"
 
 
-async def vet(targets: list[tuple[str, str]], *, now: float | None = None) -> Verdict:
+async def vet(
+    targets: list[tuple[str, str]],
+    *,
+    elsewhere: list[tuple[str, str]] | tuple = (),
+    now: float | None = None,
+) -> Verdict:
     """The verdict for the packages one command would install: the worst package
-    decides. Never raises."""
+    decides. ``elsewhere`` are names another index serves: never asked of a public
+    registry (a miss there proves nothing, and a private name stays private), only
+    noted. Never raises."""
     wanted = [(eco, name) for eco, name in dict.fromkeys(targets) if eco in ECOSYSTEMS]
+    notes: list[str] = [
+        f"{_label(eco, name)} is installed from another index, so it was not checked "
+        "against the public registry"
+        for eco, name in dict.fromkeys(elsewhere)
+        if eco in ECOSYSTEMS
+    ]
     if not wanted:
-        return Verdict("allow")
+        return Verdict("allow", "", notes)
     stamp = time.monotonic()
     judged: dict[tuple[str, str], Judgment] = {}
     to_probe: list[tuple[str, str]] = []
@@ -574,7 +657,6 @@ async def vet(targets: list[tuple[str, str]], *, now: float | None = None) -> Ve
             judged[target] = cached[1]
         else:
             to_probe.append(target)
-    notes: list[str] = []
     if len(to_probe) > MAX_PACKAGES:
         notes.append(f"{len(to_probe) - MAX_PACKAGES} more package(s) were not checked")
         to_probe = to_probe[:MAX_PACKAGES]
@@ -592,7 +674,8 @@ async def vet(targets: list[tuple[str, str]], *, now: float | None = None) -> Ve
                 evidence = Evidence()
             judgment = judge(target[0], target[1], evidence, now)
             judged[target] = judgment
-            if evidence.exists is not None:  # what could not be checked is asked again
+            # What could not be checked, wholly or in part, is asked again next time.
+            if evidence.exists is not None and not evidence.partial:
                 if len(_cache) >= CACHE_MAX:
                     _cache.pop(next(iter(_cache)))
                 _cache[target] = (stamp + CACHE_SECONDS, judgment)

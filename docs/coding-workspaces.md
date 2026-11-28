@@ -15,16 +15,20 @@ protected path asks you in every permission mode, `auto` included and after an
 "Always", shows the diff on the prompt, is held for you when no one is watching the
 run (a watcher, a schedule), and is refused when there is no one to ask. Each project
 keeps its own list in its record (`protected_paths`, returned by `GET /api/workspaces`
-and the PATCH); a project with none uses the defaults `.env`, `.env.*`, `*.pem`,
-`*.key`, `id_rsa*`, `.git/**` and `.github/workflows/**`. A pattern with no `/` matches
-a file's name at any depth (`.env` is also `config/.env`); one with `/` matches from
-the project's root (`**` spans folders). Send `[]` to protect nothing; at most 100
-relative patterns, no `..`. `.git` itself stays refused outright (below), never asked.
+and the PATCH); a project with none uses the defaults `.env`, `.env.*` (but not
+`.env.example`, `.env.sample` or `.env.template`, which are meant to be committed),
+`*.pem`, `*.key`, `id_rsa*`, `.git/**` and `.github/workflows/**`. A pattern with no `/`
+matches a file's name at any depth (`.env` is also `config/.env`); one with `/` matches
+from the project's root (`**` spans folders), except `.git/…`, which also matches a
+nested repository's own folder (`vendor/lib/.git/config`). A pattern starting with `!`
+exempts what it matches (`!certs/public.pem`). Send `[]` to protect nothing; at most 100
+relative patterns, no `..`. `.git` at the root stays refused outright (below), never
+asked. When the project's list cannot be read, the change asks rather than going ahead.
 Your own edits in the project editor are not asked: the list guards what the agent
 changes. Only `workspace_write` and `workspace_edit` are guarded: a command a run
 executes (`echo x > .env`) or the sandbox `write_file` tool is not, so this is a
-check in front of the project tools, not a sandbox boundary. A write that would put back a
-`[redacted:…]` placeholder Satr showed in place of a secret is refused
+check in front of the project tools, not a sandbox boundary. A write that would put a
+`[redacted:…]` placeholder where the file holds a secret Satr covered is refused
 ([Satr](satr.md)).
 
 **Checkpoints.** A checkpoint is a manifest of `{path: sha256}`; each file's

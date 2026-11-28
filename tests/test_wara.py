@@ -169,10 +169,11 @@ def iso(days_ago: float) -> str:
 class Registry:
     """A recorded PyPI, npm and OSV: each name maps to its packument or 404."""
 
-    def __init__(self, pypi=None, npm=None, malicious=(), fail=False):
+    def __init__(self, pypi=None, npm=None, malicious=(), fail=False, osv_down=False):
         self.pypi, self.npm = pypi or {}, npm or {}
         self.malicious = set(malicious)
         self.fail = fail
+        self.osv_down = osv_down
         self.seen: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
@@ -189,6 +190,8 @@ class Registry:
             doc = self.npm.get(name)
             return httpx.Response(200, json=doc) if doc else httpx.Response(404)
         if url == "https://api.osv.dev/v1/query":
+            if self.osv_down:
+                return httpx.Response(503)
             asked = json.loads(request.content)["package"]["name"]
             vulns = (
                 [{"id": "MAL-2026-77", "summary": "malicious code"}]
@@ -281,6 +284,57 @@ async def test_a_slow_registry_is_missing_evidence(registry, monkeypatch):
     registry(slow)
     verdict = await wara.vet([("npm", "lodash")])
     assert verdict.decision == "allow" and verdict.notes
+
+
+async def test_a_registry_answer_without_osv_is_noted_and_not_remembered(registry):
+    recorded = registry(Registry(pypi={"requests": pypi_doc("requests", 4000, 30)}, osv_down=True))
+    first = await wara.vet([("pypi", "requests")])
+    assert first.decision == "allow"
+    assert first.notes and "OSV" in first.notes[0]
+    asked = len(recorded.seen)
+    again = await wara.vet([("pypi", "requests")])
+    assert again.notes and len(recorded.seen) > asked  # partial evidence is asked again
+
+
+async def test_an_unread_history_is_noted_and_not_remembered(registry, monkeypatch):
+    monkeypatch.setattr(wara, "MAX_BODY_BYTES", 16)  # every packument is "too large"
+    recorded = registry(Registry(pypi={"requests": pypi_doc("requests", 4000, 30)}))
+    first = await wara.vet([("pypi", "requests")])
+    assert first.decision == "allow"
+    assert first.notes and "age" in first.notes[0]
+    asked = len(recorded.seen)
+    await wara.vet([("pypi", "requests")])
+    assert len(recorded.seen) > asked
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pip install --index-url https://private.example/simple internal-lib",
+        "pip install --extra-index-url=https://private.example/simple internal-lib",
+        "PIP_INDEX_URL=https://private.example/simple pip install internal-lib",
+        "export PIP_INDEX_URL=https://private.example/simple && pip install internal-lib",
+        "npm install --registry https://npm.internal/ internal-lib",
+        "npm_config_registry=https://npm.internal/ npm i internal-lib",
+    ],
+)
+async def test_another_index_is_noted_never_refused(registry, monkeypatch, tmp_path, command):
+    monkeypatch.setenv("MIZAN_WARA", "on")
+    monkeypatch.setenv("MIZAN_DATA_DIR", str(tmp_path))
+    recorded = registry(Registry())  # the public registries have no such name
+    ran = []
+    agent = agent_running(ran)
+    result = await agent._execute_tool_safe("bash", {"command": command})
+    assert result["ok"] is True and ran
+    assert "another index" in result["wara"]["notes"][0]
+    assert recorded.seen == []  # a private name is told to no one
+
+
+def test_install_lists_what_another_index_serves():
+    found = wara.tool_install(
+        "bash", {"command": "pip install -i https://p/simple a && pip install b"}
+    )
+    assert found.checked == [("pypi", "b")] and found.elsewhere == [("pypi", "a")]
 
 
 async def test_the_worst_package_decides(registry):

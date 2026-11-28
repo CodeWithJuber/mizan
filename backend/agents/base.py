@@ -2659,9 +2659,9 @@ class BaseAgent:
         note = None
         from security import wara
 
-        targets = wara.tool_targets(tool_name, params) if wara.enabled() else []
-        if targets:
-            verdict = await wara.vet(targets)
+        install = wara.tool_install(tool_name, params) if wara.enabled() else wara.Install()
+        if install.checked or install.elsewhere:
+            verdict = await wara.vet(install.checked, elsewhere=install.elsewhere)
             if verdict.decision == "refuse":
                 logger.warning("[WARA] %s refused: %s", tool_name, verdict.reason)
                 return {"error": verdict.reason, "wara": wara.summary(verdict)}, "", None
@@ -2673,21 +2673,39 @@ class BaseAgent:
 
     @staticmethod
     def _protected_reason(tool_name: str, params: dict) -> str:
-        """Why a project write or edit asks: its path is one the project protects."""
+        """Why a project write or edit asks: its path is one the project protects, or
+        the project's list could not be read (asked, never assumed empty)."""
         if tool_name not in {"workspace_write", "workspace_edit"}:
             return ""
         path = str(params.get("path") or "")
-        try:
-            from workspace.context import selected_workspace
-            from workspace.store import GIT_DIR, WorkspaceStore, parts, protected_match
+        from fastapi import HTTPException
 
+        from workspace.context import selected_workspace
+        from workspace.store import GIT_DIR, WorkspaceStore, parts, protected_match
+
+        try:
             if parts(path)[0] == GIT_DIR:
                 return ""  # the store refuses .git outright
             workspace_id = selected_workspace(params.get("workspace_id"))
-            patterns = WorkspaceStore(current_user_id() or "").protected_paths(workspace_id)
-            pattern = protected_match(path, patterns)
-        except Exception:  # noqa: BLE001 - the tool itself reports a bad path or project
+            store = WorkspaceStore(current_user_id() or "")
+        except HTTPException:
+            # A bad path, no signed-in user, no project or not theirs: the tool itself
+            # refuses this call with the same check, so nothing could change.
             return ""
+        unreadable = (
+            f"MIZAN could not read the project's protected paths, so this change to "
+            f"{path} asks you first."
+        )
+        try:
+            pattern = protected_match(path, store.protected_paths(workspace_id))
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                return ""  # no such project: the tool refuses it too
+            logger.warning("Protected paths unreadable for %s; asking", workspace_id)
+            return unreadable
+        except Exception:  # noqa: BLE001 - fail closed: an unreadable list asks
+            logger.warning("Protected paths unreadable for %s; asking", workspace_id)
+            return unreadable
         if not pattern:
             return ""
         return (
@@ -2697,37 +2715,41 @@ class BaseAgent:
 
     @staticmethod
     def _covered_write(tool_name: str, params: dict) -> dict | None:
-        """A refusal when a project write would put back a ``[redacted:…]`` placeholder
-        Satr showed in place of a secret, which would replace the secret itself."""
+        """A refusal when a project write would put a ``[redacted:…]`` placeholder where
+        an existing file holds a secret: writing Satr's covered view back would replace
+        the secret itself. A placeholder in a new file, or where no secret was, is text."""
         from security import satr
 
         if tool_name == "workspace_edit":
-            added = satr.markers(str(params.get("new_string") or "")) > satr.markers(
-                str(params.get("old_string") or "")
-            )
+            new_text = str(params.get("new_string") or "")
+            if satr.markers(new_text) <= satr.markers(str(params.get("old_string") or "")):
+                return None
+            # The edit replaces old_string, which matches the file exactly.
+            replaced = satr.secrets_in(str(params.get("old_string") or ""))
         elif tool_name == "workspace_write":
-            content = str(params.get("content") or "")
-            added = satr.markers(content) > 0
-            if added:
-                try:
-                    from workspace.context import selected_workspace
-                    from workspace.store import WorkspaceStore
+            new_text = str(params.get("content") or "")
+            if not satr.markers(new_text):
+                return None
+            try:
+                from workspace.context import selected_workspace
+                from workspace.store import WorkspaceStore
 
-                    before = WorkspaceStore(current_user_id() or "").read(
-                        selected_workspace(params.get("workspace_id")),
-                        str(params.get("path") or ""),
-                    )["content"]
-                except Exception:  # noqa: BLE001 - a new file holds no placeholder
-                    before = ""
-                added = satr.markers(content) > satr.markers(before)
+                before = WorkspaceStore(current_user_id() or "").read(
+                    selected_workspace(params.get("workspace_id")),
+                    str(params.get("path") or ""),
+                )["content"]
+            except Exception:  # noqa: BLE001 - a new (or unreadable) file holds no secret
+                return None
+            replaced = satr.secrets_in(before)
         else:
             return None
-        if not added:
+        if not any(secret not in new_text for secret in replaced):
             return None
         return {
-            "error": "This change writes a [redacted:…] placeholder that MIZAN showed in "
-            "place of a secret, so it would replace the secret itself. Change the file with "
-            "workspace_edit around the secret's line instead of writing it back."
+            "error": "This change writes a [redacted:…] placeholder where the file holds a "
+            "secret MIZAN covered when it was read, so it would replace the secret itself. "
+            "Change the file with workspace_edit around the secret's line instead of "
+            "writing it back."
         }
 
     async def _dispatch_tool(self, tool_name: str, params: dict) -> Any:

@@ -122,10 +122,16 @@ def entry_paths(path: str) -> set[str]:
 # Protected paths: a change to one of these asks the person in every permission mode
 # (and is held when no one is watching); each project may keep its own list. A pattern
 # with no "/" matches a file's name at any depth (".env" is also "config/.env"); one with
-# "/" matches from the project's root. ".git" itself stays refused (``user_path``).
+# "/" matches from the project's root, except ".git/…", which matches git's own folder at
+# any depth (a nested repository or submodule). A pattern starting "!" exempts what it
+# matches. ".git" at the root stays refused outright (``user_path``).
 DEFAULT_PROTECTED = (
     ".env",
     ".env.*",
+    # Templates of an .env are meant to be committed and shared.
+    "!.env.example",
+    "!.env.sample",
+    "!.env.template",
     "*.pem",
     "*.key",
     "id_rsa*",
@@ -135,17 +141,37 @@ DEFAULT_PROTECTED = (
 MAX_PROTECTED = 100
 
 
-def protected_match(path: str, patterns: Iterable[str]) -> str | None:
-    """The first pattern that protects this project path, or None."""
+def _pattern_matches(pattern: str, path: str) -> bool:
     name = path.rsplit("/", 1)[-1]
+    if "/" not in pattern.rstrip("/"):
+        return bool(glob_regex(pattern).match(name))
+    matcher = glob_regex(pattern)
+    if matcher.match(path):
+        return True
+    if pattern.startswith(GIT_DIR + "/"):
+        segments = path.split("/")
+        return any(
+            segment == GIT_DIR and matcher.match("/".join(segments[index:]))
+            for index, segment in enumerate(segments)
+        )
+    return False
+
+
+def protected_match(path: str, patterns: Iterable[str]) -> str | None:
+    """The first pattern that protects this project path, or None (also when a "!"
+    pattern exempts it)."""
+    found: str | None = None
     for pattern in patterns:
-        anchored = "/" in pattern.rstrip("/")
+        exempt = pattern.startswith("!")
         try:
-            if glob_regex(pattern).match(path if anchored else name):
-                return pattern
+            hit = _pattern_matches(pattern[1:] if exempt else pattern, path)
         except HTTPException:
             continue
-    return None
+        if hit and exempt:
+            return None
+        if hit and found is None:
+            found = pattern
+    return found
 
 
 def protected_patterns(patterns: Any) -> builtins.list[str]:
@@ -155,18 +181,19 @@ def protected_patterns(patterns: Any) -> builtins.list[str]:
     kept: builtins.list[str] = []
     for pattern in patterns:
         text = pattern.strip() if isinstance(pattern, str) else ""
+        body = text[1:] if text.startswith("!") else text
         if (
-            not text
+            not body
             or len(text) > 200
-            or text.startswith("/")
+            or body.startswith("/")
             or "\\" in text
             or "\x00" in text
-            or ".." in text.split("/")
+            or ".." in body.split("/")
         ):
             raise HTTPException(
                 422, "Each protected path is a relative pattern of 1..200 characters"
             )
-        glob_regex(text)
+        glob_regex(body)
         if text not in kept:
             kept.append(text)
     return kept

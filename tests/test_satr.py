@@ -21,6 +21,8 @@ SLACK = "xo" + "xb-" + "1234567890-abcdefABCDEF"
 JWT = "ey" + "JhbGciOiJIUzI1NiJ9." + "eyJzdWIiOiIxMjM0NTY3ODkwIn0." + "abc123DEF456ghi789"
 RANDOM = "Qm9x" + "T7kLp2Vr8Zs4Wn6Yc1Hd3Jf5"  # mixed case, scattered digits, near-random
 PEM = "-----BEGIN " + "RSA PRIVATE KEY-----\nMIIEow\nabc\n-----END RSA PRIVATE KEY-----"
+TAIL36 = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+STRIPE_TAIL = "4eC39HqLyjWDarjtT1zdp7dc"
 
 
 @pytest.mark.parametrize(
@@ -39,6 +41,18 @@ PEM = "-----BEGIN " + "RSA PRIVATE KEY-----\nMIIEow\nabc\n-----END RSA PRIVATE K
         ('password: "' + "correct horse" + '"', "assigned", "password: "),
         ("Authorization: Bearer " + RANDOM, "authorization", "Authorization: Bearer "),
         (f"value {RANDOM} end", "high_entropy", "end"),
+        # GitHub's other token prefixes (OAuth, server-to-server, user-to-server, refresh).
+        ("gh" + "o_" + TAIL36, "github_token", ""),
+        ("gh" + "s_" + TAIL36, "github_token", ""),
+        ("gh" + "u_" + TAIL36, "github_token", ""),
+        ("gh" + "r_" + TAIL36, "github_token", ""),
+        # Stripe live keys (secret, restricted, publishable) and npm access tokens.
+        ("s" + "k_live_" + STRIPE_TAIL, "stripe_key", ""),
+        ("r" + "k_live_" + STRIPE_TAIL, "stripe_key", ""),
+        ("p" + "k_live_" + STRIPE_TAIL, "stripe_key", ""),
+        ("n" + "pm_" + TAIL36, "npm_token", ""),
+        # A bare value with a digit in it under a secret-named key (YAML, INI).
+        ("password: " + "hunter2hunter2", "assigned", "password: "),
     ],
 )
 def test_secrets_are_covered_by_kind(text, kind, kept):
@@ -71,6 +85,16 @@ def test_secrets_are_covered_by_kind(text, kind, kept):
         "integrity sha512-" + "Zm9vYmFyQmF6UXV4MTIzNDU2Nzg5MEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFla",
         "https://docs.google.com/document/d/1aBcD3fGhIjK4lMnOp5QrStU6vWxYz7AbCd/edit",
         "Run in 12 ms; 3 tests passed.",
+        # Keys that name a secret's address, size or count, and values that are code.
+        "token_url = 'https://oauth.example.com/token'",
+        "tokens = list_of_tokens_here",
+        "max_tokens: " + "4096" + "_default_limit",
+        "api_key = config_value_loaded",
+        'secret_name = "prod-db-credentials"',
+        'password_file: "/run/secrets/db"',
+        "api_key_path=/etc/app/api.key",
+        # An underscore-joined identifier is not a random credential.
+        "ClassName_getUser2Name3Value4Handler5Impl",
     ],
 )
 def test_what_is_not_a_secret_is_left_alone(text):
@@ -124,6 +148,35 @@ def test_structures_are_walked_and_keyed_values_covered():
 )
 def test_credential_keys(key, credential):
     assert satr.credential_key(key) is credential
+
+
+def test_random_tokens_stay_covered_whatever_their_separators():
+    import random
+    import string
+
+    rng = random.Random(11)
+    alphabet = string.ascii_letters + string.digits
+    tokens = ["".join(rng.choice(alphabet) for _ in range(32)) for _ in range(300)]
+    random_like = [token for token in tokens if satr.high_entropy(token)]
+    assert len(random_like) > 250
+    assert all(satr.cover(token) == "[redacted:high_entropy]" for token in random_like)
+
+
+def test_live_events_cover_secrets_inside_values():
+    from agents.events import bounded
+
+    command = 'curl -H "Authorization: Bearer ' + RANDOM + '" https://api.example.com/x'
+    shown = bounded({"name": "bash", "input": {"command": command, "api_key": "x"}})
+    assert RANDOM not in str(shown)
+    assert shown["input"]["api_key"] == "[redacted]"
+    assert "https://api.example.com/x" in shown["input"]["command"]
+
+
+def test_secrets_in_lists_what_cover_would_replace():
+    text = f"API_KEY={OPENAI}\nMODE=dev\nTOKEN: '{RANDOM}'\n"
+    found = satr.secrets_in(text)
+    assert OPENAI in found and any(RANDOM in item for item in found)
+    assert satr.secrets_in("MODE=dev\n") == []
 
 
 def test_cover_is_idempotent():

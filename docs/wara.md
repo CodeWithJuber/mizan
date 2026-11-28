@@ -22,9 +22,14 @@ them). The parser (`wara.install_targets`, shlex, no shell is run) finds:
 Versions are stripped (`pkg==1.2`, `pkg@^1`), npm scopes and aliases are read
 (`@types/node`, `alias@npm:real`), PyPI names are PEP 503 normalised. Nothing is vetted
 for a local path, a URL, a `git+` source, a tarball, GitHub shorthand, a name built from
-a variable (`$PKG`), `-r requirements.txt`, or a command that points the install at
-another index (`--index-url`, `--extra-index-url`, `--registry`): a miss there proves
-nothing.
+a variable (`$PKG`) or `-r requirements.txt`.
+
+A command that points the install at another index or registry (`-i`/`--index-url`,
+`--extra-index-url`, `-f`/`--find-links`, `--registry`, or `PIP_INDEX_URL=`,
+`PIP_EXTRA_INDEX_URL=`, `UV_INDEX_URL=`, `npm_config_registry=` set before it on the
+same line, also by `export`) is allowed with a note: its names are not asked of the
+public registry at all, since a miss there proves nothing and a private name stays
+private.
 
 ## Evidence
 
@@ -35,6 +40,10 @@ nothing.
 2. OSV (`POST https://api.osv.dev/v1/query`): a `MAL-` advisory is the OpenSSF
    malicious-packages feed. Only a name its registry has is sent to OSV, so a typo, an
    invented name or a private name is told to no one else.
+
+When the registry answers but OSV does not, or its answer is too large to read (no age
+or version count), the evidence is partial: the install is allowed with a note saying
+what could not be checked, and the verdict is not remembered.
 3. Its name against a bundled list of popular PyPI and npm packages: one slip
    (optimal string alignment, so a transposition is one) for names under nine letters,
    two for longer ones; names under four letters are close to too many to say anything.
@@ -56,7 +65,9 @@ name is one slip from a popular one; an old package close to a popular name (`at
 (2.5 s) or cannot be reached allows the install with a note.
 
 Verdicts are cached in the process for six hours per (ecosystem, name); a registry that
-could not be reached is asked again next time. At most eight packages are probed per
+could not be reached, or partial evidence, is asked again next time (a package whose
+registry answer is over 4 MB, such as `boto3`, is therefore downloaded up to 4 MB on each
+install that names it). At most eight packages are probed per
 command; more are noted as not checked.
 
 ## Settings

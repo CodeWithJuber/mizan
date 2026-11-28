@@ -70,7 +70,8 @@ are held for the owner when no one is watching the run:
   lists as malicious, is refused outright; a registry that cannot be reached never
   blocks;
 - a `workspace_write` or `workspace_edit` to one of the project's protected paths
-  (`.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa*`, `.github/workflows/**` by default;
+  (`.env`, `.env.*` but not `.env.example`/`.sample`/`.template`, `*.pem`, `*.key`,
+  `id_rsa*`, `.git/**` at any depth, `.github/workflows/**` by default;
   each project keeps its own list: [coding-workspaces.md](coding-workspaces.md)).
 
 With no approval context (an internal caller that binds none), each is refused
@@ -80,8 +81,8 @@ Two more guards act on every tool call, whatever the mode:
 
 - **Satr** covers secrets in a tool's output (keys, tokens, passwords, private keys)
   as `[redacted:<kind>]` before the model, the history, the live events or the
-  receipt see it ([Satr](satr.md)). A write that would put such a placeholder back
-  into a project file is refused, so a covered secret is never overwritten.
+  receipt see it ([Satr](satr.md)). A write that would put such a placeholder where
+  the file holds a secret is refused, so a covered secret is never overwritten.
 - **Tawbah** counts failed tool calls by signature within one run (the tool, the
   error's class, the message with numbers, paths and ids taken out). The third
   identical failure closes that path: the model is told it failed three times the

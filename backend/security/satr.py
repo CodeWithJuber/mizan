@@ -58,9 +58,15 @@ _CURSOR_KEY = re.compile(r"(?:page|next|continuation|sync|cursor|resume)[_\-]?to
 
 # (kind, pattern) — format grammars, masked whole.
 _FORMATS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("github_token", re.compile(r"\bghp_[A-Za-z0-9]{16,255}|\bgithub_pat_[A-Za-z0-9_]{20,255}")),
+    # GitHub: personal (ghp_), OAuth (gho_), user/server-to-server (ghu_/ghs_), refresh (ghr_).
+    (
+        "github_token",
+        re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,255}|\bgithub_pat_[A-Za-z0-9_]{20,255}"),
+    ),
     ("gitlab_token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,255}")),
     ("api_key", re.compile(r"\bsk-[A-Za-z0-9_-]{16,255}", re.I)),
+    ("stripe_key", re.compile(r"\b(?:sk|rk|pk)_live_[A-Za-z0-9]{16,255}")),
+    ("npm_token", re.compile(r"\bnpm_[A-Za-z0-9]{36}\b")),
     ("slack_token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,255}", re.I)),
     ("google_key", re.compile(r"\bAIza[0-9A-Za-z_-]{20,255}")),
     ("google_token", re.compile(r"\bya29\.[A-Za-z0-9._-]{1,2048}")),
@@ -98,12 +104,44 @@ _ENV_ASSIGNED = re.compile(
 # Any separator: a quoted literal, or an 8+ character credential-class run that is not
 # the start of an expression (a call, an index or an attribute: ``settings.SECRET_KEY``).
 _ASSIGNED = re.compile(
-    rf"({_KEYISH}[\w-]{{0,64}}[\"']?\s*[:=]\s*(?:(?:basic|bearer|token)\s+)?)"
-    + _NOT_COVERED
-    + r"(\"[^\"\n]{4,512}\"|'[^'\n]{4,512}'"
+    rf"((?<![\w-])([\w-]{{0,64}}?{_KEYISH}[\w-]{{0,64}})[\"']?\s*[:=]\s*"
+    r"(?:(?:basic|bearer|token)\s+)?)" + _NOT_COVERED + r"(\"[^\"\n]{4,512}\"|'[^'\n]{4,512}'"
     r"|[A-Za-z0-9+/=_!@#%^&*~-][A-Za-z0-9+/=_!@#$%^&*~-]{7,511}(?![\w(\[]|\.[A-Za-z_]))",
     re.I,
 )
+
+# A key names a credential only when its LAST word is one (``access_token``, ``apiKey``,
+# ``SECRET_KEY``); ``token_url``, ``secret_name``, ``password_file`` and ``max_tokens``
+# name where a secret is, or how many, not the secret itself.
+_KEY_WORDS = re.compile(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])")
+_CREDENTIAL_WORDS = frozenset({"token", "secret", "password", "passwd", "apikey"})
+# A bare value that is code, not a credential: a number, or an identifier or dotted
+# expression with no digit or with words joined by ``_``/``.`` (``config_value_loaded``,
+# ``settings.SECRET``). A bare word with a digit (``hunter2hunter2``) is still covered.
+_NUMBER = re.compile(r"[\d_.]+")
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+
+
+def names_credential(key: str) -> bool:
+    """Whether an assigned key's last word is a credential word."""
+    words = [word.lower() for word in _KEY_WORDS.findall(key)]
+    if not words:
+        return False
+    last = words[-1]
+    if last == "key":
+        return len(words) > 1 and words[-2] in {"api", "secret", "private", "access", "signing"}
+    return last in _CREDENTIAL_WORDS
+
+
+def _code_value(value: str) -> bool:
+    if value[:1] in {"'", '"'}:
+        return False
+    if _NUMBER.fullmatch(value) or _NUMBER.match(value) and "_" in value:
+        return True
+    if not _IDENTIFIER.fullmatch(value):
+        return False
+    return "_" in value or "." in value or not re.search(r"\d", value)
+
 
 ENTROPY_MIN_LEN = 20
 ENTROPY_MIN_BITS = 3.9
@@ -123,9 +161,21 @@ def _entropy(token: str) -> float:
     return -sum(n / total * math.log2(n / total) for n in counts.values())
 
 
+# One word of an identifier: Capitalised, lower case, an acronym, or a number.
+_IDENTIFIER_WORDS = re.compile(r"(?:[A-Z][a-z]+|[a-z]{2,}|[A-Z]{2,}(?![a-z])|\d+)+")
+
+
+def _joined_identifier(token: str) -> bool:
+    """``ClassName_getUser2Name3Value4Handler5Impl``: words joined by ``_``, the shape of
+    code. Random tokens rarely decompose so (measured: under 1% of 20-character urlsafe
+    tokens that hold a ``_``, 0.07% at 43 characters)."""
+    parts = token.split("_")
+    return len(parts) >= 2 and all(part and _IDENTIFIER_WORDS.fullmatch(part) for part in parts)
+
+
 def high_entropy(token: str) -> bool:
     """A bare token shaped like a random credential by measure alone."""
-    if len(token) < ENTROPY_MIN_LEN:
+    if len(token) < ENTROPY_MIN_LEN or _joined_identifier(token):
         return False
     if not (re.search(r"[a-z]", token) and re.search(r"[A-Z]", token) and re.search(r"\d", token)):
         return False
@@ -138,49 +188,79 @@ def _mark(kind: str, labelled: bool) -> str:
     return f"[redacted:{kind}]" if labelled else "[redacted]"
 
 
-def _cover_entropy(text: str, labelled: bool) -> str:
-    def scan(segment: str) -> str:
-        return _ENTROPY_SCAN.sub(
-            lambda m: (
-                m.group(0)
-                if m.group(1) or not high_entropy(m.group(0))
-                else _mark("high_entropy", labelled)
-            ),
-            segment,
-        )
+def _cover_entropy(text: str, labelled: bool, found: list[str] | None) -> str:
+    def covered(m: re.Match[str]) -> str:
+        if m.group(1) or not high_entropy(m.group(0)):
+            return m.group(0)
+        if found is not None:
+            found.append(m.group(0))
+        return _mark("high_entropy", labelled)
 
     # A link is the address the person asked about: its path is never scored.
     out, last = [], 0
     for link in _LINK.finditer(text):
-        out.append(scan(text[last : link.start()]))
+        out.append(_ENTROPY_SCAN.sub(covered, text[last : link.start()]))
         out.append(link.group(0))
         last = link.end()
-    out.append(scan(text[last:]))
+    out.append(_ENTROPY_SCAN.sub(covered, text[last:]))
     return "".join(out)
+
+
+def _cover(text: str, labelled: bool, found: list[str] | None) -> str:
+    def whole(kind: str):
+        def replace(m: re.Match[str]) -> str:
+            if found is not None:
+                found.append(m.group(0))
+            return _mark(kind, labelled)
+
+        return replace
+
+    def value(kind: str, group: int = 2):
+        def replace(m: re.Match[str]) -> str:
+            if found is not None:
+                found.append(m.group(group))
+            return m.group(1) + _mark(kind, labelled)
+
+        return replace
+
+    text = _PEM.sub(whole("private_key"), text)
+    # The URL password first: ``https://x-access-token:PW@host`` masks PW, not ``PW@host``.
+    text = _URL_CRED.sub(value("url_password"), text)
+    for kind, pattern in _FORMATS:
+        text = pattern.sub(whole(kind), text)
+    text = _AUTH_HEADER.sub(value("authorization"), text)
+    text = _BEARER.sub(value("authorization"), text)
+    text = _ENV_ASSIGNED.sub(value("assigned"), text)
+
+    def assigned(m: re.Match[str]) -> str:
+        key, secret = m.group(2), m.group(3)
+        if not names_credential(key) or _code_value(secret):
+            return m.group(0)
+        # ``secret_dir = /etc/app`` is a path, unless it is random once its slashes go.
+        if secret.startswith("/") and not high_entropy(secret.replace("/", "")):
+            return m.group(0)
+        if found is not None:
+            found.append(secret.strip("\"'"))
+        return m.group(1) + _mark("assigned", labelled)
+
+    text = _ASSIGNED.sub(assigned, text)
+    return _cover_entropy(text, labelled, found)
 
 
 def cover_text(text: str, *, labelled: bool = True) -> str:
     """The text with every secret-shaped value replaced (``labelled``: by its kind)."""
     if not text or _DATA_URI.match(text):
         return text
-    text = _PEM.sub(_mark("private_key", labelled), text)
-    # The URL password first: ``https://x-access-token:PW@host`` masks PW, not ``PW@host``.
-    text = _URL_CRED.sub(lambda m: m.group(1) + _mark("url_password", labelled), text)
-    for kind, pattern in _FORMATS:
-        text = pattern.sub(_mark(kind, labelled), text)
-    text = _AUTH_HEADER.sub(lambda m: m.group(1) + _mark("authorization", labelled), text)
-    text = _BEARER.sub(lambda m: m.group(1) + _mark("authorization", labelled), text)
-    text = _ENV_ASSIGNED.sub(lambda m: m.group(1) + _mark("assigned", labelled), text)
+    return _cover(text, labelled, None)
 
-    def assigned(m: re.Match[str]) -> str:
-        value = m.group(2)
-        # ``secret_dir = /etc/app`` is a path, unless it is random once its slashes go.
-        if value.startswith("/") and not high_entropy(value.replace("/", "")):
-            return m.group(0)
-        return m.group(1) + _mark("assigned", labelled)
 
-    text = _ASSIGNED.sub(assigned, text)
-    return _cover_entropy(text, labelled)
+def secrets_in(text: str) -> list[str]:
+    """The pieces of this text :func:`cover_text` would replace, as they are written."""
+    if not text or _DATA_URI.match(text):
+        return []
+    found: list[str] = []
+    _cover(text, True, found)
+    return [piece for piece in found if piece and not MARKER.search(piece)]
 
 
 def credential_key(name: Any) -> bool:

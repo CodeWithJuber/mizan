@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
-from security.satr import SECRET_KEY
+from security.satr import SECRET_KEY, cover_text
 
 logger = logging.getLogger("mizan.events")
 
@@ -48,7 +48,8 @@ def current_sink() -> EventSink | None:
 
 
 def bounded(value: Any, depth: int = 0) -> Any:
-    """JSON-safe copy with secret-looking keys redacted and long text trimmed."""
+    """JSON-safe copy with secret-looking keys redacted, secrets inside text covered
+    (Satr) and long text trimmed."""
     if depth > 6:
         return "…"
     if isinstance(value, dict):
@@ -60,7 +61,10 @@ def bounded(value: Any, depth: int = 0) -> Any:
         items = [bounded(item, depth + 1) for item in list(value)[:200]]
         return items + (["…"] if len(value) > 200 else [])
     if isinstance(value, str):
-        return value if len(value) <= MAX_TEXT_CHARS else value[:MAX_TEXT_CHARS] + "…"
+        # Satr: a credential inside a value (``curl -H "Authorization: Bearer …"`` in a
+        # command) is covered too, not only a value under a secret-named key.
+        text = value if len(value) <= MAX_TEXT_CHARS else value[:MAX_TEXT_CHARS] + "…"
+        return cover_text(text)
     if value is None or isinstance(value, (bool, int, float)):
         return value
     return str(value)[:2000]

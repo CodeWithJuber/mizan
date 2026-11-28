@@ -37,6 +37,7 @@ USER = TokenPayload("alice", "Alice", ["user"], 9999999999, 0, "alice-token")
         ("id_rsa", "id_rsa*"),
         ("keys/id_rsa.pub", "id_rsa*"),
         (".git/config", ".git/**"),
+        ("vendor/lib/.git/config", ".git/**"),  # a nested repository's own folder
         (".github/workflows/ci.yml", ".github/workflows/**"),
     ],
 )
@@ -46,7 +47,19 @@ def test_default_patterns_match(path, pattern):
 
 @pytest.mark.parametrize(
     "path",
-    ["src/app.py", "environment.py", ".envrc", "README.md", "keyboard.js", "docs/.github/x.yml"],
+    [
+        "src/app.py",
+        "environment.py",
+        ".envrc",
+        "README.md",
+        "keyboard.js",
+        "docs/.github/x.yml",
+        # Templates of an .env are meant to be committed and shared.
+        ".env.example",
+        "api/.env.sample",
+        ".env.template",
+        "src/.gitignore",
+    ],
 )
 def test_ordinary_files_are_not_protected(path):
     assert protected_match(path, DEFAULT_PROTECTED) is None
@@ -62,6 +75,12 @@ def project(tmp_path, monkeypatch):
     store.write(workspace, ".env", "MODE=dev\n")
     store.write(workspace, "src/app.py", "print(1)\n")
     return store, workspace
+
+
+def test_a_project_list_may_exempt_with_a_negation():
+    patterns = ["*.pem", "!certs/public.pem"]
+    assert protected_match("certs/private.pem", patterns) == "*.pem"
+    assert protected_match("certs/public.pem", patterns) is None
 
 
 def test_each_project_keeps_its_own_list(project):
@@ -208,16 +227,85 @@ async def test_an_emptied_list_protects_nothing(agent):
     assert asked == [] and "error" not in result
 
 
+# Built at run time, so no credential-shaped literal sits in this file.
+SECRET = "s" + "k-" + "proj-Zq8Rt3Lm9Xc2Vb7Nw4Ks1Pd6"
+
+
 async def test_a_covered_secret_is_never_written_back(agent):
     """A file read through Satr shows [redacted:…] where its secret was; writing that
-    text back would replace the secret with the placeholder, so it is refused."""
+    view back would replace the secret with the placeholder, so it is refused."""
     agent, store, workspace = agent
     store.update_project(workspace, protected_paths=[])
-    params = {
+    store.write(workspace, "config.ini", f"API_KEY={SECRET}\nMODE=dev\n")
+    seen = await agent._execute_tool_safe(
+        "workspace_read", {"workspace_id": workspace, "path": "config.ini"}
+    )
+    assert SECRET not in seen["content"]
+    back = {
+        "workspace_id": workspace,
+        "path": "config.ini",
+        "content": seen["content"].replace("dev", "prod"),
+    }
+    result = await agent._execute_tool_safe("workspace_write", back)
+    assert "redacted" in result["error"]
+    assert SECRET in store.read(workspace, "config.ini")["content"]
+    edit = {
+        "workspace_id": workspace,
+        "path": "config.ini",
+        "old_string": f"API_KEY={SECRET}",
+        "new_string": "API_KEY=[redacted:api_key]",
+    }
+    refused = await agent._execute_tool_safe("workspace_edit", edit)
+    assert "redacted" in refused["error"]
+
+
+async def test_a_placeholder_written_where_no_secret_was_is_allowed(agent):
+    """A README or a fixture that shows the placeholder itself is ordinary text."""
+    agent, store, workspace = agent
+    store.update_project(workspace, protected_paths=[])
+    new_file = {
+        "workspace_id": workspace,
+        "path": "README.md",
+        "content": "Secrets show as [redacted:api_key].\n",
+    }
+    assert "error" not in await agent._execute_tool_safe("workspace_write", new_file)
+    plain = {
         "workspace_id": workspace,
         "path": "src/app.py",
-        "content": "KEY=[redacted:api_key]\n",
+        "content": "print('[redacted:jwt]')\n",
     }
-    result = await agent._execute_tool_safe("workspace_write", params)
-    assert "redacted" in result["error"]
+    assert "error" not in await agent._execute_tool_safe("workspace_write", plain)
+    store.write(workspace, "config.ini", f"API_KEY={SECRET}\n")
+    kept = {
+        "workspace_id": workspace,
+        "path": "config.ini",
+        "content": f"API_KEY={SECRET}\n# shown as [redacted:api_key]\n",
+    }
+    assert "error" not in await agent._execute_tool_safe("workspace_write", kept)
+    assert SECRET in store.read(workspace, "config.ini")["content"]
+
+
+async def test_a_nested_git_folder_asks(agent):
+    agent, store, workspace = agent
+    context = ApprovalContext("alice", "chat", "auto", interactive=True)
+    params = {"workspace_id": workspace, "path": "vendor/.git/config", "content": "x"}
+    result, asked = await decide(
+        "deny", context, lambda: agent._execute_tool_safe("workspace_write", params)
+    )
+    assert asked and ".git" in asked[0]["reason"] and result.get("declined")
+
+
+async def test_an_unreadable_list_asks_instead_of_allowing(agent, monkeypatch):
+    agent, store, workspace = agent
+
+    def broken(self, workspace_id):
+        raise OSError("metadata unreadable")
+
+    monkeypatch.setattr(WorkspaceStore, "protected_paths", broken)
+    context = ApprovalContext("alice", "chat", "auto", interactive=True)
+    params = {"workspace_id": workspace, "path": "src/app.py", "content": "print(3)\n"}
+    result, asked = await decide(
+        "deny", context, lambda: agent._execute_tool_safe("workspace_write", params)
+    )
+    assert asked and "could not read the project's protected paths" in asked[0]["reason"]
     assert store.read(workspace, "src/app.py")["content"] == "print(1)\n"
