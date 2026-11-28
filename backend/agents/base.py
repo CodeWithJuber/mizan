@@ -427,12 +427,14 @@ _workspace_only: ContextVar[str | None] = ContextVar("mizan_workspace_only", def
 WORKSPACE_AGENT_TOOLS = frozenset(
     {"workspace_tree", "workspace_read", "workspace_glob", "workspace_grep", "workspace_edit",
      "workspace_write", "workspace_run", "workspace_sandbox", "workspace_git", "workspace_diff",
-     "workspace_checkpoint", "workspace_artifact", "todo_write"}
+     "workspace_checkpoint", "workspace_artifact", "todo_write",
+     "workspace_verify", "workspace_impact", "workspace_docs_check"}
 )  # fmt: skip
 # Their results are the project's text (files, program output): data, never instructions.
 _WORKSPACE_READS = frozenset(
     {"workspace_tree", "workspace_read", "workspace_glob", "workspace_grep", "workspace_run",
-     "workspace_sandbox", "workspace_git", "workspace_diff"}
+     "workspace_sandbox", "workspace_git", "workspace_diff",
+     "workspace_verify", "workspace_impact", "workspace_docs_check"}
 )  # fmt: skip
 _WORKSPACE_ONLY_NOTE = (
     "\n\nMIZAN gave you this coding task in the user's project. Use only its workspace tools: "
@@ -1032,6 +1034,10 @@ class BaseAgent:
 
     @staticmethod
     def _read_only_hint(tool_name: str) -> bool:
+        from skills.builtin.coding_workspace import FORGEKIT_READS
+
+        if tool_name in FORGEKIT_READS:
+            return True  # ForgeKit's reads of a project observe, like git status
         if not tool_name.startswith("mcp__"):
             return False
         from connectors.tools import read_only_hint
@@ -1193,18 +1199,22 @@ class BaseAgent:
         from workspace.context import bound_workspace_id
 
         window_tools, window_bytes = window_limits()
+        project_tools = (
+            {s["name"] for s in tool_schemas if s["name"].startswith("workspace_")}
+            if bound_workspace_id()
+            else set()
+        )
         tool_catalog = ToolCatalog(
             tool_schemas,
             task,
             # activate_skill carries the skill catalog in its description, so
             # the ranking offers it when a request matches a skill.
-            context_names={s["name"] for s in tool_schemas if s["name"].startswith("workspace_")}
-            if bound_workspace_id()
-            else set(),
-            # A coding project needs its read/edit/search/run tools together.
+            context_names=project_tools,
+            # A coding project needs its read/edit/search/run tools together: all of
+            # them, discovery and one more fit the window.
             max_tools=max(
                 self._config_int("tool_schema_limit", window_tools, 2, 32),
-                16 if bound_workspace_id() else 0,
+                max(16, len(project_tools) + 2) if bound_workspace_id() else 0,
             ),
             max_bytes=max(
                 self._config_int("tool_schema_bytes", window_bytes, 4096, 65_536),

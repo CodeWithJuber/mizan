@@ -28,12 +28,16 @@ When a chat is bound to a project (`workspace_id`), the agent gets these tools:
 | `workspace_checkpoint`, `workspace_diff` | Keep a checkpoint (the 30 latest are kept; see `coding-workspaces.md`) and review changes against one. |
 | `workspace_git` | `status`, `diff`, `log`, `init` or a local `commit`; no remote operations. The three reads lock nothing and write nothing back. |
 | `workspace_artifact` | Publish a project file (code, HTML, Markdown or a raster image) as a saved artifact in the chat. |
+| `workspace_verify` | Run the project's own tests with ForgeKit (`forge verify`) in its sandbox: the verdict (`PASS`, `FAIL`, `INCOMPLETE`, `NOT_CONFIGURED`, `SUSPECT`), each test command with pass/fail counts, and the digest of the files it tested; the verdict is kept with those files and goes stale on the next edit (see `coding-workspaces.md`). Asks like `workspace_run`: it runs the project's code. |
+| `workspace_impact` | The files an edit to a `symbol` or `path` will probably touch, from ForgeKit's code graph (`forge impact`). A read: it runs none of the project's code, and git never reads the project's config (see `coding-workspaces.md`). |
+| `workspace_docs_check` | The docs the uncommitted changes made stale (`forge docs sync` against the project's git `HEAD`). A read, like impact; needs the project's git history. |
 | `workspace_list`, `workspace_tree`, `workspace_create` | List projects, show a project's files, create one. `workspace_hardware` (administrators) reports the backend's CPU, memory and disk. |
 | `todo_write` | Keep a short plan. It is saved per chat and shown live in the UI. |
 | `web_search`, `web_browse` | Search the web and read a page. Fetches resolve DNS and refuse private, loopback and metadata addresses on every redirect. |
 
-The tool window grows to 16 tools / 32 KB while a project is bound. An ordinary
-chat still sends only `mizan_discover_tools`.
+The tool window grows while a project is bound, to every project tool plus
+discovery and one more (at least 16 tools) within 32 KB. An ordinary chat still
+sends only `mizan_discover_tools`.
 
 Project limits can be raised with `MIZAN_WORKSPACE_MAX_FILE_BYTES` (max 8 MiB),
 `MIZAN_WORKSPACE_MAX_PROJECT_BYTES` (max 100 MiB) and
@@ -142,7 +146,8 @@ schedules and triggers the first administrator) through that owner's own
 gates. Every action that needs a person is **held** instead of run:
 
 - What goes ahead: reading, private project edits, and programs in MIZAN's
-  isolated sandbox (`workspace_run`).
+  isolated sandbox (`workspace_run`, and ForgeKit's `workspace_verify`, which
+  runs the project's tests there).
 - What is held: host commands, outside writes, connector actions, anything
   Izn asks about, and anything Amanah marked tainted.
 - Each held action is stored with its exact parameters and their SHA-256
@@ -239,7 +244,8 @@ the project's tools only (Tadbir `_workspace_agent`):
 3. **MIZAN makes the project** when the chat has none and binds the chat to it
    (`workspace` event).
 4. **The model works with the project's tools only**: tree, read, glob, grep,
-   edit, write, run, sandbox, git, diff, checkpoint and `todo_write`. They are
+   edit, write, run, sandbox, git, diff, checkpoint, ForgeKit's verify, impact
+   and docs check, and `todo_write`. They are
    sent directly (no `mizan_discover_tools`); any other tool, or another
    project, is refused. What the tools read from the project reaches the model
    fenced as data, and an instruction found in it makes later changes ask. Each
@@ -247,11 +253,20 @@ the project's tools only (Tadbir `_workspace_agent`):
 5. **MIZAN checks what changed.** It compares the project's files before and
    after, checks each changed file (references, CSS, JSON, `node --check`,
    `py_compile`, esbuild, unit tests), and checks that a dev server the model
-   started still runs. When a check fails, the model gets one turn to repair
-   it, with the failure fenced as data.
+   started still runs. When the project has a manifest ForgeKit plans tests
+   from (`package.json`, `pyproject.toml`, `pytest.ini`, `go.mod`, …) and
+   something changed (a deleted file too), it also runs the project's own
+   tests with `workspace_verify`: `PASS` is a passed check, `FAIL` and
+   `SUSPECT` (the change weakened the tests) are failures the repair turn gets,
+   and anything else is "not checked": `INCOMPLETE`, a verdict not bound to
+   the files, a declined run, a chat without `workspace_verify`, or a sandbox
+   image without ForgeKit. A project ForgeKit could test is therefore never
+   verified on the file checks alone. Only `NOT_CONFIGURED` (no test command)
+   adds no check. MIZAN's own edit recipe runs the same check. When a check fails, the model gets one
+   turn to repair it, with the failure fenced as data.
 6. **The answer says what was checked.** The model's words, then MIZAN's check
    section: the files changed or removed and each check. It is verified only
-   when checks ran and all passed; the model's words still go through Sidq. A
+   when checks ran and all passed (with tests, only when they pass); the model's words still go through Sidq. A
    checkpoint is saved when files changed.
 
 In plan mode the model reads the project and writes a plan; nothing changes

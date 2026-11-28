@@ -81,6 +81,74 @@ WebP and publish that saved file with `workspace_artifact`. Image artifacts are
 limited to 500000 encoded characters (roughly 375 kB of image bytes), which is
 smaller than the project file limit.
 
+**ForgeKit in the sandbox.** The runtime image also carries ForgeKit
+(`@codewithjuber/forgekit`, the exact version pinned in the Dockerfile and in
+`backend/workspace/forgekit.py`, checked by `tests/test_workspace_forgekit.py`).
+Three tools run it on the project, in its live session when one runs (installed
+packages are there), otherwise in a one-shot job that copies nothing back:
+
+| Tool | Runs | Returns |
+|---|---|---|
+| `workspace_verify` | `forge verify --json`: the project's own test commands (`npm test`, `pytest -q`, …) | `verdict` (`PASS`, `FAIL`, `INCOMPLETE`, `NOT_CONFIGURED` when ForgeKit finds no test command, `SUSPECT` when a change weakened the tests), `commands` (each with `status`, `exit_code`, `duration_ms`, `counts`), `counts` (total/pass/fail/skipped, when the runner reports them), `detail` (the failing output), `tree` (the files tested), `tree_after`, `bound`, `forge` (version, git `head`, ForgeKit's `dirty_hash`) |
+| `workspace_impact` | `forge impact <symbol\|path> --json`: ForgeKit's code graph | `found`, `defined_in`, `direct` (files that use it), `files` (every predicted file), `hops` |
+| `workspace_docs_check` | `forge docs sync --base HEAD --json` | `stale` (each doc with the lines that mention a changed name), `changed_files`, `updated` |
+
+The command MIZAN sends calls ForgeKit, node, python, git and `timeout` by their
+paths in the image (never a project's own `node_modules/.bin`), puts ForgeKit's
+state (`.forge/`: atlas cache, provenance, verifier events) back exactly as it
+was so a check changes no project file, stops ForgeKit 20 s before the run's own limit so that cleanup
+always runs, and reads the answer after a marker with a fresh random mark.
+
+Git never reads the project's own git configuration. ForgeKit works through a
+git directory MIZAN makes under `.cache/` for each run: it borrows the
+project's objects (an alternate, read only), its HEAD, index, shallow list and
+ignore patterns, and nothing that names a program: not `.git/config`
+(`core.fsmonitor`, `diff.external`, filter and textconv drivers), not its hooks,
+not `.git/info/attributes`. The project's `.gitattributes` then name drivers
+that are defined nowhere, so they run nothing. No system or global git
+configuration is read (`GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`),
+and `core.fsmonitor=false`, `core.hooksPath=/dev/null`, `core.pager=cat` and no
+attributes or excludes file are set over any file. `diff.external` cannot be
+switched off by setting it empty (git then fails to run `""`), which is why the
+project's config is never read at all. A test in `tests/test_workspace_forgekit.py`
+builds a repository whose config, attributes and `~/.gitconfig` name programs
+and checks that none runs. Apart from git, `forge impact` and `forge docs sync`
+start nothing (ForgeKit's model adjudication is off: `FORGE_LLM=0`), so they run
+none of the project's code and are reads in approval terms. `forge verify` runs
+the project's test commands (and `jscpd` from the image's PATH when the
+project's `.forge` config asks for its duplicate check), so `workspace_verify`
+asks like `workspace_run` and, like it, may run unattended in the sandbox.
+MIZAN's own state under `.cache/` is ignored there, so ForgeKit never counts it
+as a change.
+
+A project without git history is verified against a throwaway snapshot commit
+in that directory: its tests run and the verdict is bound, though ForgeKit's
+test-integrity check then has nothing earlier to compare with.
+`workspace_docs_check` compares with the project's own git `HEAD` and answers
+`code: no_git` without one. An image older than this change answers
+`code: forgekit_missing` ("ForgeKit is not installed in this sandbox image; the
+runner needs upgrading"); the next deploy's runner upgrade brings it.
+A verdict is what the project's own tests report in its sandbox: evidence, not
+a proof against a test suite written to lie, since tests are the project's code.
+
+**Verifications are bound to the files they tested.** `workspace_verify` keeps
+its verdict in `verifications.json` beside the project's files, keyed by the
+digest of the files as they were when the tests started (`tree`, the same
+digest a checkpoint of them records), with the digest after the run beside it
+(`tree_after`). A verification is current only while the project's files are
+the tested ones: any later edit, and any file the run itself wrote (a test
+report, a snapshot), makes a new digest, so it reads `stale: true`; restoring
+the tested checkpoint brings it back. A verdict is kept only when ForgeKit saw
+no change to the code while the tests ran and every file that changed in the
+project is one the run wrote; otherwise the answer says `bound: false` and
+nothing is kept.
+`GET /api/workspaces/{id}/checkpoints` returns `verification` (the record for the
+current files, else the newest, with `stale`, `current_tree` and the
+`checkpoint_id` holding the tested files) and each checkpoint whose files were
+verified carries `verification: {verdict, passed, checked_at}`. Records follow
+the checkpoint limit (the newest 30 trees). A verification is bound to the
+project's files, not to its installed dependencies.
+
 After rebuilding the runtime image, verify a real chart run and artifact export:
 
 ```sh

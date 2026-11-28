@@ -1,0 +1,189 @@
+{
+  "ok": false,
+  "provenance": {
+    "base": "HEAD",
+    "changedFiles": [
+      "__pycache__/calc.cpython-313.pyc",
+      "__pycache__/test_calc.cpython-313-pytest-9.1.1.pyc"
+    ],
+    "untracked": [
+      "__pycache__/calc.cpython-313.pyc",
+      "__pycache__/test_calc.cpython-313-pytest-9.1.1.pyc"
+    ],
+    "tests": {
+      "ran": false,
+      "passed": false,
+      "status": "INCOMPLETE",
+      "runner": "pytest -q",
+      "detected": [
+        "pytest -q"
+      ],
+      "executed": [
+        {
+          "label": "pytest -q",
+          "status": "INCOMPLETE",
+          "exitCode": null,
+          "code": "ENOENT",
+          "output": "executor unavailable (pytest not on PATH)",
+          "cwd": ".",
+          "covers": [
+            "."
+          ],
+          "durationMs": 2,
+          "reportedCounts": null
+        }
+      ],
+      "notExecuted": [],
+      "coverage": {
+        "required": [
+          "."
+        ],
+        "excluded": [],
+        "rootCoversWorkspaces": false,
+        "basis": {
+          ".": "measured"
+        },
+        "covered": [],
+        "uncovered": [
+          "."
+        ]
+      },
+      "output": "\"pytest -q\" executor unavailable (pytest not on PATH)"
+    },
+    "codeState": {
+      "head": "6260e99b21425cc1cf1b9888787e2dba513bb50d",
+      "dirtyHash": "00c8f1914e990bb332e6ff559e473342e04490dcd85caf7369307723fac3bd11",
+      "gitAvailable": true,
+      "scheme": "manifest-v3"
+    },
+    "event": {
+      "v": 2,
+      "runId": "a7dfc152-32eb-44c3-b17b-9c9e9723dc49",
+      "checkout": "3620cb999cffb956",
+      "verifier": "forge verify",
+      "verifierVersion": "1.26.0",
+      "startedAt": "2026-11-28T18:29:26.767Z",
+      "finishedAt": "2026-11-28T18:29:26.830Z",
+      "status": "INCOMPLETE",
+      "testIntegrity": {
+        "status": "clear",
+        "reason": "No changed test files were identified",
+        "findings": [],
+        "scannedFiles": 0,
+        "baseline": "6260e99b21425cc1cf1b9888787e2dba513bb50d"
+      },
+      "suites": [
+        {
+          "label": "pytest -q",
+          "cwd": ".",
+          "covers": [
+            "."
+          ],
+          "status": "INCOMPLETE",
+          "exitCode": null,
+          "durationMs": 2,
+          "reportedCounts": null
+        }
+      ],
+      "notExecuted": [],
+      "coverage": {
+        "required": [
+          "."
+        ],
+        "excluded": [],
+        "rootCoversWorkspaces": false,
+        "basis": {
+          ".": "measured"
+        },
+        "covered": [],
+        "uncovered": [
+          "."
+        ]
+      },
+      "pre": {
+        "scheme": "manifest-v3",
+        "head": "6260e99b21425cc1cf1b9888787e2dba513bb50d",
+        "dirtyHash": "00c8f1914e990bb332e6ff559e473342e04490dcd85caf7369307723fac3bd11"
+      },
+      "post": {
+        "head": "6260e99b21425cc1cf1b9888787e2dba513bb50d",
+        "dirtyHash": "00c8f1914e990bb332e6ff559e473342e04490dcd85caf7369307723fac3bd11"
+      },
+      "environment": {
+        "node": "v22.23.5",
+        "platform": "linux",
+        "arch": "x64",
+        "digest": "687a1a5f3cdd1692"
+      }
+    },
+    "symbolsChecked": 0,
+    "unknownSymbols": [],
+    "duplicates": {
+      "label": "jscpd new clones",
+      "status": "OFF",
+      "reason": "Set verify.duplicates to true to enable jscpd",
+      "findings": []
+    },
+    "signature": "4d3237218aae8c135e0394ac16778734818a855ce1ecf37154bd101861399d4f",
+    "signer": "d4940ce9d8b2a379"
+  },
+  "unknown": [],
+  "tests": {
+    "ran": false,
+    "passed": false,
+    "status": "INCOMPLETE",
+    "runner": "pytest -q",
+    "detected": [
+      "pytest -q"
+    ],
+    "executed": [
+      {
+        "label": "pytest -q",
+        "status": "INCOMPLETE",
+        "exitCode": null,
+        "code": "ENOENT",
+        "output": "executor unavailable (pytest not on PATH)",
+        "cwd": ".",
+        "covers": [
+          "."
+        ],
+        "durationMs": 2,
+        "reportedCounts": null
+      }
+    ],
+    "notExecuted": [],
+    "coverage": {
+      "required": [
+        "."
+      ],
+      "excluded": [],
+      "rootCoversWorkspaces": false,
+      "basis": {
+        ".": "measured"
+      },
+      "covered": [],
+      "uncovered": [
+        "."
+      ]
+    },
+    "output": "\"pytest -q\" executor unavailable (pytest not on PATH)"
+  },
+  "changedFiles": [
+    "__pycache__/calc.cpython-313.pyc",
+    "__pycache__/test_calc.cpython-313-pytest-9.1.1.pyc"
+  ],
+  "added": "\n\ufffd\r\r\n\u0000\u0000\u0000\u0000\ufffd\u001d\u000bk \u0000\u0000\u0000\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000\u0000\ufffd\n\u0000\u0000\u0000\ufffd\u0000S\u0000\u001a\u0000r\u0000g\u0001)\u0002c\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0002\u0000\u0000\u0000\u0003\u0000\u0000\u0000\ufffd\n\u0000\u0000\u0000\ufffd\u0000X\u0001-\u0000\u0000\u0000$\u0000)\u0001N\ufffd\u0000)\u0002\ufffd\u0001a\ufffd\u0001bs\u0002\u0000\u0000\u0000  \ufffdk/workspace/calc.py\ufffd\u0003addr\u0007\u0000\u0000\u0000\u0001\u0000\u0000\u0000s\t\u0000\u0000\u0000\ufffd\u0000\ufffd\u000b\f\ufffd5\ufffdL\ufffd\u0000\u0000\u0000\u0000N)\u0001r\u0007\u0000\u0000\u0000r\u0003\u0000\u0000\u0000r\b\u0000\u0000\u0000r\u0006\u0000\u0000\u0000\ufffd\b<module>r\t\u0000\u0000\u0000\u0001\u0000\u0000\u0000s\n\u0000\u0000\u0000\ufffd\u0003\u0001\u0001\u0001\ufffd\u0002\u0001\u0001\u0011r\b\u0000\u0000\u0000\n\ufffd\r\r\n\u0000\u0000\u0000\u0000\ufffd\u001d\u000bk@\u0000\u0000\u0000\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\ufffd0\u0000\u0000\u0000\ufffd\u0000S\u0000S\u0001K\u0000r\u0001S\u0000S\u0001K\u0002J\u0003s\u0002 \u0000J\u0004r\u0005 \u0000S\u0000S\u0002K\u0006J\u0007r\u0007 \u0000S\u0003\u001a\u0000r\bg\u0001)\u0004\ufffd\u0000\u0000\u0000\u0000N)\u0001\ufffd\u0003addc\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\b\u0000\u0000\u0000\u0003\u0000\u0000\u0000\ufffd$\u0002\u0000\u0000\ufffd\u0000S\u0001n\u0000S\u0002n\u0001[\u0001\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000X\u00015\u0002\u0000\u0000\u0000\u0000\u0000\u0000n\u0002S\u0003o2U\u0003:H\u0000\u0000oD(\u0000\u0000\u0000\u0000\u0000\u0000\u0000d\ufffd\u0000\u0000[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\u0004\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000S\u0004U\u00044\u0001S\u0005X#4\u00025\u0004\u0000\u0000\u0000\u0000\u0000\u0000S\u0006[\u0006\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\b\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u00005\u0000\u0000\u0000\u0000\u0000\u0000\u0000;\u0000\u0000\u0000d\u001f\u0000\u0000[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\n\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000[\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u00005\u0001\u0000\u0000\u0000\u0000\u0000\u0000(\u0000\u0000\u0000\u0000\u0000\u0000\u0000a\u001a\u0000\u0000[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\f\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000[\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u00005\u0001\u0000\u0000\u0000\u0000\u0000\u0000O\u0001S\u0006[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\f\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000U\u00005\u0001\u0000\u0000\u0000\u0000\u0000\u0000[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\f\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000U\u00015\u0001\u0000\u0000\u0000\u0000\u0000\u0000[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\f\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000U\u00025\u0001\u0000\u0000\u0000\u0000\u0000\u0000[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\f\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000U\u00035\u0001\u0000\u0000\u0000\u0000\u0000\u0000S\u0007.\u0005-\u0006\u0000\u0000n\u0005S\bS\tU\u00050\u0001-\u0006\u0000\u0000n\u0006[\u000f\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000[\u0002\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000R\u0010\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\"\u0000U\u00065\u0001\u0000\u0000\u0000\u0000\u0000\u00005\u0001\u0000\u0000\u0000\u0000\u0000\u0000e\u0001S\u0000=\u0001n\u0000=\u0001n\u0001=\u0001n\u0002=\u0001pCg\u0000)\nN\ufffd\u0002\u0000\u0000\u0000\ufffd\u0003\u0000\u0000\u0000\ufffd\u0005\u0000\u0000\u0000)\u0001\ufffd\u0002==)\u0001z9%(py6)s\n{%(py6)s = %(py0)s(%(py2)s, %(py4)s)\n} == %(py9)sr\u0003\u0000\u0000\u0000)\u0005\ufffd\u0003py0\ufffd\u0003py2\ufffd\u0003py4\ufffd\u0003py6\ufffd\u0003py9z\u000fassert %(py11)s\ufffd\u0004py11)\tr\u0003\u0000\u0000\u0000\ufffd\n@pytest_ar\ufffd\u0011_call_reprcompare\ufffd\f@py_builtins\ufffd\u0006locals\ufffd\u0018_should_repr_global_name\ufffd\t_saferepr\ufffd\u000eAssertionError\ufffd\u0013_format_explanation)\u0007\ufffd\u000b@py_assert1\ufffd\u000b@py_assert3\ufffd\u000b@py_assert5\ufffd\u000b@py_assert8\ufffd\u000b@py_assert7\ufffd\f@py_format10\ufffd\f@py_format12s\u0007\u0000\u0000\u0000       \ufffdp/workspace/test_calc.py\ufffd\btest_addr\u001f\u0000\u0000\u0000\u0003\u0000\u0000\u0000s\ufffd\u0000\u0000\u0000\ufffd\u0000\ufffd\u000f\u0010\ufffd\u0004\u0019\ufffd!\ufffd\u0004\u0019\ufffd3\ufffdq\ufffd9\ufffd\u0004\u0019\ufffd\u0001\ufffd\u0004\u0019\ufffd\u0001\ufffd>\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd9\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd3\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd3\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffdq\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd!\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd9\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0001\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0004\u0019\ufffd\u0000\u0000\u0000\u0000)\t\ufffd\bbuiltinsr\u0011\u0000\u0000\u0000\ufffd\u0019_pytest.assertion.rewrite\ufffd\tassertion\ufffd\u0007rewriter\u000f\u0000\u0000\u0000\ufffd\u0004calcr\u0003\u0000\u0000\u0000r\u001f\u0000\u0000\u0000\ufffd\u0000r \u0000\u0000\u0000r\u001e\u0000\u0000\u0000\ufffd\b<module>r'\u0000\u0000\u0000\u0001\u0000\u0000\u0000s\u0012\u0000\u0000\u0000\ufffd\u0003\u0001\u0001\u0001\ufffd\u0000\u0000\ufffd\u0000\ufffd\u0000\u0014\ufffd\u0004\u0001\u0001\u001ar \u0000\u0000\u0000",
+  "duplicates": {
+    "label": "jscpd new clones",
+    "status": "OFF",
+    "reason": "Set verify.duplicates to true to enable jscpd",
+    "findings": []
+  },
+  "testIntegrity": {
+    "status": "clear",
+    "reason": "No changed test files were identified",
+    "findings": [],
+    "scannedFiles": 0,
+    "baseline": "6260e99b21425cc1cf1b9888787e2dba513bb50d"
+  }
+}

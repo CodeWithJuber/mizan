@@ -18275,6 +18275,7 @@
      "coding workspaces"
     ],
     "summary": "Checkpoints",
+    "description": "The project's checkpoints and its ForgeKit verification (stale once files change).",
     "operationId": "checkpoints_api_workspaces__workspace_id__checkpoints_get",
     "parameters": [
      {

@@ -314,7 +314,12 @@ def checkpoint(
 
 @router.get("/{workspace_id}/checkpoints")
 def checkpoints(workspace_id: str, user: TokenPayload = Depends(require_auth)) -> dict:
-    return {"checkpoints": WorkspaceStore(user.user_id).checkpoints(workspace_id)}
+    """The project's checkpoints and its ForgeKit verification (stale once files change)."""
+    store = WorkspaceStore(user.user_id)
+    return {
+        "checkpoints": store.checkpoints(workspace_id),
+        "verification": store.verification(workspace_id),
+    }
 
 
 @router.post("/{workspace_id}/checkpoints/{checkpoint_id}/restore")

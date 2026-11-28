@@ -1,0 +1,203 @@
+{
+  "ok": false,
+  "provenance": {
+    "base": "HEAD",
+    "changedFiles": [
+      "sum.js"
+    ],
+    "untracked": [],
+    "tests": {
+      "ran": true,
+      "passed": false,
+      "status": "FAIL",
+      "runner": "npm test",
+      "detected": [
+        "npm test"
+      ],
+      "executed": [
+        {
+          "label": "npm test",
+          "status": "FAIL",
+          "exitCode": 1,
+          "output": "_ASSERTION'\n  name: 'AssertionError'\n  expected: 5\n  actual: -1\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/test/sum.test.js:4:28)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.start (node:internal/test_runner/test:944:17)\n    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 57.06431\n",
+          "cwd": ".",
+          "covers": [
+            "."
+          ],
+          "durationMs": 179,
+          "reportedCounts": {
+            "total": 1,
+            "pass": 0,
+            "fail": 1,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        }
+      ],
+      "notExecuted": [],
+      "coverage": {
+        "required": [
+          "."
+        ],
+        "excluded": [],
+        "rootCoversWorkspaces": false,
+        "basis": {
+          ".": "measured"
+        },
+        "covered": [
+          "."
+        ],
+        "uncovered": []
+      },
+      "output": "\"npm test\" FAILED: _ASSERTION'\n  name: 'AssertionError'\n  expected: 5\n  actual: -1\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/test/sum.test.js:4:28)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.start (node:internal/test_runner/test:944:17)\n    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 57.06431\n"
+    },
+    "codeState": {
+      "head": "c266e3ab6ecc6a8e80a49eed1d582618ada6b588",
+      "dirtyHash": "fcfcdc909055c5579e2725892c466044fee6e938bf1499358ab4293646cb9aa2",
+      "gitAvailable": true,
+      "scheme": "manifest-v3"
+    },
+    "event": {
+      "v": 2,
+      "runId": "3f0cb9cb-2530-491c-9ba5-826cdbc52dc0",
+      "checkout": "95c59160f5bb9acf",
+      "verifier": "forge verify",
+      "verifierVersion": "1.26.0",
+      "startedAt": "2026-11-28T18:23:46.611Z",
+      "finishedAt": "2026-11-28T18:23:46.847Z",
+      "status": "FAIL",
+      "testIntegrity": {
+        "status": "clear",
+        "reason": "No changed test files were identified",
+        "findings": [],
+        "scannedFiles": 0,
+        "baseline": "c266e3ab6ecc6a8e80a49eed1d582618ada6b588"
+      },
+      "suites": [
+        {
+          "label": "npm test",
+          "cwd": ".",
+          "covers": [
+            "."
+          ],
+          "status": "FAIL",
+          "exitCode": 1,
+          "durationMs": 179,
+          "reportedCounts": {
+            "total": 1,
+            "pass": 0,
+            "fail": 1,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        }
+      ],
+      "notExecuted": [],
+      "coverage": {
+        "required": [
+          "."
+        ],
+        "excluded": [],
+        "rootCoversWorkspaces": false,
+        "basis": {
+          ".": "measured"
+        },
+        "covered": [
+          "."
+        ],
+        "uncovered": []
+      },
+      "pre": {
+        "scheme": "manifest-v3",
+        "head": "c266e3ab6ecc6a8e80a49eed1d582618ada6b588",
+        "dirtyHash": "fcfcdc909055c5579e2725892c466044fee6e938bf1499358ab4293646cb9aa2"
+      },
+      "post": {
+        "head": "c266e3ab6ecc6a8e80a49eed1d582618ada6b588",
+        "dirtyHash": "fcfcdc909055c5579e2725892c466044fee6e938bf1499358ab4293646cb9aa2"
+      },
+      "environment": {
+        "node": "v22.23.5",
+        "platform": "linux",
+        "arch": "x64",
+        "digest": "687a1a5f3cdd1692"
+      }
+    },
+    "symbolsChecked": 1,
+    "unknownSymbols": [],
+    "duplicates": {
+      "label": "jscpd new clones",
+      "status": "OFF",
+      "reason": "Set verify.duplicates to true to enable jscpd",
+      "findings": []
+    },
+    "signature": "6e3ba90ccf8da559b2e1eb99e844093ad0afce8ad75ddfc74e1b42bc96a53f7a",
+    "signer": "d4940ce9d8b2a379"
+  },
+  "unknown": [],
+  "tests": {
+    "ran": true,
+    "passed": false,
+    "status": "FAIL",
+    "runner": "npm test",
+    "detected": [
+      "npm test"
+    ],
+    "executed": [
+      {
+        "label": "npm test",
+        "status": "FAIL",
+        "exitCode": 1,
+        "output": "_ASSERTION'\n  name: 'AssertionError'\n  expected: 5\n  actual: -1\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/test/sum.test.js:4:28)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.start (node:internal/test_runner/test:944:17)\n    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 57.06431\n",
+        "cwd": ".",
+        "covers": [
+          "."
+        ],
+        "durationMs": 179,
+        "reportedCounts": {
+          "total": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      }
+    ],
+    "notExecuted": [],
+    "coverage": {
+      "required": [
+        "."
+      ],
+      "excluded": [],
+      "rootCoversWorkspaces": false,
+      "basis": {
+        ".": "measured"
+      },
+      "covered": [
+        "."
+      ],
+      "uncovered": []
+    },
+    "output": "\"npm test\" FAILED: _ASSERTION'\n  name: 'AssertionError'\n  expected: 5\n  actual: -1\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///workspace/test/sum.test.js:4:28)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.start (node:internal/test_runner/test:944:17)\n    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 57.06431\n"
+  },
+  "changedFiles": [
+    "sum.js"
+  ],
+  "added": "export function sum(a, b) { return a - b; }",
+  "duplicates": {
+    "label": "jscpd new clones",
+    "status": "OFF",
+    "reason": "Set verify.duplicates to true to enable jscpd",
+    "findings": []
+  },
+  "testIntegrity": {
+    "status": "clear",
+    "reason": "No changed test files were identified",
+    "findings": [],
+    "scannedFiles": 0,
+    "baseline": "c266e3ab6ecc6a8e80a49eed1d582618ada6b588"
+  }
+}

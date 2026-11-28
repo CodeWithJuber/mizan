@@ -1,0 +1,26 @@
+{
+  "base": "HEAD",
+  "changedFiles": [
+    "total.js"
+  ],
+  "identifiers": [
+    "computeTotal",
+    "total.js"
+  ],
+  "soft": [],
+  "disappeared": [],
+  "updated": [],
+  "stale": [
+    {
+      "file": "README.md",
+      "hits": [
+        {
+          "identifier": "computeTotal",
+          "line": 3,
+          "text": "`sum(a, b)` adds two numbers; `computeTotal(items)` adds a list with `sum`."
+        }
+      ]
+    }
+  ],
+  "unaffected": []
+}

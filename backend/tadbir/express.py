@@ -700,6 +700,7 @@ PHRASES: dict[str, dict[str, str]] = {
     },
     "check_service": {"en": "the server on port {port} is still running"},
     "check_compiles": {"en": "`{path}` parses (esbuild)"},
+    "check_project_tests": {"en": "the project's tests pass (ForgeKit: {commands})"},
     "check_refs": {"en": "`{path}` loads only files that exist"},
     "check_css_file": {"en": "`{path}` is well formed (balanced braces)"},
     "check_json": {"en": "`{path}` is valid JSON"},

@@ -1,0 +1,195 @@
+{
+  "ok": true,
+  "provenance": {
+    "base": "HEAD",
+    "changedFiles": [],
+    "untracked": [],
+    "tests": {
+      "ran": true,
+      "passed": true,
+      "status": "PASS",
+      "runner": "npm test",
+      "detected": [
+        "npm test"
+      ],
+      "executed": [
+        {
+          "label": "npm test",
+          "status": "PASS",
+          "cwd": ".",
+          "covers": [
+            "."
+          ],
+          "exitCode": 0,
+          "durationMs": 170,
+          "reportedCounts": {
+            "total": 1,
+            "pass": 1,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        }
+      ],
+      "notExecuted": [],
+      "coverage": {
+        "required": [
+          "."
+        ],
+        "excluded": [],
+        "rootCoversWorkspaces": false,
+        "basis": {
+          ".": "measured"
+        },
+        "covered": [
+          "."
+        ],
+        "uncovered": []
+      }
+    },
+    "codeState": {
+      "head": "cd7d392698e9ae122f6625ac57f93fd1e1a5a99b",
+      "dirtyHash": "8c1b9999f5bc16f3824488b1d1346f887ddafe7204e46914b5bcc3c412163c06",
+      "gitAvailable": true,
+      "scheme": "manifest-v3"
+    },
+    "event": {
+      "v": 2,
+      "runId": "4ed2873e-b0ae-4045-a876-89b15ca13642",
+      "checkout": "93dcd86be89486dd",
+      "verifier": "forge verify",
+      "verifierVersion": "1.26.0",
+      "startedAt": "2026-11-28T18:24:48.241Z",
+      "finishedAt": "2026-11-28T18:24:48.465Z",
+      "status": "PASS",
+      "testIntegrity": {
+        "status": "clear",
+        "reason": "No changed test files were identified",
+        "findings": [],
+        "scannedFiles": 0,
+        "baseline": "cd7d392698e9ae122f6625ac57f93fd1e1a5a99b"
+      },
+      "suites": [
+        {
+          "label": "npm test",
+          "cwd": ".",
+          "covers": [
+            "."
+          ],
+          "status": "PASS",
+          "exitCode": 0,
+          "durationMs": 170,
+          "reportedCounts": {
+            "total": 1,
+            "pass": 1,
+            "fail": 0,
+            "cancelled": 0,
+            "skipped": 0,
+            "todo": 0
+          }
+        }
+      ],
+      "notExecuted": [],
+      "coverage": {
+        "required": [
+          "."
+        ],
+        "excluded": [],
+        "rootCoversWorkspaces": false,
+        "basis": {
+          ".": "measured"
+        },
+        "covered": [
+          "."
+        ],
+        "uncovered": []
+      },
+      "pre": {
+        "scheme": "manifest-v3",
+        "head": "cd7d392698e9ae122f6625ac57f93fd1e1a5a99b",
+        "dirtyHash": "8c1b9999f5bc16f3824488b1d1346f887ddafe7204e46914b5bcc3c412163c06"
+      },
+      "post": {
+        "head": "cd7d392698e9ae122f6625ac57f93fd1e1a5a99b",
+        "dirtyHash": "8c1b9999f5bc16f3824488b1d1346f887ddafe7204e46914b5bcc3c412163c06"
+      },
+      "environment": {
+        "node": "v22.23.5",
+        "platform": "linux",
+        "arch": "x64",
+        "digest": "687a1a5f3cdd1692"
+      }
+    },
+    "symbolsChecked": 0,
+    "unknownSymbols": [],
+    "duplicates": {
+      "label": "jscpd new clones",
+      "status": "OFF",
+      "reason": "Set verify.duplicates to true to enable jscpd",
+      "findings": []
+    },
+    "signature": "ef32210d504a0ae003c85c585676512cbffab711252d7d0cee061258c97c2e1d",
+    "signer": "d4940ce9d8b2a379"
+  },
+  "unknown": [],
+  "tests": {
+    "ran": true,
+    "passed": true,
+    "status": "PASS",
+    "runner": "npm test",
+    "detected": [
+      "npm test"
+    ],
+    "executed": [
+      {
+        "label": "npm test",
+        "status": "PASS",
+        "cwd": ".",
+        "covers": [
+          "."
+        ],
+        "exitCode": 0,
+        "durationMs": 170,
+        "reportedCounts": {
+          "total": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0,
+          "todo": 0
+        }
+      }
+    ],
+    "notExecuted": [],
+    "coverage": {
+      "required": [
+        "."
+      ],
+      "excluded": [],
+      "rootCoversWorkspaces": false,
+      "basis": {
+        ".": "measured"
+      },
+      "covered": [
+        "."
+      ],
+      "uncovered": []
+    }
+  },
+  "changedFiles": [],
+  "added": "",
+  "duplicates": {
+    "label": "jscpd new clones",
+    "status": "OFF",
+    "reason": "Set verify.duplicates to true to enable jscpd",
+    "findings": []
+  },
+  "testIntegrity": {
+    "status": "clear",
+    "reason": "No changed test files were identified",
+    "findings": [],
+    "scannedFiles": 0,
+    "baseline": "cd7d392698e9ae122f6625ac57f93fd1e1a5a99b"
+  }
+}
