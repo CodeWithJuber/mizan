@@ -1,11 +1,13 @@
 """Daftar (دفتر): the ledger of everything MIZAN keeps about a user, which the user can read, correct and take away.
 
-One list, four kinds:
+One list, six kinds:
 
 - **note**: something saved to remember (by the user, an import, or a knowledge source)
 - **preference**: how the user wants MIZAN to answer (name, language, tone, ...)
 - **summary**: MIZAN's running summary of a long chat
 - **learned**: wording, programs and repair lessons MIZAN learned from the user's verified work
+- **decision**: what the user decided and why ('Azm), append-only, forgotten one by one
+- **handoff**: where a chat, project or agent left the work ('Azm), rewritten after each answer
 
 Each entry says where it came from, when it was made and last used, and (for
 notes) when it expires. Notes and preferences can be edited and forgotten one
@@ -254,12 +256,22 @@ async def ledger(
 ) -> dict:
     sessions = await memory.list_sessions(limit=200, owner_id=owner_id)
     titles = {item["session_id"]: item.get("title") or "" for item in sessions}
+    from memory import azm
+
     entries = [
         *notes(notes_store, titles),
         *(await preferences(memory, owner_id, titles)),
         *(await summaries(memory, sessions)),
         *learned(adaptive, owner_id),
+        *azm.ledger(owner_id),
     ]
+    for entry in entries:
+        # A decision or hand-off names its chat by title, as notes do.
+        source = entry.get("source") or {}
+        title = titles.get(source.get("session_id") or "")
+        if entry["kind"] in ("decision", "handoff") and title:
+            source["label"] = f"{source['label']} ({title})"
+
     counts: dict[str, int] = {}
     for entry in entries:
         counts[entry["kind"]] = counts.get(entry["kind"], 0) + 1
@@ -333,6 +345,8 @@ def to_markdown(entries: list[dict], owner: str) -> str:
         "note": "Notes",
         "summary": "Chat summaries",
         "learned": "Learned from your verified work",
+        "decision": "Decisions",
+        "handoff": "Hand-off notes",
     }
     for kind, title in titles.items():
         chosen = [entry for entry in entries if entry["kind"] == kind]
@@ -363,7 +377,7 @@ def to_json(entries: list[dict]) -> dict:
         }
         | {"created": entry.get("created", ""), "source": entry["source"].get("label", "")}
         for entry in entries
-        if entry["kind"] in ("note", "preference")
+        if entry["kind"] in ("note", "preference", "decision")
     ]
     return {"format": FORMAT, "exported": _now(), "entries": portable}
 
@@ -384,6 +398,18 @@ async def import_entries(
         content = str(item["content"])[:4000]
         if amanah.scan(content):
             added["skipped"] += 1  # an imported note never carries instructions to the AI
+            continue
+        if item.get("kind") == "decision":
+            from memory import azm
+
+            try:
+                azm.record(owner_id, content)
+                added["decision"] = added.get("decision", 0) + 1
+            except (ValueError, azm.Unavailable):
+                added["skipped"] += 1
+            continue
+        if item.get("kind") in ("handoff", "summary", "learned"):
+            added["skipped"] += 1  # MIZAN's own state, rebuilt where it is used
             continue
         if item.get("kind") == "preference" and item.get("key"):
             from memory.dhikr import CONSENT_PREFERENCES

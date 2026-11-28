@@ -5,6 +5,8 @@ import { Download, FolderCode, MoreHorizontal, Pencil, Plus, Trash2 } from "luci
 import { PageHeader } from "../../app/PageHeader";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { confirmDialog } from "@/components/ui/confirm";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -28,6 +30,7 @@ export default function ProjectList() {
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<Project | null>(null);
   const [newName, setNewName] = useState("");
+  const [newGoal, setNewGoal] = useState("");
   const projects = (data?.workspaces ?? []).filter((project) => !project.reserved);
 
   const failed = (title: string) => (problem: unknown) =>
@@ -112,8 +115,8 @@ export default function ProjectList() {
                     <MoreHorizontal />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => { setRenaming(project); setNewName(project.name); }}>
-                      <Pencil /> Rename
+                    <DropdownMenuItem onClick={() => { setRenaming(project); setNewName(project.name); setNewGoal(project.goal ?? ""); }}>
+                      <Pencil /> Rename or set goal
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => void exportProject(project).catch(failed("Could not export the project"))}>
                       <Download /> Export as zip
@@ -132,19 +135,30 @@ export default function ProjectList() {
       <Dialog open={renaming !== null} onOpenChange={(open) => !open && setRenaming(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Rename project</DialogTitle>
-            <DialogDescription>The name is shown here and in the project's chats.</DialogDescription>
+            <DialogTitle>Rename project or set its goal</DialogTitle>
+            <DialogDescription>
+              The name is shown here and in the project's chats. MIZAN reads each answer's work against the goal and
+              notes under the answer when work drifts from it; it never stops anything.
+            </DialogDescription>
           </DialogHeader>
           <form
             onSubmit={(event) => {
               event.preventDefault();
               const trimmed = newName.trim();
               if (!renaming || !trimmed) return;
-              rename.mutate({ id: renaming.id, name: trimmed }, { onError: failed("Could not rename the project") });
+              rename.mutate({ id: renaming.id, name: trimmed, goal: newGoal.trim() }, { onError: failed("Could not save the project") });
               setRenaming(null);
             }}
           >
             <Input autoFocus aria-label="Project name" value={newName} maxLength={100} onChange={(event) => setNewName(event.target.value)} />
+            <div className="mt-3 space-y-1">
+              <Label htmlFor="project-goal">Goal</Label>
+              <Textarea id="project-goal" value={newGoal} maxLength={1000} aria-describedby="project-goal-hint"
+                placeholder="For example: a prayer-times app for my masjid" onChange={(event) => setNewGoal(event.target.value)} />
+              <p id="project-goal-hint" className="text-xs text-muted-foreground">
+                Empty: the first request of the project's chat is its goal.
+              </p>
+            </div>
             <DialogFooter className="mt-4">
               <Button type="button" variant="outline" onClick={() => setRenaming(null)}>Cancel</Button>
               <Button type="submit" disabled={!newName.trim()}>Save</Button>

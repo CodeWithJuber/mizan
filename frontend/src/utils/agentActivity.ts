@@ -38,12 +38,17 @@ function parsePreview(value: unknown): ApprovalRequest["preview"] {
   return { path: item.path, diff: item.diff, truncated: item.truncated === true, newFile: item.new_file === true };
 }
 
-/** A connector (MCP elicitation) asks the person for some values mid-run. */
+/** A connector (MCP elicitation) asks the person for some values mid-run, or MIZAN
+ *  asks one question before an action it would otherwise guess (Tabayyun, kind "question"). */
 export interface ElicitationRequest {
   id: string;
   server: string;
   message: string;
   schema: unknown;
+  kind?: "question";
+  /** For a question: the action waiting for the answer, and what it needs. */
+  tool?: string;
+  argument?: string;
   /** accept | decline | cancel, or expired when the answer could not be delivered. */
   decision?: string;
 }
@@ -133,7 +138,10 @@ export function reduceActivity(state: AgentActivity, event: Record<string, unkno
       if (!id || known.some((item) => item.id === id)) return state;
       return {
         ...state,
-        elicitations: [...known, { id, server: text(event.server, "A connector"), message: text(event.message), schema: event.schema ?? null }],
+        elicitations: [...known, {
+          id, server: text(event.server, "A connector"), message: text(event.message), schema: event.schema ?? null,
+          ...(event.kind === "question" ? { kind: "question" as const, tool: text(event.tool), argument: text(event.argument) } : {}),
+        }],
       };
     }
     case "elicitation_resolved": {

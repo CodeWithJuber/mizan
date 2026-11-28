@@ -76,6 +76,18 @@ The **digest** arrives once a day at the user's chosen time (default 21:00), out
 
 MIZAN knows 33 cities offline (37 names, counting spellings such as Makkah/Mecca): Makkah, Madinah, Karachi, Lahore, Delhi, Dhaka, Jakarta, Istanbul, Cairo, London, New York and more. Other cities are found with Open-Meteo's free geocoder, or the user enters coordinates.
 
+## Niyyah: a watcher's goal
+
+A watcher keeps a goal: the one you set (`goal` on `POST` or `PATCH
+/api/muraqabah/watchers/{id}`, **Set goal** on the Watchers page; `""` clears
+it), else its task. Each run of its task is read against that goal as a
+project's is ([coding-workspaces.md](coding-workspaces.md#niyyah-the-projects-goal)):
+the actions that changed something are scored by a noisy-OR of shared goal
+concepts, and a CUSUM (k = 0.35, h = 1.0) over the runs notes sustained drift.
+When it alarms, the notice ends with a line saying the work drifted from the
+goal, and the run's `usage.niyyah` says which actions. It never stops the
+watcher or holds its notice.
+
 ## API and settings
 
 All routes act on the signed-in user's own watchers.
@@ -84,8 +96,8 @@ All routes act on the signed-in user's own watchers.
 |---|---|
 | `GET /api/muraqabah` | Watchers, place, today's times and quiet windows, attention, budget |
 | `PUT /api/muraqabah/place` | `city`, or `lat`/`lon`/`tz`; `method`, `hanafi`, `budget`, `digest`, `quiet` |
-| `POST /api/muraqabah/watchers` | `title`, `trigger`, `task`, `priority` (`judge` or `always`) |
-| `PATCH` / `DELETE /api/muraqabah/watchers/{id}` | Change, pause or remove |
+| `POST /api/muraqabah/watchers` | `title`, `trigger`, `task`, `priority` (`judge` or `always`), `agent_id`, `goal` |
+| `PATCH` / `DELETE /api/muraqabah/watchers/{id}` | Change (`goal` included), pause or remove |
 | `POST /api/muraqabah/watchers/{id}/run` | Run now; the notice is judged like any other |
 | `GET /api/muraqabah/notices` | Recent notices and their status |
 | `POST /api/muraqabah/notices/{id}/feedback` | `{"useful": true\|false}` |

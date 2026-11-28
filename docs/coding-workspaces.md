@@ -4,7 +4,8 @@ supports file trees, optimistic file edits, rename/delete of individual files,
 checkpoints you can restore, actual diffs, and saved code/HTML/markdown/image
 artifacts. Files survive chat and backend restarts.
 
-**Projects.** `PATCH /api/workspaces/{id}` renames one (`{"name"}`),
+**Projects.** `PATCH /api/workspaces/{id}` renames one (`{"name"}`) or sets
+its goal (`{"goal"}`, see Niyyah below),
 `DELETE /api/workspaces/{id}` deletes it (its server session is stopped first)
 and `GET /api/workspaces/{id}/export.zip` downloads its files without `.git`.
 Delete and restore answer 409 while a chat is working in the project.
@@ -107,3 +108,33 @@ no same-origin privilege. Saved images do not imply that the active language
 model understands image attachments or can generate images.
 
 See also `agentic-coding.md` for the agent coding tools, approvals and the in-browser preview.
+
+## Niyyah: the project's goal
+
+"Actions are judged by intentions" (Bukhari 1). A project keeps its goal: the
+one you set (`PATCH /api/workspaces/{id}` with `{"goal": "..."}`, up to 1000
+characters, or **Rename or set goal** on `/code`; `""` clears it), else the
+first request of the project's chat. Each answer's work is read against it
+(`backend/tadbir/niyyah.py`, ForgeKit's `anchor.js`):
+
+- the goal's concepts are its distinctive words (more information than its
+  average word), with a light suffix fold;
+- each action of the run that changed something (a write, an edit, a run; not
+  a read) is one item; its concepts are the request's words, the tool's name,
+  its short arguments (a path, an id) and the names a program it wrote
+  defines, split at camelCase and symbols;
+- an item is on the goal with a noisy-OR of its hits, 1 − (1 − 0.6)^k for k
+  distinct goal concepts it shows (a prefix of four letters or more meets a
+  variant, `valid` → `validation`; a bare substring does not, `port` is not
+  `report`);
+- the run's drift is the off-goal share of its items (no change: 0), and a
+  one-sided CUSUM C = max(0, C + drift − 0.35) alarms at C > 1.0, so one
+  exploratory step drains back while sustained work elsewhere is noted.
+
+The alarm is only a note under the answer: **Off the project's goal?** in the
+answer's sources row, which opens to the goal and the off-goal actions
+(`usage.niyyah`: `scope`, `goal`, `goal_source` stated or first_request,
+`work`, `drift`, `cusum`, `alarm`, `off_goal`). Nothing is ever stopped. The
+chart is kept per project with no words, in the person's `azm.sqlite3`; with
+no store it starts from zero for that run. The goal also heads the project's
+hand-off ([azm.md](azm.md)), which a new chat on the project starts from.

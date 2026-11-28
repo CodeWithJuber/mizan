@@ -399,6 +399,8 @@ class Store:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(watchers)")}
             if "agent_id" not in columns:  # the agent that runs the task (none: default)
                 conn.execute("ALTER TABLE watchers ADD COLUMN agent_id TEXT")
+            if "goal" not in columns:  # Niyyah: what its work is for (none: its task)
+                conn.execute("ALTER TABLE watchers ADD COLUMN goal TEXT NOT NULL DEFAULT ''")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=10)
@@ -471,6 +473,8 @@ class Store:
             if changes.get("agent_id") is not None
             else {}
         )
+        if changes.get("goal") is not None:  # "" clears it: the task is the goal again
+            agent_fields["goal"] = " ".join(str(changes["goal"]).split())[:1000]
         trigger = (
             validate_trigger(changes["trigger"]) if changes.get("trigger") else current["trigger"]
         )
@@ -594,6 +598,7 @@ class Store:
 
 def _watcher(row: sqlite3.Row) -> dict:
     data = dict(row)
+    data["goal"] = data.get("goal") or ""
     data["trigger"] = json.loads(data["trigger"])
     data["state"] = json.loads(data.get("state") or "{}")
     data["enabled"] = bool(data["enabled"])
@@ -683,7 +688,7 @@ async def fire(
 
         token = _agent.set(watcher.get("agent_id"))
         try:
-            with collecting_held() as found:
+            with collecting_held() as found, watching(watcher):
                 result = await run_task(owner, watcher["task"])
         finally:
             _agent.reset(token)
@@ -758,6 +763,7 @@ async def tick(store: Store, now: datetime, *, run_task: RunTask, deliver: Deliv
 _STORES: dict[str, Store] = {}
 _inside: ContextVar[bool] = ContextVar("mizan_inside_watcher", default=False)
 _agent: ContextVar[str | None] = ContextVar("mizan_watcher_agent", default=None)
+_watching: ContextVar[dict | None] = ContextVar("mizan_watching", default=None)
 
 
 def default_store() -> Store:
@@ -784,6 +790,27 @@ def inside_watcher() -> bool:
 def current_watcher_agent() -> str | None:
     """The agent the running watcher names (None: the owner's default agent)."""
     return _agent.get()
+
+
+@contextmanager
+def watching(watcher: dict) -> Iterator[None]:
+    """While a watcher's task runs: which watcher, and its goal (Niyyah)."""
+    token = _watching.set(
+        {
+            "id": str(watcher.get("id") or ""),
+            "task": str(watcher.get("task") or ""),
+            "goal": str(watcher.get("goal") or ""),
+        }
+    )
+    try:
+        yield
+    finally:
+        _watching.reset(token)
+
+
+def current_watcher() -> dict | None:
+    """The watcher whose task is running now (id, task, goal), if any."""
+    return _watching.get()
 
 
 def session_id(owner: str) -> str:

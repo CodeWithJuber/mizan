@@ -4012,7 +4012,7 @@
       "required": false,
       "schema": {
        "type": "string",
-       "pattern": "^(|note|preference|summary|learned)$",
+       "pattern": "^(|note|preference|summary|learned|decision|handoff)$",
        "default": "",
        "title": "Kind"
       }
@@ -4527,6 +4527,428 @@
       }
      }
     },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/azm/decisions": {
+   "get": {
+    "summary": "List Decisions",
+    "description": "Your decisions, oldest first, narrowed to one of your chats, projects or agents.",
+    "operationId": "list_decisions_api_azm_decisions_get",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "workspace_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Workspace Id"
+      }
+     },
+     {
+      "name": "agent_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Agent Id"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 500,
+       "minimum": 1,
+       "default": 100,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   },
+   "post": {
+    "summary": "Add Decision",
+    "description": "Record a decision of yours. It is never edited: a changed decision is a new one.",
+    "operationId": "add_decision_api_azm_decisions_post",
+    "parameters": [
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/DecisionCreate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/azm/decisions/{decision_id}": {
+   "delete": {
+    "summary": "Delete Decision",
+    "description": "Forget one of your decisions.",
+    "operationId": "delete_decision_api_azm_decisions__decision_id__delete",
+    "parameters": [
+     {
+      "name": "decision_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Decision Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    },
+    "x-mizan-access": "user",
+    "security": [
+     {
+      "bearer": []
+     },
+     {
+      "apiKey": []
+     }
+    ]
+   }
+  },
+  "/api/azm/handoff": {
+   "get": {
+    "summary": "Read Handoff",
+    "description": "The hand-off snapshot of one of your chats, projects or agents.",
+    "operationId": "read_handoff_api_azm_handoff_get",
+    "parameters": [
+     {
+      "name": "session_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Session Id"
+      }
+     },
+     {
+      "name": "workspace_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Workspace Id"
+      }
+     },
+     {
+      "name": "agent_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Agent Id"
+      }
+     },
+     {
+      "name": "authorization",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     },
+     {
+      "name": "X-API-Key",
+      "in": "header",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "X-Api-Key"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -17103,7 +17525,7 @@
      "coding workspaces"
     ],
     "summary": "Rename Workspace",
-    "description": "Rename a project.",
+    "description": "Rename a project, or set its goal (Niyyah: each run's work is read against it).",
     "operationId": "rename_workspace_api_workspaces__workspace_id__patch",
     "parameters": [
      {
@@ -23759,6 +24181,80 @@
     ],
     "title": "DebugCompareRequest"
    },
+   "DecisionCreate": {
+    "properties": {
+     "decision": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Decision"
+     },
+     "why": {
+      "type": "string",
+      "maxLength": 500,
+      "title": "Why",
+      "default": ""
+     },
+     "session_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Session Id"
+     },
+     "workspace_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspace Id"
+     },
+     "agent_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Agent Id"
+     },
+     "message_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "decision"
+    ],
+    "title": "DecisionCreate",
+    "description": "A decision, in the person's own words; scoped to a chat, a project or an agent."
+   },
    "DeepResearchRequest": {
     "properties": {
      "query": {
@@ -27047,6 +27543,18 @@
        }
       ],
       "title": "Agent Id"
+     },
+     "goal": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Goal"
      }
     },
     "type": "object",
@@ -27131,6 +27639,18 @@
        }
       ],
       "title": "Agent Id"
+     },
+     "goal": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Goal"
      }
     },
     "type": "object",
@@ -27198,16 +27718,32 @@
    "WorkspaceRename": {
     "properties": {
      "name": {
-      "type": "string",
-      "maxLength": 100,
-      "minLength": 1,
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 100,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
       "title": "Name"
+     },
+     "goal": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Goal"
      }
     },
     "type": "object",
-    "required": [
-     "name"
-    ],
     "title": "WorkspaceRename"
    },
    "YaqinTagRequest": {

@@ -82,6 +82,13 @@ SETTINGS: tuple[Setting, ...] = (
             "Comma-separated tool names that wait for a person in every permission mode (and "
             "are held when no one is watching), for example shahid_submit. Empty: the chat's "
             "permission mode decides for every tool.", ""),
+    Setting("MIZAN_TABAYYUN", "Agents", "Ask before guessing (Tabayyun)", "choice",
+            "ask: before an action the model chose changes something, for a request MIZAN did "
+            "not read decisively, MIZAN asks one question when a reference the action needs (an "
+            "address, a link, an id, a number, a date) is not in the person's words or in what "
+            "the run saw; a run no one is watching holds the action instead. Reads are never "
+            "asked about. off never asks (docs/tabayyun.md).",
+            "ask", ("ask", "off")),
     Setting("MIZAN_TOOL_CALLS_PER_MINUTE", "Agents", "Tool calls per minute", "int",
             "How often one agent may call the same tool per minute.", "120", (), 1, 10000),
     Setting("MIZAN_CHAT_PER_MINUTE", "Agents", "Chat messages per minute", "int",

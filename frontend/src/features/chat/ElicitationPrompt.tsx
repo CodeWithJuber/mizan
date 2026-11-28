@@ -2,6 +2,10 @@
  * A connector asks the person for a few values while a reply runs (MCP
  * elicitation). Shown in the run timeline beside approval prompts: the form
  * built from its schema (or raw JSON), and Send / Decline / Cancel.
+ *
+ * MIZAN's own question before an action it would otherwise guess (Tabayyun,
+ * kind "question") uses the same card: one field, prefilled with the value it
+ * would have guessed, and the answer is read as the person's own words.
  */
 import { useId, useState, type FormEvent } from "react";
 import { MessageSquareText } from "lucide-react";
@@ -84,11 +88,12 @@ export function ElicitationPrompt({ request, onAnswer }: {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
+  const asking = request.kind === "question";
   if (request.decision) {
     return (
       <li className="flex items-center gap-2 px-1.5 text-xs text-muted-foreground">
         <MessageSquareText className="size-3.5" aria-hidden />
-        {request.server}'s question {DECIDED[request.decision] ?? request.decision}
+        {asking ? "MIZAN's question before acting" : `${request.server}'s question`} {DECIDED[request.decision] ?? request.decision}
       </li>
     );
   }
@@ -130,10 +135,12 @@ export function ElicitationPrompt({ request, onAnswer }: {
       <form aria-labelledby={titleId} onSubmit={submit} className="flex items-start gap-2" noValidate>
         <MessageSquareText className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
         <div className="min-w-0 flex-1 space-y-2">
-          <p id={titleId} className="text-sm font-medium">{request.server} asks you</p>
+          <p id={titleId} className="text-sm font-medium">{asking ? "MIZAN asks before acting" : `${request.server} asks you`}</p>
           {request.message && <p className="whitespace-pre-wrap break-words text-sm">{request.message}</p>}
           <p className="text-xs text-muted-foreground">
-            Your answer goes to {request.server} only. Never give it a password here.
+            {asking
+              ? `Nothing runs until you answer. Your answer is read as your own words${request.tool ? ` for ${request.tool}` : ""}; Decline and it does not run.`
+              : `Your answer goes to ${request.server} only. Never give it a password here.`}
           </p>
           {fields ? (
             fields.length > 0 && (

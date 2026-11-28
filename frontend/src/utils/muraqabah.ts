@@ -13,6 +13,8 @@ export interface Watcher {
   when: string;
   next_due: string | null;
   last_fired: string | null;
+  /** Niyyah: what its work is for ("": its task is its goal). */
+  goal?: string;
 }
 
 export interface Place {

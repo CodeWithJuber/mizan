@@ -35,3 +35,18 @@ describe("approval preview", () => {
     expect(state.approvals[0].preview).toBeUndefined();
   });
 });
+
+describe("MIZAN's question before acting", () => {
+  it("keeps the kind, the waiting action and what it needs", () => {
+    const state = reduceActivity(emptyActivity(), {
+      type: "elicitation", id: "q1", kind: "question", server: "MIZAN", tool: "send_email", argument: "to",
+      message: "Which address?", schema: { type: "object" },
+    });
+    expect(state.elicitations[0]).toMatchObject({ kind: "question", tool: "send_email", argument: "to" });
+  });
+
+  it("leaves a connector's question as it was", () => {
+    const state = reduceActivity(emptyActivity(), { type: "elicitation", id: "e1", server: "github", message: "Repo?" });
+    expect(state.elicitations[0].kind).toBeUndefined();
+  });
+});

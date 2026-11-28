@@ -4,9 +4,9 @@ Every route the backend serves, generated from the app (`python scripts/api_refe
 
 **Who**: `public` needs nothing; `user` needs a token or API key; `admin` needs an administrator; `user (more for admin)` serves every user and shows an administrator more; `debug mode` follows `MIZAN_DEBUG_MODE` (admins, users or off); `capability URL` is a dev-server preview whose link is the credential. The summaries come from each handler's docstring, or its name when it has none.
 
-327 routes in 61 areas.
+331 routes in 62 areas.
 
-Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tadrib](#tadrib) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
+Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifacts) · [auth](#auth) · [automation](#automation) · [azm](#azm) · [bab](#bab) · [channels](#channels) · [chat](#chat) · [cognitive](#cognitive) · [compare](#compare) · [connectors](#connectors) · [daftar](#daftar) · [debug](#debug) · [docs](#docs) · [doctor](#doctor) · [events](#events) · [extensibility](#extensibility) · [federation](#federation) · [gateway](#gateway) · [health](#health) · [hooks](#hooks) · [imtihan](#imtihan) · [integrations](#integrations) · [iqtisad](#iqtisad) · [knowledge](#knowledge) · [learner](#learner) · [media](#media) · [memory](#memory) · [middleware](#middleware) · [modes](#modes) · [muraqabah](#muraqabah) · [nafs](#nafs) · [openapi.json](#openapi.json) · [owned](#owned) · [perception](#perception) · [plan](#plan) · [plugins](#plugins) · [preferences](#preferences) · [providers](#providers) · [public](#public) · [qalb](#qalb) · [queue](#queue) · [ruh](#ruh) · [sakk](#sakk) · [sandbox](#sandbox) · [security](#security) · [settings](#settings) · [shura](#shura) · [skills](#skills) · [status](#status) · [tadbir](#tadbir) · [tadrib](#tadrib) · [tasks](#tasks) · [training](#training) · [upload](#upload) · [v1](#v1) · [version](#version) · [voice](#voice) · [websocket](#websocket) · [workspaces](#workspaces) · [yaqin](#yaqin)
 
 ## agent-skills
 
@@ -68,6 +68,15 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | GET | `/api/automation/webhooks` | admin | List all webhook triggers |
 | POST | `/api/automation/webhooks` | admin | Create a new webhook trigger |
 | POST | `/api/automation/webhooks/{webhook_id}/trigger` | admin | Handle an incoming webhook trigger |
+
+## azm
+
+| Method | Path | Who | What it does |
+|---|---|---|---|
+| GET | `/api/azm/decisions` | user | Your decisions, oldest first, narrowed to one of your chats, projects or agents. |
+| POST | `/api/azm/decisions` | user | Record a decision of yours. It is never edited: a changed decision is a new one. |
+| DELETE | `/api/azm/decisions/{decision_id}` | user | Forget one of your decisions. |
+| GET | `/api/azm/handoff` | user | The hand-off snapshot of one of your chats, projects or agents. |
 
 ## bab
 
@@ -608,7 +617,7 @@ Areas: [agent-skills](#agent-skills) · [agents](#agents) · [artifacts](#artifa
 | POST | `/api/workspaces/preview/{cap}/{port}/{path:path}` | capability URL | Preview |
 | PUT | `/api/workspaces/preview/{cap}/{port}/{path:path}` | capability URL | Preview |
 | DELETE | `/api/workspaces/{workspace_id}` | user | Delete a whole project, its checkpoints and its sandbox session. |
-| PATCH | `/api/workspaces/{workspace_id}` | user | Rename a project. |
+| PATCH | `/api/workspaces/{workspace_id}` | user | Rename a project, or set its goal (Niyyah: each run's work is read against it). |
 | POST | `/api/workspaces/{workspace_id}/artifact` | user | Artifact |
 | POST | `/api/workspaces/{workspace_id}/checkpoint` | user | Checkpoint |
 | GET | `/api/workspaces/{workspace_id}/checkpoints` | user | Checkpoints |

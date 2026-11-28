@@ -62,7 +62,9 @@ class CheckpointRestore(BaseModel):
 
 
 class WorkspaceRename(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    # Niyyah: what the project is for; "" clears it (the chat's first request is the goal).
+    goal: str | None = Field(default=None, max_length=1000)
 
 
 class ArtifactPublish(FilePath):
@@ -140,8 +142,16 @@ def create_workspace(body: WorkspaceCreate, user: TokenPayload = Depends(require
 def rename_workspace(
     workspace_id: str, body: WorkspaceRename, user: TokenPayload = Depends(require_editor)
 ) -> dict:
-    """Rename a project."""
-    return cast(dict, WorkspaceStore(user.user_id).rename_project(workspace_id, body.name))
+    """Rename a project, or set its goal (Niyyah: each run's work is read against it)."""
+    if body.name is None and body.goal is None:
+        raise HTTPException(422, "Give the project a new name or goal")
+    store = WorkspaceStore(user.user_id)
+    metadata: dict = {}
+    if body.name is not None:
+        metadata = store.rename_project(workspace_id, body.name)
+    if body.goal is not None:
+        metadata = store.set_goal(workspace_id, body.goal)
+    return {"goal": "", **metadata}
 
 
 @router.delete("/{workspace_id}")

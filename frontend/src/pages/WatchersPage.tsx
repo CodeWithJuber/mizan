@@ -44,6 +44,7 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
   const [taskKind, setTaskKind] = useState("ayah_of_the_day");
   const [taskText, setTaskText] = useState("");
   const [always, setAlways] = useState(false);
+  const [goalOf, setGoalOf] = useState<{ id: string; text: string } | null>(null);
   const [form, setForm] = useState<TriggerForm>({
     kind: "prayer", time: "08:00", prayer: "fajr", offset: 20, days: "13, 14, 15", url: "", hours: 6,
   });
@@ -277,12 +278,37 @@ export default function WatchersPage({ api }: { api: ApiClient }) {
               <p className="text-xs text-muted-foreground">
                 {watcher.when} · next {localTime(watcher.next_due, tz)}
               </p>
+              {watcher.goal && <p className="text-xs text-muted-foreground wrap-break-word">Goal: {watcher.goal}</p>}
+              {goalOf?.id === watcher.id && (
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    act(() => api.patch(`/muraqabah/watchers/${watcher.id}`, { goal: goalOf.text.trim() }), "Goal saved");
+                    setGoalOf(null);
+                  }}
+                >
+                  <input
+                    className="input text-sm py-1.5 flex-1 min-w-[10rem]"
+                    aria-label={`Goal of ${watcher.title}`}
+                    placeholder="What its work is for (empty: its task)"
+                    maxLength={1000}
+                    value={goalOf.text}
+                    onChange={(event) => setGoalOf({ id: watcher.id, text: event.target.value })}
+                  />
+                  <button type="submit" className="btn-gold btn-sm" disabled={busy}>Save goal</button>
+                  <button type="button" className="btn-ghost btn-sm" onClick={() => setGoalOf(null)}>Cancel</button>
+                </form>
+              )}
               <div className="flex flex-wrap gap-2 pt-1">
                 <button className="btn-ghost btn-sm" disabled={busy} onClick={() => act(() => api.post(`/muraqabah/watchers/${watcher.id}/run`), "Ran now")}>
                   Run now
                 </button>
                 <button className="btn-ghost btn-sm" disabled={busy} onClick={() => act(() => api.patch(`/muraqabah/watchers/${watcher.id}`, { enabled: !watcher.enabled }), "")}>
                   {watcher.enabled ? "Pause" : "Resume"}
+                </button>
+                <button className="btn-ghost btn-sm" disabled={busy} onClick={() => setGoalOf({ id: watcher.id, text: watcher.goal ?? "" })}>
+                  {watcher.goal ? "Change goal" : "Set goal"}
                 </button>
                 <button className="btn-danger btn-sm" disabled={busy} onClick={async () => {
                     const ok = await confirmDialog({

@@ -273,6 +273,8 @@ class Tadbir:
             "intent": understanding.intent,
             "language": understanding.language,
             "by": understanding.entities.get("understood_by", "fahm"),
+            # How decisive the reading was (Tabayyun asks before acting on one that was not).
+            "confidence": understanding.confidence,
         }
         trace.event(
             "understand",
@@ -1768,7 +1770,14 @@ class Tadbir:
             return Outcome(phrase("tool_not_prepared", u.language, tool=name, reason=reason), False, {"tool": name}, tool_backed=False)  # fmt: skip
         await self._step()
         await self._step()
-        result = await self._tool(name, arguments)
+        from agents.base import _arguments_proposed
+
+        # Lisan filled these arguments: Tabayyun reads them as a proposal (docs/tabayyun.md).
+        proposed = _arguments_proposed.set(True)
+        try:
+            result = await self._tool(name, arguments)
+        finally:
+            _arguments_proposed.reset(proposed)
         failed = tool_result_failed(result)
         await self._step()
         if failed:

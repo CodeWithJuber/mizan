@@ -214,6 +214,23 @@ class WorkspaceStore:
             self._atomic_json(project / "metadata.json", metadata)
             return metadata
 
+    def set_goal(self, workspace_id: str, goal: str) -> dict:
+        """The project's stated goal (Niyyah); "" clears it, and the project chat's
+        first request is the goal again."""
+        goal = " ".join((goal or "").split())
+        if len(goal) > 1000:
+            raise HTTPException(422, "A project goal is at most 1000 characters")
+        with _LOCK:
+            project = self.project(workspace_id)
+            metadata = self._metadata(project)
+            metadata["goal"] = goal
+            self._atomic_json(project / "metadata.json", metadata)
+            return metadata
+
+    def goal(self, workspace_id: str) -> str:
+        with _LOCK:
+            return str(self._metadata(self.project(workspace_id)).get("goal") or "")
+
     def export_zip(self, workspace_id: str) -> tuple[str, bytes]:
         """The project's files (not git's folder) as a zip, with the project's name."""
         with _LOCK:
